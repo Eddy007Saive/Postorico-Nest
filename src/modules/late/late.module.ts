@@ -1,0 +1,26 @@
+import { Module } from '@nestjs/common';
+import { PrismaModule } from '../../config/prisma.module';
+import { AuthModule } from '../auth/auth.module';
+import { MailModule } from '../mail/mail.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { QuotaModule } from '../quota/quota.module';
+import { SocialModule } from '../social/social.module';
+import { ZernioModule } from '../zernio/zernio.module';
+import { LateController } from './late.controller';
+import { LateService } from './late.service';
+
+@Module({
+  imports: [
+    PrismaModule,
+    AuthModule,
+    ZernioModule,
+    MailModule,
+    QuotaModule,
+    SocialModule,
+    NotificationsModule,
+  ],
+  controllers: [LateController],
+  providers: [LateService],
+  exports: [LateService],
+})
+export class LateModule {}

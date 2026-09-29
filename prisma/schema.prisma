@@ -1,0 +1,867 @@
+generator client {
+  provider      = "prisma-client-js"
+  // "native" couvre la machine de dev (Windows) et le build Docker/Railway (regénéré à
+  // neuf dans l'image node:20-alpine à chaque build, donc toujours à jour indépendamment
+  // de cette liste). "debian-openssl-3.0.x" est ajouté pour que les outils qui copient le
+  // node_modules généré sur Windows tel quel dans un conteneur Linux glibc (ex. le bac à
+  // sable Strix, basé sur Kali/Debian) trouvent un moteur utilisable sans regénération —
+  // sans ce moteur, PrismaClient plante au démarrage avant même app.listen().
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model affiliate_clicks {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  affiliate_id String     @db.Uuid
+  ip           String?
+  user_agent   String?
+  referer      String?
+  created_at   DateTime   @default(now()) @db.Timestamptz(6)
+  affiliates   affiliates @relation(fields: [affiliate_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([affiliate_id, created_at(sort: Desc)], map: "affiliate_clicks_aff_idx")
+}
+
+model affiliate_commissions {
+  id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  affiliate_id      String     @db.Uuid
+  telegram_id       String?    @db.Uuid
+  filleul_email     String?
+  type              String
+  stripe_invoice_id String     @unique
+  libelle           String?
+  base_cents        Int
+  devise            String     @default("EUR")
+  taux              Decimal    @db.Decimal(5, 2)
+  montant_cents     Int
+  statut            String     @default("en_attente")
+  fraude            Boolean    @default(false)
+  periode           DateTime   @db.Date
+  releve_id         String?    @db.Uuid
+  created_at        DateTime   @default(now()) @db.Timestamptz(6)
+  validee_le        DateTime?  @db.Timestamptz(6)
+  payee_le          DateTime?  @db.Timestamptz(6)
+  affiliates        affiliates @relation(fields: [affiliate_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([affiliate_id, periode(sort: Desc)], map: "affiliate_commissions_aff_idx")
+  @@index([periode(sort: Desc)])
+  @@index([statut])
+}
+
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model affiliate_referrals {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  affiliate_id  String     @db.Uuid
+  telegram_id   String?    @unique @db.Uuid
+  email         String?
+  statut        String     @default("active")
+  expire_le     DateTime?  @db.Timestamptz(6)
+  verrouille_le DateTime?  @db.Timestamptz(6)
+  ip            String?
+  created_at    DateTime   @default(now()) @db.Timestamptz(6)
+  affiliates    affiliates @relation(fields: [affiliate_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users         users?     @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([affiliate_id], map: "affiliate_referrals_aff_idx")
+}
+
+model affiliate_statements {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  affiliate_id  String     @db.Uuid
+  periode       DateTime   @db.Date
+  devise        String     @default("EUR")
+  montant_cents Int        @default(0)
+  nb            Int        @default(0)
+  statut        String     @default("a_facturer")
+  created_at    DateTime   @default(now()) @db.Timestamptz(6)
+  payee_le      DateTime?  @db.Timestamptz(6)
+  affiliates    affiliates @relation(fields: [affiliate_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([affiliate_id, periode, devise])
+}
+
+model affiliates {
+  id                    String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  telegram_id           String?                 @db.Uuid
+  code                  String                  @unique
+  nom                   String
+  email                 String
+  statut                String                  @default("en_attente")
+  taux_setup            Decimal                 @default(25) @db.Decimal(5, 2)
+  taux_recurrent        Decimal                 @default(10) @db.Decimal(5, 2)
+  iban_chiffre          String?
+  audience              String?
+  motif                 String?
+  created_at            DateTime                @default(now()) @db.Timestamptz(6)
+  approuve_le           DateTime?               @db.Timestamptz(6)
+  approuve_par          String?                 @db.Uuid
+  affiliate_clicks      affiliate_clicks[]
+  affiliate_commissions affiliate_commissions[]
+  affiliate_referrals   affiliate_referrals[]
+  affiliate_statements  affiliate_statements[]
+  users                 users?                  @relation(fields: [telegram_id], references: [telegram_id], onUpdate: NoAction)
+
+  @@index([statut])
+  @@index([telegram_id], map: "affiliates_telegram_idx")
+}
+
+model analytics_cache {
+  telegram_id String    @id @db.Uuid
+  data        Json?
+  updated_at  DateTime? @default(now()) @db.Timestamptz(6)
+  users       users     @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model analytics_performance {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contenu_id        String?   @db.Uuid
+  vues              Decimal?  @default(0) @db.Decimal
+  likes             Decimal?  @default(0) @db.Decimal
+  commentaires      Int?      @default(0)
+  partages          Decimal?  @default(0) @db.Decimal
+  post_performant   Boolean?  @default(false)
+  date_publication  String?
+  semaine           String?
+  taux_engagement   Decimal?  @default(dbgenerated("\nCASE\n    WHEN (vues > (0)::numeric) THEN round(((((likes + (commentaires)::numeric) + partages) / vues) * (100)::numeric), 2)\n    ELSE (0)::numeric\nEND")) @db.Decimal
+  performance_score Decimal?  @default(dbgenerated("\nCASE\n    WHEN (vues > (0)::numeric) THEN round((((((((likes + (commentaires)::numeric) + partages) / vues) * (100)::numeric) * 0.4) + ((((commentaires)::numeric / vues) * (100)::numeric) * 0.3)) + (((partages / vues) * (100)::numeric) * 0.2)), 1)\n    ELSE (0)::numeric\nEND")) @db.Decimal
+  created_at        DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime? @default(now()) @db.Timestamptz(6)
+  telegram_id       String?   @db.Uuid
+  contenu           contenu?  @relation(fields: [contenu_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users             users?    @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model appareils_confiance {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  telegram_id String    @db.Uuid
+  jeton_hash  String    @unique
+  libelle     String?
+  ip          String?
+  cree_le     DateTime  @default(now()) @db.Timestamptz(6)
+  vu_le       DateTime? @db.Timestamptz(6)
+  expire_le   DateTime  @db.Timestamptz(6)
+  users       users     @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([telegram_id], map: "appareils_confiance_user_idx")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model brand_assets {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  telegram_id String
+  url         String
+  description String?
+  tags        String[] @default([])
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  type        String   @default("image")
+  duree_s     Decimal? @db.Decimal
+  apercu_url  String?
+
+  @@index([telegram_id])
+}
+
+model brand_audits {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  marque     String?
+  email      String?
+  answers    Json      @default("{}")
+  recap      String?
+  status     String?   @default("nouveau")
+  user_agent String?
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([created_at(sort: Desc)], map: "brand_audits_created_idx")
+  @@index([status])
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model brand_musiques {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  telegram_id String   @db.Uuid
+  url         String
+  label       String
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  debut_s     Decimal? @db.Decimal
+  duree_s     Decimal? @db.Decimal
+  users       users    @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([telegram_id, created_at(sort: Desc)], map: "brand_musiques_user_idx")
+}
+
+model brand_templates {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  telegram_id String   @db.Uuid
+  nom         String
+  images      Json     @default("[]")
+  note        String?
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  users       users    @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([telegram_id], map: "idx_brand_templates_user")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model brouillons {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  auto_num           Int               @default(autoincrement())
+  id_sujet           String?
+  titre              String?
+  hook               String?
+  brief_instructions String?
+  pilier             String?
+  reseau_cible       reseau_social[]
+  type_contenu       type_contenu?
+  agent_responsable  String?
+  categorie_visuel   categorie_visuel?
+  image_martin       Boolean?          @default(false)
+  cta                String?
+  preuve             String?
+  statut             statut_brouillon? @default(Brouillon)
+  created_at         DateTime?         @default(now()) @db.Timestamptz(6)
+  telegram_id        String?           @db.Uuid
+  dimensions         Json?
+  dimensions_reco    Json?
+  users              users?            @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model carrousel_templates_custom {
+  id          String   @id
+  label       String
+  html        String
+  preview_url String?
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  created_by  String?
+}
+
+model codes_connexion {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  telegram_id String    @db.Uuid
+  code_hash   String
+  expire_le   DateTime  @db.Timestamptz(6)
+  tentatives  Int       @default(0)
+  utilise_le  DateTime? @db.Timestamptz(6)
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  users       users     @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([telegram_id, created_at(sort: Desc)], map: "codes_connexion_user_idx")
+}
+
+model commentaires {
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contenu_id          String?             @db.Uuid
+  nom_auteur          String?
+  contenu_commentaire String?
+  date_heure          DateTime?           @db.Timestamptz(6)
+  reponse_ia          String?
+  statut              statut_commentaire? @default(Nouveau)
+  post_id             String?
+  video_id            String?
+  id_message          Decimal?            @db.Decimal
+  created_at          DateTime?           @default(now()) @db.Timestamptz(6)
+  comment_id          String?             @unique
+  account_id          String?
+  telegram_id         String?             @db.Uuid
+  contenu             contenu?            @relation(fields: [contenu_id], references: [id], onUpdate: NoAction)
+  users               users?              @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model comptes_sociaux {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  telegram_id     String   @db.Uuid
+  plateforme      String
+  late_account_id String
+  connecte_le     DateTime @default(now()) @db.Timestamptz(6)
+  users           users    @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([telegram_id, plateforme], map: "comptes_sociaux_unique")
+  @@index([late_account_id], map: "comptes_sociaux_account_idx")
+  @@index([telegram_id], map: "comptes_sociaux_user_idx")
+}
+
+model contenu {
+  id                    String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  titre                 String?
+  contenu               String?
+  reseau_cible          reseau_social?
+  type                  type_contenu?
+  statut                statut_contenu?         @default(A_valider)
+  lien_visuel           String?
+  lien_publication      String?
+  lien_video_dropbox    String?
+  prompt_image          String?
+  created_at            DateTime?               @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime?               @default(now()) @db.Timestamptz(6)
+  date_publication      DateTime?               @db.Timestamptz(6)
+  slides_images         Json?
+  carrousel_pdf         String?
+  late_post_id          String?
+  publish_status        String?
+  publish_error         String?
+  telegram_id           String?                 @db.Uuid
+  carrousel_data        Json?
+  submagic_project_id   String?
+  video_status          String?
+  video_url             String?
+  video_preview_url     String?
+  script                String?
+  video_raw_id          String?
+  reel_data             Json?
+  serie_id              String?                 @db.Uuid
+  story_source_id       String?                 @db.Uuid
+  render_job            Json?
+  render_started_at     DateTime?               @db.Timestamptz(6)
+  reel_reco             Json?
+  contenu_original      String?
+  style_image           String?
+  analytics_performance analytics_performance[]
+  commentaires          commentaires[]
+  users                 users?                  @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+  contenu_embeddings    contenu_embeddings?
+  studio                studio[]
+}
+
+model contenu_embeddings {
+  contenu_id   String                @id @db.Uuid
+  telegram_id  String                @db.Uuid
+  genre        String
+  reseau_cible String?
+  texte        String
+  embedding    Unsupported("vector")
+  created_at   DateTime              @default(now()) @db.Timestamptz(6)
+  contenu      contenu               @relation(fields: [contenu_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([embedding], map: "idx_contenu_embeddings_hnsw")
+  @@index([telegram_id, genre], map: "idx_contenu_embeddings_user")
+}
+
+model credit_packs {
+  id              String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  action_type     String
+  name            String  @unique
+  quantity        Int
+  price_cents     Int
+  is_active       Boolean @default(true)
+  stripe_price_id String?
+}
+
+model device_tokens {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  telegram_id String   @db.Uuid
+  token       String   @unique
+  platform    String?
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
+  users       users    @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([telegram_id])
+}
+
+model evenements_stripe {
+  stripe_event_id String   @id
+  type            String?
+  recu_le         DateTime @default(now()) @db.Timestamptz(6)
+}
+
+model heygen_avatars {
+  avatar_id          String?
+  avatar_name        String?
+  status             avatar_status
+  preview_image_url  String?
+  preview_video_url  String?
+  error_message      String?
+  training_video_url String?
+  consent_url        String?
+  created_at         DateTime?     @default(now()) @db.Timestamptz(6)
+  description        String?
+  telegram_id        String        @id @db.Uuid
+  users              users         @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model marques {
+  id                            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  telegram_id                   String    @unique @db.Uuid
+  secteur                       String?
+  voix_marque                   String?
+  audience                      String?
+  piliers                       String?
+  a_eviter                      String?
+  hooks                         String?
+  ctas                          String?
+  regles                        String?
+  exemples_linkedin             String?
+  exemples_instagram            String?
+  exemples_facebook             String?
+  exemples_tiktok               String?
+  couleur_principale            String?   @default("#003D2E")
+  couleur_secondaire            String?   @default("#0077FF")
+  couleur_accent                String?   @default("#3AFFA3")
+  logo_url                      String?
+  carrousel_couleur_principale  String?
+  carrousel_couleur_secondaire  String?
+  carrousel_couleur_accent      String?
+  carrousel_font                String?
+  carrousel_font_corps          String?
+  carrousel_templates_exclusifs String?
+  use_inspirations              Boolean   @default(true)
+  created_at                    DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at                    DateTime  @default(now()) @db.Timestamptz(6)
+  exemples_googlebusiness       String?
+  exemples_twitter              String?
+  voix_clone_id                 String?
+  voix_clone_le                 DateTime? @db.Timestamptz(6)
+  voix_consentement_le          DateTime? @db.Timestamptz(6)
+  voix_clone_apercu             String?
+  voix_clone_duree_s            Int?
+  voix_defaut                   String?
+  style_image                   String?   @default("photo")
+  users                         users     @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([telegram_id], map: "marques_user_idx")
+}
+
+model montages {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  telegram_id       String   @db.Uuid
+  titre             String   @default("Montage")
+  projet            Json     @default("{}")
+  source_contenu_id String?  @db.Uuid
+  contenu_id        String?  @db.Uuid
+  statut            String   @default("brouillon")
+  video_url         String?
+  created_at        DateTime @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime @default(now()) @db.Timestamptz(6)
+  // Figé au moment du dernier export (voir EditeurService.rendre/restaurerRendu) — colonne
+  // réelle en base (jsonb), absente du schéma introspecté jusqu'ici.
+  projet_rendu      Json?
+  users             users    @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([telegram_id, updated_at(sort: Desc)], map: "montages_telegram_idx")
+}
+
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model newsletter_abonnes {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email           String
+  nom             String?
+  source          String    @default("app")
+  statut          String    @default("actif")
+  token           String    @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  unsubscribed_at DateTime? @db.Timestamptz(6)
+
+  @@index([statut])
+}
+
+model newsletters {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  numero     Int?
+  sujet      String?
+  preheader  String?
+  data       Json?
+  html       String?
+  sources    Json?
+  statut     String    @default("brouillon")
+  token      String    @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nb_envoyes Int       @default(0)
+  nb_erreurs Int       @default(0)
+  erreur     String?
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  sent_at    DateTime? @db.Timestamptz(6)
+
+  @@index([statut, created_at(sort: Desc)], map: "newsletters_statut_idx")
+}
+
+model notifications {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type        String?   @default("publication")
+  event       String?
+  titre       String?
+  message     String?
+  contenu_id  String?   @db.Uuid
+  reseau      String?
+  lu          Boolean?  @default(false)
+  created_at  DateTime? @default(now()) @db.Timestamptz(6)
+  telegram_id String?   @db.Uuid
+}
+
+model offers {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  telegram_id String   @db.Uuid
+  name        String
+  type        String   @default("service")
+  description String?
+  price       String?
+  benefits    String?
+  url         String?
+  facts       Json?
+  actif       Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([telegram_id], map: "idx_offers_telegram_id")
+}
+
+model plan_quotas {
+  id                       String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  plan_id                  String  @db.Uuid
+  action_type              String
+  included_quantity        Int     @default(0)
+  internal_unit_cost_cents Int     @default(0)
+  rollover                 Boolean @default(false)
+  plans                    plans   @relation(fields: [plan_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([plan_id, action_type])
+}
+
+model plans {
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String          @unique
+  price_cents    Int             @default(0)
+  billing_period String          @default("monthly")
+  is_active      Boolean         @default(true)
+  created_at     DateTime        @default(now()) @db.Timestamptz(6)
+  plan_quotas    plan_quotas[]
+  subscriptions  subscriptions[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model publication_schedules {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  platform           String
+  frequency          String    @default("weekly")
+  days_of_week       Int[]     @default([])
+  preferred_time     DateTime? @default(dbgenerated("'09:00:00'::time without time zone")) @db.Time(6)
+  is_active          Boolean?  @default(true)
+  created_at         DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime? @default(now()) @db.Timestamptz(6)
+  format             String    @default("post")
+  carrousel_template String?   @default("bold")
+  telegram_id        String?   @db.Uuid
+  mode_planification String    @default("cumule")
+  users              users?    @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([telegram_id, platform])
+}
+
+model reseaux_sauvegardes {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  telegram_id     String    @db.Uuid
+  plateforme      String
+  late_account_id String?
+  nom_affiche     String?
+  deconnecte_le   DateTime  @default(now()) @db.Timestamptz(6)
+  retabli_le      DateTime? @db.Timestamptz(6)
+  abandonne       Boolean   @default(false)
+}
+
+model resiliations {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  telegram_id  String    @db.Uuid
+  raison       String
+  commentaire  String?
+  issue        String    @default("partie")
+  detail       String?
+  fin_acces_le DateTime? @db.Timestamptz(6)
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  users        users     @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([telegram_id, created_at(sort: Desc)], map: "resiliations_compte_idx")
+  @@index([raison, created_at(sort: Desc)], map: "resiliations_raison_idx")
+}
+
+model studio {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contenu_id       String?        @db.Uuid
+  titre            String?
+  script           String?
+  duree            String?
+  type_video       type_video?
+  fichier_original String?
+  fichier_monte    String?
+  statut           statut_studio? @default(A_monter)
+  date_tournage    DateTime?      @db.Date
+  ia_liee          String?
+  tags             String?
+  created_at       DateTime?      @default(now()) @db.Timestamptz(6)
+  telegram_id      String?        @db.Uuid
+  contenu          contenu?       @relation(fields: [contenu_id], references: [id], onUpdate: NoAction)
+  users            users?         @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model studio_drafts {
+  telegram_id String   @id @db.Uuid
+  data        Json     @default("[]")
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
+  users       users    @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model studio_montage_jobs {
+  job_id     String   @id
+  status     String   @default("processing")
+  step       String?
+  hook       String?
+  thumbnail  Boolean  @default(false)
+  video_url  String?
+  thumb_url  String?
+  video_path String?
+  options    Json?
+  warnings   Json     @default("[]")
+  error      String?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  words      Json?
+  language   String?
+  source_url String?
+  removed    Json?
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model subscriptions {
+  id                     String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                String           @db.Uuid
+  plan_id                String           @db.Uuid
+  status                 String           @default("trialing")
+  current_period_start   DateTime         @default(now()) @db.Timestamptz(6)
+  current_period_end     DateTime         @db.Timestamptz(6)
+  stripe_subscription_id String?
+  created_at             DateTime         @default(now()) @db.Timestamptz(6)
+  cancel_at              DateTime?        @db.Timestamptz(6)
+  pause_jusqu_au         DateTime?        @db.Timestamptz(6)
+  impaye_depuis          DateTime?        @db.Timestamptz(6)
+  suspendu_le            DateTime?        @db.Timestamptz(6)
+  impaye_mail2_le        DateTime?        @db.Timestamptz(6)
+  impaye_mail4_le        DateTime?        @db.Timestamptz(6)
+  plans                  plans            @relation(fields: [plan_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users                  users            @relation(fields: [user_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+  usage_counters         usage_counters[]
+  usage_events           usage_events[]
+
+  @@index([user_id], map: "idx_subscriptions_user")
+}
+
+model usage_counters {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subscription_id String        @db.Uuid
+  action_type     String
+  period_start    DateTime      @db.Timestamptz(6)
+  period_end      DateTime      @db.Timestamptz(6)
+  used_quantity   Int           @default(0)
+  extra_quantity  Int           @default(0)
+  subscriptions   subscriptions @relation(fields: [subscription_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([subscription_id, action_type, period_start])
+}
+
+model usage_events {
+  id                  String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subscription_id     String?        @db.Uuid
+  action_type         String
+  quantity            Int            @default(1)
+  internal_cost_cents Int            @default(0)
+  status              String         @default("success")
+  created_at          DateTime       @default(now()) @db.Timestamptz(6)
+  subscriptions       subscriptions? @relation(fields: [subscription_id], references: [id], onUpdate: NoAction)
+
+  @@index([subscription_id, created_at], map: "idx_usage_events_sub")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model usage_log {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  action        String?
+  model         String?
+  qualite       String?
+  input_tokens  Int?      @default(0)
+  cache_read    Int?      @default(0)
+  cache_write   Int?      @default(0)
+  output_tokens Int?      @default(0)
+  cost_usd      Decimal?  @default(0) @db.Decimal
+  credits       Int?      @default(0)
+  created_at    DateTime? @default(now()) @db.Timestamptz(6)
+  telegram_id   String?   @db.Uuid
+  duree_s       Decimal?  @db.Decimal
+
+  @@index([action], map: "idx_usage_log_action")
+}
+
+model users {
+  nom                   String?
+  username              String?
+  email                 String?
+  actif                 Boolean?                @default(true)
+  created_at            DateTime?               @default(now()) @db.Timestamptz(6)
+  photo_url             String?
+  use_photo             Boolean?                @default(false)
+  user_name             String?
+  style_vestimentaire   String?
+  sexe                  Sexe?                   @default(homme)
+  password_hash         String?
+  late_profile_id       String?
+  timezone              String?                 @default("Europe/Paris")
+  telegram_id           String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  stripe_customer_id    String?
+  master_id             String?                 @db.Uuid
+  is_admin              Boolean                 @default(false)
+  avatar_url            String?
+  submagic_theme_id     String?
+  submagic_theme_label  String?
+  langue                String                  @default("fr")
+  google_sub            String?
+  affiliate_referrals   affiliate_referrals?
+  affiliates            affiliates[]
+  analytics_cache       analytics_cache?
+  analytics_performance analytics_performance[]
+  appareils_confiance   appareils_confiance[]
+  brand_musiques        brand_musiques[]
+  brand_templates       brand_templates[]
+  brouillons            brouillons[]
+  codes_connexion       codes_connexion[]
+  commentaires          commentaires[]
+  comptes_sociaux       comptes_sociaux[]
+  contenu               contenu[]
+  device_tokens         device_tokens[]
+  heygen_avatars        heygen_avatars?
+  marques               marques?
+  montages              montages[]
+  publication_schedules publication_schedules[]
+  resiliations          resiliations[]
+  studio                studio[]
+  studio_drafts         studio_drafts?
+  subscriptions         subscriptions[]
+  users                 users?                  @relation("usersTousers", fields: [master_id], references: [telegram_id], onUpdate: NoAction)
+  other_users           users[]                 @relation("usersTousers")
+
+  @@index([master_id], map: "idx_users_master")
+}
+
+model vision_sessions {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  admin_telegram_id  String   @db.Uuid
+  target_telegram_id String   @db.Uuid
+  created_at         DateTime @default(now()) @db.Timestamptz(6)
+  expires_at         DateTime @db.Timestamptz(6)
+
+  @@index([target_telegram_id, created_at(sort: Desc)], map: "vision_sessions_target_idx")
+}
+
+enum Sexe {
+  homme
+  femme
+}
+
+/// This enum is commented in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+enum Statut {
+  Brouillon
+  Valider
+}
+
+enum avatar_status {
+  in_progress
+  complete
+  failed
+  pending
+}
+
+enum categorie_musique {
+  Calme
+  Triste
+  Funky
+  Joyeuse
+  Romantique
+  Motivante
+}
+
+enum categorie_visuel {
+  carousel
+  image
+  video
+}
+
+enum reseau {
+  LinkedIn
+  Instagram
+  TikTok
+  YouTube
+  Facebook
+}
+
+enum reseau_social {
+  LinkedIn
+  Instagram
+  TikTok
+  YouTube
+  Facebook
+  GoogleBusiness
+}
+
+enum statut_brouillon {
+  Brouillon
+  Valider
+}
+
+enum statut_commentaire {
+  Nouveau
+  R_pondu          @map("Rèpondu")
+  A_escalader      @map("A escalader")
+  Ignore
+  Reponse_manuelle @map("Reponse manuelle")
+  escalader        @map("À escalader")
+}
+
+enum statut_contenu {
+  A_valider      @map("A valider")
+  Valider
+  Planifie
+  Pret_a_publier @map("Pret a publier")
+  Publie
+  Refuse
+  A_tourner      @map("A tourner")
+}
+
+enum statut_interview {
+  Prospecte
+  Confirme
+  A_preparer @map("A preparer")
+  Refuser
+}
+
+enum statut_plan {
+  A_rediger @map("A rediger")
+  Rediger
+  Urgent
+  Stock
+}
+
+enum statut_studio {
+  A_monter         @map("A monter")
+  En_cours_montage @map("En cours montage")
+  Monte
+  Compresse
+  Pret
+}
+
+enum type_contenu {
+  Post_court @map("Post court")
+  Post_long  @map("Post long")
+  Video
+  Carrousel
+  Reel
+  Short
+  Post_moyen @map("Post moyen")
+  Story
+}
+
+enum type_video {
+  Interview
+  Reel
+  Video
+  Short
+}
