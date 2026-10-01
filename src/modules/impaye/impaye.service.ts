@@ -1,5 +1,6 @@
 import { BadRequestException, forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Interval } from '@nestjs/schedule';
 import Stripe from 'stripe';
 import { PrismaService } from '../../config/prisma.service';
 import { DemarrageService } from '../demarrage/demarrage.service';
@@ -60,6 +61,9 @@ export class ImpayeService {
   private readonly adminNotifEmail: string;
   readonly lienAbonnement: string;
   private readonly lienReseaux: string;
+  private readonly cronActif: boolean;
+  /** Date (YYYY-MM-DD, Europe/Paris) de la dernière passe quotidienne effectuée. */
+  private dernierJourTraite: string | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -79,6 +83,7 @@ export class ImpayeService {
     this.adminNotifEmail = config.get<string>('app.adminNotifEmail') || '';
     this.lienAbonnement = `${this.frontendUrl}/dashboard/parametres?s=abonnement`;
     this.lienReseaux = `${this.frontendUrl}/dashboard/parametres?s=connections`;
+    this.cronActif = config.get<boolean>('app.impayesCronActive') ?? true;
   }
 
   private now(): Date {
@@ -286,6 +291,39 @@ export class ImpayeService {
   }
 
   // ------------------------------------------------------------------ cron
+
+  /** Impayés : une passe par jour, tôt le matin (Europe/Paris), qui applique les crans
+   * (mail J+9, suspension J+10, mail J+29, résiliation J+30). Vérifie toutes les 30 min
+   * qu'il est l'heure — port de `_impaye_cron` (backend/server.py). Manquait dans le premier
+   * portage : `traiterQuotidien` existait mais rien ne l'appelait (repéré le 2026-10-01). */
+  @Interval(30 * 60 * 1000)
+  async pollQuotidien(): Promise<void> {
+    if (!this.cronActif) return;
+    try {
+      const { jour, heure } = this.maintenantParis();
+      if (heure >= 6 && this.dernierJourTraite !== jour) {
+        const bilan = await this.traiterQuotidien();
+        this.dernierJourTraite = jour;
+        this.logger.log(`impayés cron: ${JSON.stringify(bilan)}`);
+      }
+    } catch (e) {
+      this.logger.error(`impayés cron loop: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
+  /** Jour (YYYY-MM-DD) et heure courants en Europe/Paris, sans dépendance externe. */
+  private maintenantParis(): { jour: string; heure: number } {
+    const parts = new Intl.DateTimeFormat('fr-FR', {
+      timeZone: 'Europe/Paris',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      hour12: false,
+    }).formatToParts(this.now());
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '00';
+    return { jour: `${get('year')}-${get('month')}-${get('day')}`, heure: Number(get('hour')) % 24 };
+  }
 
   /** Une fois par jour : lit impaye_depuis et applique les crans. */
   async traiterQuotidien(): Promise<{ comptes: number; mail2: number; suspendus: number; mail4: number; resilies: number; echecs: number } | { erreur: string }> {

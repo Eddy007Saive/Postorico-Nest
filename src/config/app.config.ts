@@ -90,6 +90,9 @@ export default registerAs('app', () => {
   // Newsletter hebdomadaire « La lettre de Rico » — voir modules/newsletter.
   // NEWSLETTER_CRON_ACTIVE=0 sur le backend dev (sinon dev et prod préparent/envoient chacun leur édition).
   newsletterCronActive: (process.env.NEWSLETTER_CRON_ACTIVE || '1') !== '0',
+  // Cron impayés (une passe par jour, 6 h Europe/Paris) — même interrupteur que le Python
+  // (IMPAYES_CRON_ACTIVE=0 pour le couper, ex. sur une instance de test).
+  impayesCronActive: (process.env.IMPAYES_CRON_ACTIVE || '1') !== '0',
   newsletterPerplexityModel: process.env.NEWSLETTER_PERPLEXITY_MODEL || 'perplexity/sonar-pro',
   newsletterJour: parseInt(process.env.NEWSLETTER_JOUR || '1', 10), // 0=lundi … 6=dimanche (défaut mardi)
   newsletterHeure: parseInt(process.env.NEWSLETTER_HEURE || '9', 10),
