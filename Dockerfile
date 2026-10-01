@@ -1,23 +1,27 @@
-# Use Node.js 20 image as base
-FROM node:20-alpine
+# Node 20 sur Debian (pas Alpine) : Chromium/Playwright (rendu carrousels) a besoin de
+# bibliothèques partagées (glibc) absentes de musl — voir `install --with-deps` plus bas.
+FROM node:20-bookworm-slim
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files
+# Fichiers de dépendances + schéma Prisma AVANT `npm ci` : le postinstall de
+# @prisma/client (génération du client) cherche prisma/schema.prisma au moment de
+# l'install ; sans lui présent ici, la génération échoue silencieusement.
 COPY package*.json ./
+COPY prisma ./prisma
+RUN npm ci
 
-# Install dependencies
-RUN npm ci --only=production
+# Chromium headless (rendu carrousels, Playwright) : navigateur + dépendances système
+# (le binaire vient de la dépendance "playwright" du package.json, pas d'une version à part).
+RUN npx playwright install --with-deps chromium
 
-# Copy source code
+# Code source + build (nest build a besoin des devDependencies, donc après le `npm ci`
+# complet ci-dessus — jamais un `npm ci --only=production` avant le build).
 COPY . .
-
-# Build the application
 RUN npm run build
 
-# Expose port ( Railway provides $PORT dynamically )
+# Expose port (Railway fournit $PORT dynamiquement)
 EXPOSE 3000
 
-# Start the application
+# Démarre l'application
 CMD ["node", "dist/main"]

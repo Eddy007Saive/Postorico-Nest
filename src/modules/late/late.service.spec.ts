@@ -28,7 +28,8 @@ describe('LateService.sweepPlanifies', () => {
     } as never;
     const configStub = { get: jest.fn().mockReturnValue('') } as unknown as ConfigService;
     const pushStub = { sendToUser: jest.fn().mockResolvedValue(true) } as never;
-    const service = new LateService(prismaStub, zernioStub, mailStub, socialStub, pushStub, configStub);
+    const evenementStub = { log: jest.fn().mockResolvedValue(undefined) } as never;
+    const service = new LateService(prismaStub, zernioStub, mailStub, socialStub, pushStub, evenementStub, configStub);
     return { service, findMany, update };
   }
 
@@ -169,7 +170,7 @@ function makeServiceForSignature(webhookSecret: string) {
   const configStub = {
     get: jest.fn().mockReturnValue(webhookSecret),
   } as unknown as ConfigService;
-  return new LateService(prismaStub, zernioStub, mailStub, socialStub, pushStub, configStub);
+  return new LateService(prismaStub, zernioStub, mailStub, socialStub, pushStub, { log: jest.fn() } as never, configStub);
 }
 
 // Port direct de backend/tests/test_webhooks.py (section Late), corrigé suite au scan
@@ -225,7 +226,7 @@ describe('LateService.handleWebhook — account.disconnected déclenche le push'
     const socialStub = {} as never;
     const pushStub = { sendToUser: jest.fn().mockResolvedValue(true) };
     const configStub = { get: jest.fn().mockReturnValue('') } as unknown as ConfigService;
-    const service = new LateService(prismaStub, zernioStub, mailStub, socialStub, pushStub as never, configStub);
+    const service = new LateService(prismaStub, zernioStub, mailStub, socialStub, pushStub as never, { log: jest.fn().mockResolvedValue(undefined) } as never, configStub);
 
     await service.handleWebhook({ event: 'account.disconnected', account: { platform: 'instagram', id: 'acc-1' } });
 
@@ -234,6 +235,37 @@ describe('LateService.handleWebhook — account.disconnected déclenche le push'
       expect.stringContaining('déconnecté'),
       expect.any(String),
       expect.objectContaining({ event: 'account.disconnected', reseau: 'instagram' }),
+    );
+  });
+});
+
+// Port de backend/services/late_service.py::handle_webhook (appel à push_service.send_to_user
+// juste après _notify, lignes 564-570) — le push FCM manquait dans le premier portage pour les
+// événements post.* (published/partial/failed/scheduled/cancelled/recycled), contrairement à
+// account.disconnected qui l'avait déjà (repéré le 2026-09-30, comparaison Python/NestJS).
+describe('LateService.handleWebhook — post.published déclenche aussi le push', () => {
+  it('envoie le push FCM en plus de la notif in-app quand un post est publié', async () => {
+    const prismaStub = {
+      contenu: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'c1', telegram_id: 'u1', titre: 'Mon post', reseau_cible: 'linkedin' }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      notifications: { create: jest.fn().mockResolvedValue({}) },
+    } as never;
+    const zernioStub = {} as never;
+    const mailStub = {} as never;
+    const socialStub = {} as never;
+    const pushStub = { sendToUser: jest.fn().mockResolvedValue(true) };
+    const configStub = { get: jest.fn().mockReturnValue('') } as unknown as ConfigService;
+    const service = new LateService(prismaStub, zernioStub, mailStub, socialStub, pushStub as never, { log: jest.fn().mockResolvedValue(undefined) } as never, configStub);
+
+    await service.handleWebhook({ event: 'post.published', post: { id: 'late-1' } });
+
+    expect(pushStub.sendToUser).toHaveBeenCalledWith(
+      'u1',
+      expect.stringContaining('publié'),
+      expect.any(String),
+      expect.objectContaining({ event: 'post.published', contenu_id: 'c1' }),
     );
   });
 });

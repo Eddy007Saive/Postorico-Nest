@@ -4,6 +4,7 @@ import type { subscriptions as SubscriptionRow } from '@prisma/client';
 import Stripe from 'stripe';
 import { PrismaService } from '../../config/prisma.service';
 import { AffiliationService } from '../affiliation/affiliation.service';
+import { DemarrageService } from '../demarrage/demarrage.service';
 import { ImpayeService } from '../impaye/impaye.service';
 import { NotificationService } from '../notifications/notification.service';
 import {
@@ -93,6 +94,8 @@ export class BillingService {
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => ImpayeService))
     private readonly impayeService: ImpayeService,
+    @Inject(forwardRef(() => DemarrageService))
+    private readonly demarrageService: DemarrageService,
     private readonly notificationService: NotificationService,
     private readonly affiliationService: AffiliationService,
     config: ConfigService,
@@ -114,7 +117,9 @@ export class BillingService {
     this.packDelaiJours = config.get<number>('app.packDelaiJours') ?? 14;
   }
 
-  private get ready(): boolean {
+  /** Public : QuotaService.ensureSubscription s'en sert pour savoir si Stripe est
+   * configuré avant de poser un essai local gratuit (cf. commentaire là-bas). */
+  get ready(): boolean {
     return this.stripe !== null;
   }
 
@@ -354,8 +359,7 @@ export class BillingService {
     const customer = typeof sub.customer === 'string' ? sub.customer : sub.customer?.id;
     const status = STATUS_MAP[sub.status] ?? 'past_due';
 
-    // TODO (DemarrageService sans état dans ce portage — pas de cache à invalider) :
-    // équivalent no-op de `demarrage_service.oublier(tg)`.
+    if (tg) this.demarrageService.oublier(tg);
 
     let uid: string | null = null;
     if (tg) {

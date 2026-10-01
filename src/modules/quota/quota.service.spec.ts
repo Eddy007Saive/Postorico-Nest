@@ -57,6 +57,42 @@ describe('QuotaService.message (privé)', () => {
   });
 });
 
+describe('QuotaService.ensureSubscription', () => {
+  function makeService(billingReady: boolean, existingSubscription: unknown = null) {
+    const findFirst = jest.fn().mockResolvedValue(existingSubscription);
+    const create = jest.fn().mockResolvedValue(undefined);
+    const plansFindFirst = jest.fn().mockResolvedValue({ id: 'plan-essai' });
+    const prismaStub = {
+      subscriptions: { findFirst, create },
+      plans: { findFirst: plansFindFirst },
+    } as never;
+    const billingStub = { ready: billingReady } as never;
+    const service = new QuotaService(prismaStub, billingStub);
+    return { service, create, findFirst };
+  }
+
+  it("ne pose PAS d'essai local quand Stripe est configuré (porte dérobée fermée)", async () => {
+    const { service, create } = makeService(true);
+    await service.ensureSubscription('u1');
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("pose un essai local quand Stripe n'est PAS configuré (filet de dev)", async () => {
+    const { service, create } = makeService(false);
+    await service.ensureSubscription('u1');
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create.mock.calls[0][0]).toMatchObject({ data: { user_id: 'u1', status: 'trialing' } });
+  });
+
+  it('ne touche jamais un compte qui a déjà un abonnement, Stripe configuré ou non', async () => {
+    for (const ready of [true, false]) {
+      const { service, create } = makeService(ready, { id: 'existing' });
+      await service.ensureSubscription('u1');
+      expect(create).not.toHaveBeenCalled();
+    }
+  });
+});
+
 describe('QuotaService.consume', () => {
   function makeService(queryRawResult: Record<string, unknown> = { ok: true, subscription_id: 's1' }) {
     const queryRaw = jest.fn().mockResolvedValue([{ result: queryRawResult }]);

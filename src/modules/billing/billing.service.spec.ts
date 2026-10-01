@@ -35,9 +35,10 @@ function makeService(opts: { secretConfigured?: boolean; webhookSecret?: string 
   } as unknown as ConfigService;
   const prismaStub = {} as never;
   const impayeStub = {} as never;
+  const demarrageStub = { oublier: jest.fn() } as never;
   const notificationStub = {} as never;
   const affiliationStub = {} as never;
-  const service = new BillingService(prismaStub, impayeStub, notificationStub, affiliationStub, configStub);
+  const service = new BillingService(prismaStub, impayeStub, demarrageStub, notificationStub, affiliationStub, configStub);
   jest.spyOn(service as unknown as { dejaTraite(id?: string, t?: string): Promise<boolean> }, 'dejaTraite').mockResolvedValue(true);
   return service;
 }

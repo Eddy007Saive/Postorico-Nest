@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../config/prisma.module';
 import { AuthModule } from '../auth/auth.module';
+import { ContenuEvenementModule } from '../contenus/contenu-evenement.module';
 import { MailModule } from '../mail/mail.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { QuotaModule } from '../quota/quota.module';
@@ -18,6 +19,7 @@ import { LateService } from './late.service';
     QuotaModule,
     SocialModule,
     NotificationsModule,
+    ContenuEvenementModule,
   ],
   controllers: [LateController],
   providers: [LateService],

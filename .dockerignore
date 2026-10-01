@@ -1,0 +1,15 @@
+node_modules
+dist
+build
+coverage
+.git
+.env
+.env.*
+!.env.example
+.agent-artifacts
+strix_runs
+*.log
+*.stackdump
+.vscode
+.idea
+test

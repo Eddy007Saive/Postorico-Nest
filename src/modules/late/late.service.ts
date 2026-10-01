@@ -2,6 +2,7 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../../config/prisma.service';
+import { ContenuEvenementService } from '../contenus/contenu-evenement.service';
 import { MailService } from '../mail/mail.service';
 import { PushService } from '../notifications/push.service';
 import { SocialService } from '../social/social.service';
@@ -70,6 +71,7 @@ export class LateService implements OnApplicationBootstrap {
     private readonly mailService: MailService,
     private readonly socialService: SocialService,
     private readonly pushService: PushService,
+    private readonly contenuEvenement: ContenuEvenementService,
     config: ConfigService,
   ) {
     this.webhookSecret = config.get<string>('app.lateWebhookSecret') || '';
@@ -680,9 +682,17 @@ export class LateService implements OnApplicationBootstrap {
 
     if (Object.keys(upd).length) {
       await this.prisma.contenu.update({ where: { id: cid }, data: upd as never });
+      // Événement système (mémoire d'évaluation H2) : pas d'acteur humain, confirmé par Zernio
+      // — port de late_service.py::handle_webhook (log_evenement(cid, "publie")).
+      if (upd.statut === 'Publie') await this.contenuEvenement.log(cid, 'publie');
     }
     if (notif) {
       await this.notify(tg, cid, reseau, event, notif[0], notif[1]);
+      try {
+        await this.pushService.sendToUser(tg, notif[0], notif[1], { contenu_id: cid, event });
+      } catch (e) {
+        this.logger.warn(`push send error: ${e instanceof Error ? e.message : e}`);
+      }
     }
     return { ok: true, contenu_id: cid, event };
   }

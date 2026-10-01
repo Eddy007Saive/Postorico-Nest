@@ -76,6 +76,9 @@ const CHAMPS_MARQUE = [
   'carrousel_font',
   'carrousel_font_corps',
   'carrousel_templates_exclusifs',
+  'typo_primaire',
+  'typo_secondaire',
+  'typo_tertiaire',
   'use_inspirations',
   'style_image',
 ] as const;

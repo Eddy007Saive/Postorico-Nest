@@ -147,13 +147,17 @@ export class QuotaService {
   }
 
   /** Pose un essai local si le compte n'a aucun abonnement — UNIQUEMENT quand Stripe
-   * n'est pas configuré (pas le cas en pratique ici, gardé pour fidélité au Python). */
+   * n'est pas configuré (cf. BillingService.ready plus bas : en production, Stripe est
+   * configuré, donc ce filet ne s'active jamais — il protège seulement le dev local). */
   async ensureSubscription(telegramId: string): Promise<void> {
     try {
       const existing = await this.prisma.subscriptions.findFirst({ where: { user_id: telegramId } });
       if (existing) return;
-      // TODO : lire STRIPE_SECRET_KEY une fois billing porté — pour l'instant on suit le
-      // même filet que le Python quand Stripe n'est pas configuré ici.
+      // UNIQUEMENT quand Stripe n'est pas configuré. Depuis que l'essai passe par Stripe
+      // avec carte, accorder ici quatorze jours gratuits sans carte serait une porte
+      // dérobée : il suffirait de refermer la page de paiement pour obtenir la même
+      // chose sans rien donner (cf. quota_service.py::ensure_subscription).
+      if (this.billingService.ready) return;
       const planId = (await this.planId('Essai')) ?? (await this.planId('Pro'));
       if (!planId) return;
       const now = new Date();
