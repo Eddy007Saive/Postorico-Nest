@@ -93,6 +93,9 @@ export default registerAs('app', () => {
   // Cron impayés (une passe par jour, 6 h Europe/Paris) — même interrupteur que le Python
   // (IMPAYES_CRON_ACTIVE=0 pour le couper, ex. sur une instance de test).
   impayesCronActive: (process.env.IMPAYES_CRON_ACTIVE || '1') !== '0',
+  // Worker de rendu Remotion (reels, stories animées) — même interrupteur que le Python
+  // (RENDER_WORKER_ACTIVE=0 : cette instance ne réclame aucun job de la file partagée).
+  renderWorkerActive: (process.env.RENDER_WORKER_ACTIVE || '1') !== '0',
   newsletterPerplexityModel: process.env.NEWSLETTER_PERPLEXITY_MODEL || 'perplexity/sonar-pro',
   newsletterJour: parseInt(process.env.NEWSLETTER_JOUR || '1', 10), // 0=lundi … 6=dimanche (défaut mardi)
   newsletterHeure: parseInt(process.env.NEWSLETTER_HEURE || '9', 10),

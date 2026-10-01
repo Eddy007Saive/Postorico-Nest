@@ -65,6 +65,7 @@ interface ContenuRow {
 export class RenderQueueService implements OnApplicationBootstrap {
   private readonly logger = new Logger(RenderQueueService.name);
   private compositionsConnuesCache: string[] | null = null;
+  private readonly workerActif: boolean;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -74,6 +75,7 @@ export class RenderQueueService implements OnApplicationBootstrap {
     private readonly notificationService: NotificationService,
     config: ConfigService,
   ) {
+    this.workerActif = config.get<boolean>('app.renderWorkerActive') ?? true;
     cloudinary.config({
       cloud_name: config.get<string>('app.cloudinaryCloudName'),
       api_key: config.get<string>('app.cloudinaryApiKey'),
@@ -84,6 +86,10 @@ export class RenderQueueService implements OnApplicationBootstrap {
   /** Démarre le worker au boot de l'application (30 s de délai, puis tick 10 s quand la
    * file est vide, enchaîne tant qu'il reste des jobs) — port direct de server._render_worker. */
   onApplicationBootstrap(): void {
+    if (!this.workerActif) {
+      this.logger.log('Worker de rendu Remotion désactivé (RENDER_WORKER_ACTIVE=0)');
+      return;
+    }
     setTimeout(() => void this.boucle(), 30_000);
   }
 
@@ -185,6 +191,12 @@ export class RenderQueueService implements OnApplicationBootstrap {
    * l'obtient, même avec plusieurs instances. */
   private async claim(): Promise<ContenuRow | null> {
     const connues = this.compositionsConnues();
+    // Fermé par défaut : une instance qui ne connaît AUCUNE composition (projet Remotion
+    // absent, ex. image Docker sans backend/remotion) ne réclame rien. Avant le 2026-10-01
+    // la liste vide court-circuitait le filtre : l'instance réclamait tout, échouait aussitôt
+    // (« Remotion non installé ») et, la file étant partagée avec le backend Python,
+    // envoyait en « échec » des reels que l'autre worker aurait rendus.
+    if (!connues.length) return null;
     const candidats = await this.prisma.contenu.findMany({
       where: { video_status: 'en_traitement', render_started_at: null },
       select: { id: true, telegram_id: true, reseau_cible: true, serie_id: true, render_job: true, titre: true },
@@ -194,7 +206,7 @@ export class RenderQueueService implements OnApplicationBootstrap {
     for (const row of candidats) {
       if (!row.render_job) continue;
       const composition = (row.render_job as { composition?: string } | null)?.composition;
-      if (connues.length && (!composition || !connues.includes(composition))) continue;
+      if (!composition || !connues.includes(composition)) continue;
       const res = await this.prisma.contenu.updateMany({
         where: { id: row.id, render_started_at: null },
         data: { render_started_at: new Date() },
