@@ -53,10 +53,25 @@ export class RemotionService {
     this.atelier = new Semaphore(rendusSimultanes, () => new AtelierSatureError());
   }
 
-  /** Les ids de composition déclarés dans le projet Remotion de CETTE instance (Root.tsx).
-   * La base est partagée entre le local et la prod : un worker ne doit réclamer que les
-   * jobs qu'il sait rendre, sinon une composition nouvelle sur dev échoue en prod. */
-  compositionsConnues(): string[] {
+  /** Les ids de composition que CETTE instance sait rendre. La base est partagée entre le
+   * local et la prod : un worker ne doit réclamer que les jobs qu'il sait rendre, sinon une
+   * composition nouvelle sur dev échoue en prod. Deux sources, selon le chemin de rendu :
+   * - REMOTION_RENDER_URL configuré : GET /compositions du service de rendu (l'image Docker
+   *   du Nest n'embarque pas le projet Remotion, c'est le service qui fait foi) ;
+   * - sinon : src/Root.tsx du projet Remotion local.
+   * Liste vide = l'instance ne réclame rien (fermé par défaut, cf. RenderQueueService.claim). */
+  async compositionsConnues(): Promise<string[]> {
+    if (this.renderUrl) {
+      try {
+        const r = await fetch(`${this.renderUrl}/compositions`, { signal: AbortSignal.timeout(10_000) });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = (await r.json()) as { compositions?: unknown };
+        return Array.isArray(data.compositions) ? data.compositions.filter((c): c is string => typeof c === 'string').sort() : [];
+      } catch (e) {
+        this.logger.warn(`compositions du service de rendu (${this.renderUrl}) illisibles : ${e instanceof Error ? e.message : e}`);
+        return [];
+      }
+    }
     try {
       const src = fs.readFileSync(path.join(this.remotionDir, 'src', 'Root.tsx'), 'utf-8');
       const ids = new Set<string>();

@@ -9,7 +9,7 @@ describe('RenderQueueService.claim — fermé par défaut', () => {
   function build(connues: string[], rows: Array<Record<string, unknown>>, actif = true) {
     const updateMany = jest.fn().mockResolvedValue({ count: 1 });
     const prisma = { contenu: { findMany: jest.fn().mockResolvedValue(rows), updateMany } } as never;
-    const remotion = { compositionsConnues: jest.fn().mockReturnValue(connues) } as never;
+    const remotion = { compositionsConnues: jest.fn().mockResolvedValue(connues) } as never;
     const config = { get: jest.fn((k: string) => (k === 'app.renderWorkerActive' ? actif : '')) } as unknown as ConfigService;
     const service = new RenderQueueService(prisma, remotion, {} as never, {} as never, {} as never, config);
     return { service, updateMany };

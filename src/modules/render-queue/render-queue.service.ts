@@ -181,8 +181,12 @@ export class RenderQueueService implements OnApplicationBootstrap {
     }
   }
 
-  private compositionsConnues(): string[] {
-    if (this.compositionsConnuesCache === null) this.compositionsConnuesCache = this.remotionService.compositionsConnues();
+  /** Mémorisée dès qu'elle est non vide ; une liste vide (service de rendu injoignable au
+   * démarrage, par exemple) est redemandée au tick suivant plutôt que figée. */
+  private async compositionsConnues(): Promise<string[]> {
+    if (this.compositionsConnuesCache === null || !this.compositionsConnuesCache.length) {
+      this.compositionsConnuesCache = await this.remotionService.compositionsConnues();
+    }
     return this.compositionsConnuesCache;
   }
 
@@ -190,7 +194,7 @@ export class RenderQueueService implements OnApplicationBootstrap {
    * rendre). L'update conditionnel (render_started_at IS NULL) garantit qu'un seul worker
    * l'obtient, même avec plusieurs instances. */
   private async claim(): Promise<ContenuRow | null> {
-    const connues = this.compositionsConnues();
+    const connues = await this.compositionsConnues();
     // Fermé par défaut : une instance qui ne connaît AUCUNE composition (projet Remotion
     // absent, ex. image Docker sans backend/remotion) ne réclame rien. Avant le 2026-10-01
     // la liste vide court-circuitait le filtre : l'instance réclamait tout, échouait aussitôt
