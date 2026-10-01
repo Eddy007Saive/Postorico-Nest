@@ -29,6 +29,7 @@ import { AtelierSatureError, CarrouselRenduService } from './carrousel-rendu.ser
 import { CarrouselTexteService } from './carrousel-texte.service';
 import { CarrouselDto } from './dto/carrousel.dto';
 import { RecolorDto } from './dto/recolor.dto';
+import { normaliserCarrouselData } from './carrousel-data.util';
 import { CarrouselContent } from './interfaces/carrousel-content.interface';
 
 type AuthedRequest = Request & { user: JwtPayload };
@@ -229,10 +230,26 @@ export class CarrouselController {
       templateVoulu = schedules.find((s) => s.platform === reseau)?.carrousel_template ?? undefined;
     }
     const template = await this.carrouselRenduService.templateValide(templateVoulu, telegramId);
+    let carrouselData = row.carrousel_data as unknown as CarrouselContent;
+    // Texte des slides retouché à la main (jamais régénéré par l'IA) : normalisé, enregistré,
+    // journalisé « modifié » (mémoire d'évaluation), puis rendu avec le reste de la retouche.
+    if (dto.carrousel_data) {
+      const nouveau = normaliserCarrouselData(dto.carrousel_data, carrouselData);
+      if (JSON.stringify(nouveau) !== JSON.stringify(carrouselData)) {
+        carrouselData = nouveau;
+        await this.prisma.contenu.update({ where: { id: dto.contenu_id }, data: { carrousel_data: carrouselData as never } });
+        await this.contenuEvenement.log(
+          dto.contenu_id,
+          'modifie',
+          telegramId,
+          carrouselData.slides.map((sl) => `${sl.titre} — ${sl.texte}`).join('\n'),
+        );
+      }
+    }
     try {
       const res = await this.carrouselRenduService.genererCarrousel(
         telegramId,
-        row.carrousel_data as unknown as CarrouselContent,
+        carrouselData,
         dto.contenu_id,
         template,
         dto.colors,
@@ -245,7 +262,7 @@ export class CarrouselController {
           data: { slides_images: res.images, lien_visuel: res.images[0], carrousel_pdf: res.pdf },
         });
       }
-      return { images: res.images, pdf: res.pdf };
+      return { images: res.images, pdf: res.pdf, carrousel_data: carrouselData };
     } catch (e) {
       this.logger.error(`carrousel recolor error: ${e instanceof Error ? e.message : e}`);
       throw new InternalServerErrorException('Échec du re-rendu du carrousel.');

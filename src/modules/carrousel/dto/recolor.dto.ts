@@ -20,4 +20,10 @@ export class RecolorDto {
   @IsOptional()
   @IsString()
   font_corps?: string;
+
+  /** Texte des slides retouché à la main par le client (même forme que la rédaction IA) ;
+   * normalisé côté serveur, jamais régénéré. Ajouté le 2026-10-01. */
+  @IsOptional()
+  @IsObject()
+  carrousel_data?: Record<string, unknown>;
 }
