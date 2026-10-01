@@ -21,6 +21,9 @@ export const REGLES_ANTI_IA =
   '- Punctuation: NEVER use an em dash (—) or en dash (–), neither as separator nor as an aside. ' +
   "Rewrite with a comma, period, colon or parentheses. Hyphen (-) only inside a compound word. " +
   "Use the target language's proper quotes (French uses « »), never curly quotes “ ”.\n" +
+  '- PLAIN TEXT ONLY, never Markdown: no **bold**, no *italics*, no # headings, no backticks, no \'* \' bullets. ' +
+  'Social networks print those characters literally (a reader sees the asterisks). For a list, one line per item, ' +
+  'optionally starting with a « • » or an emoji the brand actually uses.\n' +
   '- Ban AI-cliché vocabulary and filler. When writing FRENCH, avoid: « au cœur de », « à l\'ère de », ' +
   '« dans un monde où », « véritable », « incontournable », « riche »/« vibrant », « profond », ' +
   '« révolutionnaire », « témoigne de », « s\'inscrit dans une dynamique », « en constante évolution », ' +
@@ -43,7 +46,7 @@ export const REGLES_ANTI_IA =
 const REGLES_ECRITURE_COURT =
   '<writing_rules>\n' +
   'Write like a person, not an AI, in the output language. Never use an em dash or an en dash ' +
-  '(use a comma, a period or a colon). No filler clichés (« au cœur de », « véritable », ' +
+  '(use a comma, a period or a colon). Plain text only, never Markdown (no **bold**, no # headings). No filler clichés (« au cœur de », « véritable », ' +
   '« incontournable », « plongeons » and their equivalents in other languages). No forced ' +
   'triplets, no "not X, it\'s Y" constructions, direct verbs, no promotional superlatives.\n' +
   '</writing_rules>';

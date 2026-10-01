@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { nettoyerProfond } from '../../common/utils/texte-genere.util';
 import { ClaudeService } from '../claude/claude.service';
 import { DimensionsService } from '../dimensions/dimensions.service';
 import { MarqueService } from '../marque/marque.service';
@@ -166,6 +167,6 @@ export class CarrouselTexteService {
       },
     };
     if (!content.hook && !slides.length) return { error: 'parse' };
-    return { content, usage: this.claude.usage(resp) };
+    return { content: nettoyerProfond(content), usage: this.claude.usage(resp) };
   }
 }

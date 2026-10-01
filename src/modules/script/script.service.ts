@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { nettoyerTexteGenere } from '../../common/utils/texte-genere.util';
 import { ClaudeService } from '../claude/claude.service';
 import { DimensionsService, DIM_LABELS } from '../dimensions/dimensions.service';
 import { MarqueService } from '../marque/marque.service';
@@ -104,6 +105,6 @@ export class ScriptService {
         },
       ],
     });
-    return { script: this.claude.texte(resp), usage: this.claude.usage(resp) };
+    return { script: nettoyerTexteGenere(this.claude.texte(resp)), usage: this.claude.usage(resp) };
   }
 }

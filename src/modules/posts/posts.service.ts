@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { nettoyerTexteGenere } from '../../common/utils/texte-genere.util';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
 import { ClaudeService, QUALITE_MODELS } from '../claude/claude.service';
@@ -152,7 +153,7 @@ export class PostsService {
         },
       ],
     });
-    return { contenu: this.claude.texte(resp), usage: this.claude.usage(resp) };
+    return { contenu: nettoyerTexteGenere(this.claude.texte(resp)), usage: this.claude.usage(resp) };
   }
 
   /** Vision : analyse une photo fournie et écrit un post adapté au réseau, dans la voix de
@@ -201,6 +202,6 @@ export class PostsService {
         },
       ],
     });
-    return { contenu: this.claude.texte(resp), usage: this.claude.usage(resp) };
+    return { contenu: nettoyerTexteGenere(this.claude.texte(resp)), usage: this.claude.usage(resp) };
   }
 }
