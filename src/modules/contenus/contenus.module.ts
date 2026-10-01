@@ -8,6 +8,7 @@ import { MemoireModule } from '../memoire/memoire.module';
 import { PlanningModule } from '../planning/planning.module';
 import { QuotaModule } from '../quota/quota.module';
 import { StoryModule } from '../story/story.module';
+import { ContenuEvenementModule } from './contenu-evenement.module';
 import { ContenuController } from './contenu.controller';
 import { ContenuService } from './contenu.service';
 
@@ -22,6 +23,7 @@ import { ContenuService } from './contenu.service';
     MarqueModule,
     MemoireModule,
     QuotaModule,
+    ContenuEvenementModule,
   ],
   controllers: [ContenuController],
   providers: [ContenuService],

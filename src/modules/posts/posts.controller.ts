@@ -22,6 +22,7 @@ import type { Request } from 'express';
 import { mapAgentError, refusQuota } from '../../common/utils/agent-http-errors';
 import { PrismaService } from '../../config/prisma.service';
 import { JwtPayload } from '../auth/auth.service';
+import { ContenuEvenementService } from '../contenus/contenu-evenement.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CarrouselContent } from '../carrousel/interfaces/carrousel-content.interface';
 import { AtelierSatureError, CarrouselRenduService } from '../carrousel/carrousel-rendu.service';
@@ -79,6 +80,7 @@ export class PostsController {
     private readonly carrouselTexteService: CarrouselTexteService,
     private readonly carrouselRenduService: CarrouselRenduService,
     private readonly scriptService: ScriptService,
+    private readonly contenuEvenement: ContenuEvenementService,
     config: ConfigService,
   ) {
     cloudinary.config({
@@ -146,6 +148,7 @@ export class PostsController {
         },
       });
       out.contenu_id = row.id;
+      await this.contenuEvenement.log(row.id, 'genere', telegramId, result.contenu);
     }
     return out;
   }
@@ -221,6 +224,7 @@ export class PostsController {
     }
     if (lien) row.lien_visuel = lien;
     const ins = await this.prisma.contenu.create({ data: row as never });
+    await this.contenuEvenement.log(ins.id, 'genere', telegramId, texte);
     return { contenu_id: ins.id, contenu: texte, lien_visuel: lien, quota: { action: 'post', used: q.used, limit: q.limit } };
   }
 
@@ -248,6 +252,7 @@ export class PostsController {
         if (creneau) row.date_publication = creneau;
       }
       const ins = await this.prisma.contenu.create({ data: row as never });
+      await this.contenuEvenement.log(ins.id, 'genere', telegramId, contenu);
       return { success: true, contenu_id: ins.id };
     } catch (e) {
       if (e instanceof BadRequestException) throw e;
@@ -472,6 +477,7 @@ export class PostsController {
         try {
           const ins = await this.prisma.contenu.create({ data: row as never });
           cid = ins.id;
+          await this.contenuEvenement.log(cid, 'genere', telegramId, (row.contenu_original as string | null) || texte);
         } catch (e) {
           this.logger.error(`rafale insert error: ${e instanceof Error ? e.message : e}`);
           await this.quotaService.refund(q);

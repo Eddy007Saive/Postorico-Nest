@@ -3,6 +3,7 @@ import { PrismaModule } from '../../config/prisma.module';
 import { AuthModule } from '../auth/auth.module';
 import { CarrouselModule } from '../carrousel/carrousel.module';
 import { ClaudeModule } from '../claude/claude.module';
+import { ContenuEvenementModule } from '../contenus/contenu-evenement.module';
 import { DemarrageModule } from '../demarrage/demarrage.module';
 import { DimensionsModule } from '../dimensions/dimensions.module';
 import { MarqueModule } from '../marque/marque.module';
@@ -30,6 +31,7 @@ import { PostsService } from './posts.service';
     UsageModule,
     CarrouselModule,
     ScriptModule,
+    ContenuEvenementModule,
   ],
   controllers: [PostsController],
   providers: [PostsService],

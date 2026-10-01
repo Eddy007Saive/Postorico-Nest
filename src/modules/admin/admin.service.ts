@@ -42,6 +42,7 @@ function num(v: unknown): number {
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
   private analyticsCache: { at: number; data: unknown } | null = null;
+  private verdictH2Cache: { at: number; data: Record<string, unknown> } | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -355,6 +356,76 @@ export class AdminService {
     });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return ((await r.json()) as { results?: unknown }).results;
+  }
+
+  /** Verdict H2 (mémoire d'évaluation) : note de ressemblance perçue (1-5, saisie par le
+   * dirigeant à la validation) croisée avec le taux de réécriture objectif (figé à la
+   * validation), répartition par réseau, derniers motifs de refus. Cache 10 min — port
+   * direct de `verdict_h2` (backend/services/admin_service.py). */
+  async verdictH2(): Promise<Record<string, unknown>> {
+    const now = Date.now();
+    if (this.verdictH2Cache && now - this.verdictH2Cache.at < 600_000) return this.verdictH2Cache.data;
+
+    const rows = await this.prisma.contenu.findMany({
+      select: {
+        id: true,
+        note_ressemblance: true,
+        taux_reecriture: true,
+        statut: true,
+        motif_refus: true,
+        valide_at: true,
+        reseau_cible: true,
+      },
+    });
+
+    const valides = rows.filter((r) => r.valide_at);
+    const notes = valides.map((r) => r.note_ressemblance).filter((n): n is number => n != null);
+    const taux = valides.filter((r) => r.taux_reecriture != null).map((r) => num(r.taux_reecriture));
+    const refuses = rows.filter((r) => String(r.statut) === 'Refuse');
+    const motifs = refuses.map((r) => r.motif_refus).filter((m): m is string => Boolean(m));
+
+    const distribution: Record<string, number> = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
+    for (const n of notes) distribution[String(n)] = (distribution[String(n)] ?? 0) + 1;
+
+    // Croisement H2 : taux de réécriture moyen PAR note de ressemblance — une note basse avec
+    // un taux de réécriture bas révèlerait une validation « par flemme » plutôt qu'une vraie
+    // ressemblance (les deux mesures se complètent).
+    const parNote = new Map<number, number[]>();
+    for (const r of valides) {
+      if (r.note_ressemblance == null || r.taux_reecriture == null) continue;
+      parNote.set(r.note_ressemblance, [...(parNote.get(r.note_ressemblance) ?? []), num(r.taux_reecriture)]);
+    }
+    const moyenne = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
+    const croisement = [...parNote.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([note, ts]) => ({ note, n: ts.length, taux_reecriture_moyen: Math.round(moyenne(ts) * 1000) / 1000 }));
+
+    const parReseau = new Map<string, number[]>();
+    for (const r of valides) {
+      if (r.note_ressemblance == null) continue;
+      const rs = (r.reseau_cible ? String(r.reseau_cible) : '') || '?';
+      parReseau.set(rs, [...(parReseau.get(rs) ?? []), r.note_ressemblance]);
+    }
+    const moyenneParReseau = [...parReseau.entries()]
+      .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+      .map(([reseau, ns]) => ({ reseau, n: ns.length, moyenne_note: Math.round(moyenne(ns) * 100) / 100 }));
+
+    const data: Record<string, unknown> = {
+      n_valides: valides.length,
+      n_note: notes.length,
+      n_taux: taux.length,
+      n_refuses: refuses.length,
+      n_motifs: motifs.length,
+      moyenne_note: notes.length ? Math.round(moyenne(notes) * 100) / 100 : null,
+      moyenne_taux_reecriture: taux.length ? Math.round(moyenne(taux) * 1000) / 1000 : null,
+      distribution_note: distribution,
+      croisement_note_taux: croisement,
+      moyenne_note_par_reseau: moyenneParReseau,
+      derniers_motifs_refus: motifs.slice(-10),
+      genere_a: new Date(now).toISOString(),
+    };
+    this.verdictH2Cache = { at: now, data };
+    return data;
   }
 
   /** Synthèse business (Supabase, source de vérité argent) + comportement (PostHog, si

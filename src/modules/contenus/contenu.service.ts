@@ -2,20 +2,22 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
 import { delabeliserContenu, labelStatutContenu, normStatutContenu } from '../../common/utils/contenu-enum.util';
+import { tauxReecriture } from '../../common/utils/similarite.util';
 import { PrismaService } from '../../config/prisma.service';
 import { CarrouselRenduService } from '../carrousel/carrousel-rendu.service';
 import { LateService } from '../late/late.service';
 import { MemoireService } from '../memoire/memoire.service';
 import { PlanningService } from '../planning/planning.service';
+import { ContenuEvenementService } from './contenu-evenement.service';
 
 /**
  * CRUD principal du contenu (`contenu`) — port direct de backend/services/contenu_service.py.
  *
  * Portée volontairement réduite (documentée à chaque endroit concerné) :
- * - `taux_reecriture` (mesure H2, figée à la validation) : la migration existe
- *   (`_design/migrations/taux_reecriture.sql`) mais n'a jamais été appliquée à la base de
- *   prod (colonne absente du schéma introspecté) — non écrite ici, comme côté Python de
- *   facto tant que la colonne n'existe pas.
+ * - Mesure H2 (`taux_reecriture`, `valide_at`, `valide_par`, `note_ressemblance`,
+ *   `motif_refus`) et journal `contenu_evenement` : portés le 2026-10-01 après vérification
+ *   que les colonnes et la table EXISTENT bien en base — le schéma Prisma introspecté était
+ *   simplement en retard (même cas que `marques.typo_*`), pas la base.
  * - Les routes Story (`/story`, `/story-serie`, `/story-anime`, `/story/apercu`,
  *   `/story/options`) dépendent entièrement de `story_service` (non porté, domaine séparé
  *   « Vidéo/Reels ») — stubs documentés dans le contrôleur, pas dans ce service.
@@ -75,6 +77,7 @@ export class ContenuService {
     private readonly lateService: LateService,
     private readonly carrouselRendu: CarrouselRenduService,
     private readonly memoireService: MemoireService,
+    private readonly contenuEvenement: ContenuEvenementService,
     config: ConfigService,
   ) {
     cloudinary.config({
@@ -174,7 +177,14 @@ export class ContenuService {
   async updateContenu(
     contenuId: string,
     telegramId: string,
-    updateData: { statut?: string; titre?: string; contenu?: string; date_publication?: string },
+    updateData: {
+      statut?: string;
+      titre?: string;
+      contenu?: string;
+      date_publication?: string;
+      note_ressemblance?: number;
+      motif_refus?: string;
+    },
   ): Promise<ContenuRow | { error: 'not_found' }> {
     const current = await this.getContenu(contenuId, telegramId);
     if (!current) return { error: 'not_found' };
@@ -208,8 +218,17 @@ export class ContenuService {
           this.logger.log(`Auto-planif contenu ${contenuId} -> ${creneau} (${!effDateRaw ? 'date absente' : 'date passée'})`);
         }
       }
-      // TODO (colonne taux_reecriture absente en base — voir en-tête du fichier) : le calcul
-      // H2 (taux de réécriture, figé à la validation) n'est pas appliqué ici.
+      // Taux de réécriture (H2) : figé à l'instant de la validation, jamais recalculé ensuite —
+      // c'est une mesure ponctuelle, pas une valeur vivante. null si pas de base de
+      // comparaison (contenu_original absent : créé avant la migration, ou vidéo/reel/story).
+      const texteFinal = updateData.contenu !== undefined ? updateData.contenu : (current.contenu as string | null);
+      const taux = tauxReecriture(current.contenu_original as string | null, texteFinal);
+      if (taux !== null) data.taux_reecriture = taux;
+
+      // Qui a validé, quand (mémoire d'évaluation) — telegramId est déjà le bon acteur même
+      // pour un sous-compte (chaque sous-compte a son propre telegram_id).
+      data.valide_at = data.updated_at;
+      data.valide_par = telegramId;
     }
 
     let response: ContenuRow;
@@ -218,6 +237,18 @@ export class ContenuService {
     } catch (e) {
       this.logger.error(`update_contenu ${contenuId}: ${e instanceof Error ? e.message : e}`);
       response = { ...current, ...data };
+    }
+
+    // Journal du cycle de vie (mémoire d'évaluation) : une édition de texte et une
+    // validation/un refus dans le même appel comptent comme deux événements distincts.
+    // Best-effort (le service n'échoue jamais l'action appelante).
+    if (updateData.contenu !== undefined && updateData.contenu !== current.contenu) {
+      await this.contenuEvenement.log(contenuId, 'modifie', telegramId, updateData.contenu);
+    }
+    if (updateData.statut === 'Valider') {
+      await this.contenuEvenement.log(contenuId, 'valide', telegramId);
+    } else if (updateData.statut === 'Refuse') {
+      await this.contenuEvenement.log(contenuId, 'refuse', telegramId, updateData.motif_refus ?? null);
     }
 
     // Mémoire de voix : un contenu validé entre dans les exemples donnés à Claude ; un texte

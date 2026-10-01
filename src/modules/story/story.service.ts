@@ -479,7 +479,12 @@ export class StoryService {
     fontCorps: string | null,
   ): Promise<Buffer> {
     const ricoUrl = template === 'rico' || template === 'signature' ? this.ricoPosesService.url(content.rico_pose || (template === 'rico' ? 'presente-cote' : 'pouce-leve')) : undefined;
-    const htmlStr = applyFont(buildStoryHtml(content, p, s, a, nom, secteur, template, logo, ricoUrl), font, fontCorps);
+    const htmlStr = applyFont(
+      buildStoryHtml(content, p, s, a, nom, secteur, template, logo, ricoUrl),
+      font,
+      fontCorps,
+      this.carrouselRenduService.frontendUrl,
+    );
     const browser = await this.playwrightBrowserService.launch();
     try {
       const page = await browser.newPage({ viewport: { width: STORY_W, height: STORY_H }, deviceScaleFactor: DSF });

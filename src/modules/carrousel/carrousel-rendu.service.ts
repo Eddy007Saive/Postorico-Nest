@@ -62,21 +62,75 @@ export async function rendre<T>(fn: () => Promise<T>): Promise<T> {
 // Polices d'affichage utilisées par les templates (remplacées par la police choisie)
 const DISPLAY_FONTS = ['Anton', 'Fraunces', 'Sora'];
 
-/** Applique les polices choisies + charge les Google Fonts correspondantes. `font` =
- * police d'AFFICHAGE (titres), `fontCorps` = police du TEXTE (corps, Inter par défaut).
- * Valeur vide -> police d'origine du template. */
-export function applyFont(htmlStr: string, font?: string | null, fontCorps?: string | null): string {
-  if (!font && !fontCorps) return htmlStr;
-  const fams = Array.from(new Set([font, fontCorps].filter((f): f is string => Boolean(f))));
-  const q = fams.map((f) => `family=${f.replace(/ /g, '+')}:wght@400;500;600;700;800;900`).join('&');
-  let out = `<link href="https://fonts.googleapis.com/css2?${q}&display=swap" rel="stylesheet">` + htmlStr;
-  if (font) {
-    for (const f of DISPLAY_FONTS) {
-      out = out.split(`font-family:${f}`).join(`font-family:'${font}'`);
+/** Polices de marque (fichiers, PAS sur Google Fonts) : servies depuis frontend/public/fonts/
+ * — mêmes fichiers que l'aperçu navigateur (cf. carrouselPreview.js côté front). Plusieurs
+ * graisses -> une seule famille CSS, comme Google Fonts. Port de `_CUSTOM_FONTS`
+ * (backend/services/carrousel_service.py). */
+export const CUSTOM_FONTS: Record<string, Array<{ file: string; format: string; weight: string }>> = {
+  'Circular Bold': [{ file: 'CircularBold.ttf', format: 'truetype', weight: '100 900' }],
+  Wotfard: [{ file: 'Wotfard-Regular.woff2', format: 'woff2', weight: '100 500' }],
+  'TT Norms Pro': [
+    { file: 'TTNormsPro-Regular.otf', format: 'opentype', weight: '400' },
+    { file: 'TTNormsPro-Medium.otf', format: 'opentype', weight: '500' },
+    { file: 'TTNormsPro-Bold.otf', format: 'opentype', weight: '700' },
+    { file: 'TTNormsPro-ExtraBold.otf', format: 'opentype', weight: '800 900' },
+  ],
+};
+
+/** @font-face pour les polices de marque parmi `fams` (les Google Fonts sont ignorées ici).
+ * `frontendUrl` est l'origine qui sert /fonts/… — port de `_font_face_css`. */
+export function fontFaceCss(fams: string[], frontendUrl: string): string {
+  const blocks: string[] = [];
+  for (const fam of fams) {
+    for (const face of CUSTOM_FONTS[fam] ?? []) {
+      const url = `${frontendUrl}/fonts/${face.file}`;
+      blocks.push(
+        `@font-face{font-family:'${fam}';src:url('${url}') format('${face.format}');font-weight:${face.weight};font-display:swap;}`,
+      );
     }
   }
-  if (fontCorps) {
-    out = out.split('font-family:Inter').join(`font-family:'${fontCorps}'`);
+  return blocks.length ? `<style>${blocks.join('')}</style>` : '';
+}
+
+/** Décode "Famille" ou "Famille|bi" (b = gras, i = italique) -> famille + style. Même
+ * convention que parseFontSpec() côté front (carrouselPreview.js) : pas de colonne dédiée,
+ * la chaîne qui porte la famille porte aussi le style — port de `_parse_font_spec`. */
+export function parseFontSpec(spec?: string | null): { famille: string | null; gras: boolean; italique: boolean } {
+  if (!spec) return { famille: null, gras: false, italique: false };
+  const [famille, flags = ''] = spec.split('|', 2);
+  return { famille: famille || null, gras: flags.includes('b'), italique: flags.includes('i') };
+}
+
+function styleOverride(gras: boolean, italique: boolean): string {
+  return (gras ? 'font-weight:700 !important;' : '') + (italique ? 'font-style:italic !important;' : '');
+}
+
+/** Applique les polices choisies + charge les polices correspondantes (Google Fonts, ou
+ * @font-face pour les polices de marque, cf. CUSTOM_FONTS). `font` = police d'AFFICHAGE
+ * (titres), `fontCorps` = police du TEXTE (corps, Inter par défaut). Valeur vide -> police
+ * d'origine du template. `frontendUrl` sert d'origine aux fichiers @font-face — port de
+ * `_apply_font` (backend/services/carrousel_service.py). */
+export function applyFont(htmlStr: string, font?: string | null, fontCorps?: string | null, frontendUrl = ''): string {
+  if (!font && !fontCorps) return htmlStr;
+  const aff = parseFontSpec(font);
+  const corps = parseFontSpec(fontCorps);
+  const fams = Array.from(new Set([aff.famille, corps.famille].filter((f): f is string => Boolean(f))));
+  const googleFams = fams.filter((f) => !(f in CUSTOM_FONTS));
+  let out = htmlStr;
+  if (googleFams.length) {
+    const q = googleFams.map((f) => `family=${f.replace(/ /g, '+')}:wght@400;500;600;700;800;900`).join('&');
+    out = `<link href="https://fonts.googleapis.com/css2?${q}&display=swap" rel="stylesheet">` + out;
+  }
+  out = fontFaceCss(fams, frontendUrl) + out;
+  if (aff.famille) {
+    const override = styleOverride(aff.gras, aff.italique);
+    for (const f of DISPLAY_FONTS) {
+      out = out.split(`font-family:${f}`).join(`font-family:'${aff.famille}';${override}`);
+    }
+  }
+  if (corps.famille) {
+    const override = styleOverride(corps.gras, corps.italique);
+    out = out.split('font-family:Inter').join(`font-family:'${corps.famille}';${override}`);
   }
   return out;
 }
@@ -114,6 +168,8 @@ export interface CarrouselRenduResult {
 @Injectable()
 export class CarrouselRenduService {
   private readonly logger = new Logger(CarrouselRenduService.name);
+  /** Origine des fichiers @font-face des polices de marque (frontend/public/fonts/). */
+  readonly frontendUrl: string;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -124,6 +180,7 @@ export class CarrouselRenduService {
     private readonly playwrightBrowser: PlaywrightBrowserService,
     config: ConfigService,
   ) {
+    this.frontendUrl = config.get<string>('app.frontendUrl') || 'http://localhost:3000';
     cloudinary.config({
       cloud_name: config.get<string>('app.cloudinaryCloudName'),
       api_key: config.get<string>('app.cloudinaryApiKey'),
@@ -200,6 +257,7 @@ export class CarrouselRenduService {
       buildHtml(content, p, s, a, nom, secteur, template, logo, poseUrls, customHtml ? { html: customHtml } : null),
       font,
       fontCorps,
+      this.frontendUrl,
     );
 
     const pngs: Buffer[] = [];

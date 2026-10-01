@@ -17,6 +17,7 @@ import { mapAgentError, refusQuota } from '../../common/utils/agent-http-errors'
 import { PrismaService } from '../../config/prisma.service';
 import { JwtPayload } from '../auth/auth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ContenuEvenementService } from '../contenus/contenu-evenement.service';
 import { QUALITE_MODELS } from '../claude/claude.service';
 import { DemarrageService } from '../demarrage/demarrage.service';
 import { PlanService } from '../planning/plan.service';
@@ -67,6 +68,7 @@ export class CarrouselController {
     private readonly quotaService: QuotaService,
     private readonly usageService: UsageService,
     private readonly prisma: PrismaService,
+    private readonly contenuEvenement: ContenuEvenementService,
   ) {}
 
   /** Templates de carrousel proposables à ce compte (les sur-mesure non attribués sont
@@ -170,6 +172,9 @@ export class CarrouselController {
       const ins = await this.prisma.contenu.create({ data: row as never });
       contenuId = ins.id;
     }
+    // Journal H2 : une (re)génération est une nouvelle proposition de l'IA (même pour un
+    // contenu existant), port de routes/agent.py::carrousel.
+    await this.contenuEvenement.log(contenuId as string, 'genere', telegramId, texte);
 
     // Rendu des slides en images + PDF
     let slidesImages: string[] = [];

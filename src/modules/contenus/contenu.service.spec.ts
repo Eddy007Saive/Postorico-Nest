@@ -22,7 +22,8 @@ describe('ContenuService.updateContenu — déclenche indexerContenu', () => {
     const carrouselRendu = {} as unknown as CarrouselRenduService;
     const memoireService = { indexerContenu: jest.fn().mockResolvedValue(true) } as unknown as MemoireService;
     const configStub = { get: jest.fn().mockReturnValue('') } as unknown as ConfigService;
-    const service = new ContenuService(prisma, planningService, lateService, carrouselRendu, memoireService, configStub);
+    const contenuEvenement = { log: jest.fn().mockResolvedValue(undefined) } as never;
+    const service = new ContenuService(prisma, planningService, lateService, carrouselRendu, memoireService, contenuEvenement, configStub);
     return { service, memoireService };
   }
 

@@ -359,6 +359,18 @@ export class AdminController {
     }
   }
 
+  /** Verdict H2 (mémoire d'évaluation) : note de ressemblance vs taux de réécriture — port
+   * de GET /admin/verdict-h2 (backend/routes/admin.py). */
+  @Get('verdict-h2')
+  async getVerdictH2() {
+    try {
+      return await this.adminService.verdictH2();
+    } catch (e) {
+      this.logger.error(`Verdict H2 error: ${e instanceof Error ? e.message : e}`);
+      throw new InternalServerErrorException(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   @Get('api-balances')
   async getApiBalances() {
     try {
