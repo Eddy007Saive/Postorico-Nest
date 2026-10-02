@@ -64,6 +64,7 @@ export interface ProgrammerResult {
 export class LateService implements OnApplicationBootstrap {
   private readonly logger = new Logger(LateService.name);
   private readonly webhookSecret: string;
+  private readonly sweepActif: boolean;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -75,11 +76,16 @@ export class LateService implements OnApplicationBootstrap {
     config: ConfigService,
   ) {
     this.webhookSecret = config.get<string>('app.lateWebhookSecret') || '';
+    this.sweepActif = config.get<boolean>('app.publishSweepActive') ?? true;
   }
 
   /** Filet de sécurité : toutes les 10 min, programme sur Zernio les contenus 'Planifie' à
    * date future jamais poussés — port direct de backend/server.py::_publish_sweep_cron. */
   onApplicationBootstrap(): void {
+    if (!this.sweepActif) {
+      this.logger.log('Rattrapage des publications désactivé (PUBLISH_SWEEP_ACTIVE=0)');
+      return;
+    }
     setTimeout(() => {
       void this.sweepPlanifies();
       setInterval(() => void this.sweepPlanifies(), 10 * 60 * 1000);

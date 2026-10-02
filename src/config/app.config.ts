@@ -96,6 +96,10 @@ export default registerAs('app', () => {
   // Worker de rendu Remotion (reels, stories animées) — même interrupteur que le Python
   // (RENDER_WORKER_ACTIVE=0 : cette instance ne réclame aucun job de la file partagée).
   renderWorkerActive: (process.env.RENDER_WORKER_ACTIVE || '1') !== '0',
+  // Rattrapage des publications (toutes les 10 min) : PUBLISH_SWEEP_ACTIVE=0 pour le couper sur
+  // cette instance tant qu'un autre backend (le Python en prod) le fait déjà — sinon un même
+  // contenu peut être poussé deux fois chez Zernio.
+  publishSweepActive: (process.env.PUBLISH_SWEEP_ACTIVE || '1') !== '0',
   newsletterPerplexityModel: process.env.NEWSLETTER_PERPLEXITY_MODEL || 'perplexity/sonar-pro',
   newsletterJour: parseInt(process.env.NEWSLETTER_JOUR || '1', 10), // 0=lundi … 6=dimanche (défaut mardi)
   newsletterHeure: parseInt(process.env.NEWSLETTER_HEURE || '9', 10),
