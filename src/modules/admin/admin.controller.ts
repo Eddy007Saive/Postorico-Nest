@@ -146,19 +146,9 @@ export class AdminController {
     const user = await this.prisma.users.update({ where: { telegram_id: id }, data: { actif: true } }).catch(() => null);
     if (!user) throw new NotFoundException('User not found');
 
-    let lateProfileCreated = false;
-    let lateError: string | undefined;
-    try {
-      const r = await this.socialService.createLateProfile(id, user.nom || '');
-      lateProfileCreated = r.created;
-      lateError = r.error;
-    } catch (e) {
-      lateError = e instanceof Error ? e.message : String(e);
-      this.logger.warn(`Failed to create Late profile for ${id}: ${lateError}`);
-    }
-    const response: Record<string, unknown> = { ...this.authService.sanitizeUser(user), late_profile_created: lateProfileCreated };
-    if (lateError) response.late_error = lateError;
-    return response;
+    // Le profil de publication (Zernio) n'est plus créé à l'activation : il l'est à la première
+    // connexion d'un réseau par le client (SocialService.ensureLateProfile).
+    return this.authService.sanitizeUser(user);
   }
 
   @Post('users/:id/retry-late')

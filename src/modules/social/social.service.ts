@@ -321,12 +321,33 @@ export class SocialService {
     }
   }
 
-  /** Filet de sécurité : crée le profil Late s'il manque. */
+  /**
+   * Le profil de publication (Zernio) est créé ICI, à la première connexion d'un réseau — plus à
+   * l'inscription : un compte qui ne connecte jamais rien ne consomme pas de profil (le plan Zernio
+   * en limite le nombre). Si un identifiant est déjà enregistré, on vérifie qu'il existe encore chez
+   * Zernio ; sinon (profil supprimé, autre clé API) on le recrée, au lieu de laisser le client sur
+   * « profile not found / access denied ». Port de `_ensure_late_profile` (social_service.py).
+   */
   private async ensureLateProfile(telegramId: string): Promise<{ ok: boolean; error?: string }> {
     const user = await this.prisma.users.findUnique({ where: { telegram_id: telegramId }, select: { late_profile_id: true, nom: true } });
     if (!user) return { ok: false, error: 'Compte introuvable.' };
-    if (user.late_profile_id) return { ok: true };
-    this.logger.log(`connect: profil Late manquant pour ${telegramId} -> création automatique`);
+    const pid = user.late_profile_id;
+    if (pid) {
+      let ids: Set<string>;
+      try {
+        const lst = await this.zernio.listProfiles();
+        ids = new Set((lst.profiles || lst.data || []).map((p) => (p._id || p.field_id) as string));
+      } catch (e) {
+        // Zernio injoignable : on ne bloque pas, la connexion dira elle-même ce qui ne va pas.
+        this.logger.warn(`ensureLateProfile: vérification du profil ${pid} impossible (${e instanceof Error ? e.message : e})`);
+        return { ok: true };
+      }
+      if (ids.has(pid)) return { ok: true };
+      this.logger.warn(`connect: profil Late ${pid} introuvable chez Zernio pour ${telegramId} -> recréation`);
+      await this.prisma.users.update({ where: { telegram_id: telegramId }, data: { late_profile_id: null } });
+    } else {
+      this.logger.log(`connect: pas encore de profil Late pour ${telegramId} -> création`);
+    }
     const cr = await this.createLateProfile(telegramId, user.nom || '');
     if (cr.created && cr.late_profile_id) return { ok: true };
     return { ok: false, error: cr.error || 'Impossible de créer le profil de publication.' };

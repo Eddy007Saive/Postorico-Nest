@@ -104,12 +104,8 @@ export class AuthController {
         this.logger.warn(`attribution affiliation ignorée pour ${result.telegramId}: ${e instanceof Error ? e.message : e}`);
       }
     }
-    // Compte actif immédiatement -> profil Late (best-effort, jamais bloquant).
-    try {
-      await this.socialService.createLateProfile(result.telegramId, result.nom);
-    } catch (e) {
-      this.logger.warn(`Late profile creation failed for ${result.telegramId}: ${e instanceof Error ? e.message : e}`);
-    }
+    // Le profil de publication (Zernio) n'est plus créé ici : il l'est à la première connexion
+    // d'un réseau (SocialService.ensureLateProfile).
     // Auto-login : un jeton direct vers le tableau de bord, comme côté Python.
     const token = this.authService.issueRegistrationToken(result.telegramId, result.email, result.passwordHash);
     return { success: true, token, telegramId: result.telegramId, pending: false };
@@ -149,11 +145,7 @@ export class AuthController {
           this.logger.warn(`attribution affiliation ignorée pour ${user.telegram_id}: ${e instanceof Error ? e.message : e}`);
         }
       }
-      try {
-        await this.socialService.createLateProfile(user.telegram_id, user.nom || '');
-      } catch (e) {
-        this.logger.warn(`Late profile creation failed for ${user.telegram_id}: ${e instanceof Error ? e.message : e}`);
-      }
+      // Profil de publication : créé à la première connexion d'un réseau, plus à l'inscription.
     }
     this.rateLimit.clear(keyIp);
 
