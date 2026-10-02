@@ -12,6 +12,7 @@ import { MusicLibraryService, MAX_MUSIQUES, TAILLE_MAX_MO } from '../music/music
 import { PlanningService } from '../planning/planning.service';
 import { RenderQueueService } from '../render-queue/render-queue.service';
 import { UsageService } from '../usage/usage.service';
+import { sansTiret } from '../../common/utils/texte-genere.util';
 import { MontageService, MontageSegment } from './montage.service';
 import { EFFETS, GUIDES_STYLE, LANGUES, VisuelPool, clipRenduSimple, estClip, estImageSource, estVisuel, imgRendu, morceau, pimenterReveals } from './reel-common.util';
 
@@ -26,6 +27,24 @@ import { EFFETS, GUIDES_STYLE, LANGUES, VisuelPool, clipRenduSimple, estClip, es
  */
 
 const MODELE_SCRIPT = 'claude-haiku-4-5';
+
+// Format Motion (typo cinétique) — port de reel_service._ROLE_MOTION / _script_motion.
+const ROLE_MOTION =
+  'Tu es motion designer. Tu transformes un post en TYPOGRAPHIE CINETIQUE verticale (reel 9:16) ' +
+  'de 4 a 6 plans de texte, dans la langue du post. Chaque plan = une phrase courte (2 a 9 mots), ' +
+  "lisible en 2-3 secondes ; l'ensemble raconte le message du post, de l'accroche a la conclusion. " +
+  'Pour chaque plan choisis UN effet parmi : ' +
+  'revele (mots qui apparaissent un a un, defaut), ' +
+  "barre (les mots accentues sont barres en rouge : ce qu'on rejette, l'ancienne facon de faire), " +
+  "surligne (les mots accentues passent sous un marqueur : l'idee cle), " +
+  'geant (UN mot ou chiffre enorme, le reste en petit dessous : chiffre, mot-choc), ' +
+  'machine (machine a ecrire : affirmation calme, conclusion). ' +
+  'Varie les effets ; geant une fois au plus. accents = 1 a 2 mots EXACTS du plan a mettre en valeur. ' +
+  "dur = duree en secondes (1.8 a 3.5) selon la longueur. N'invente aucun chiffre absent du post. " +
+  "Jamais de tiret cadratin. cta = appel a l'action final de 2 a 5 mots. " +
+  'Reponds UNIQUEMENT en JSON strict : {"plans": [{"texte": "...", "accents": ["..."], "effet": "revele", "dur": 2.4}], "cta": "..."}';
+const EFFETS_MOTION = ['revele', 'barre', 'surligne', 'geant', 'machine'];
+type PlanMotion = { texte: string; accents: string[]; effet: string; dur: number };
 
 export type ReelSegment = MontageSegment & { debut?: number; fin?: number };
 
@@ -64,6 +83,7 @@ export const TEMPLATES: Record<string, { composition: string; label: string; dur
   impact: { composition: 'ReelBrand', label: 'Impact', duree: 8, tags: ['Promo', 'Stories'], apercu: null, desc: 'Punchy : accroche mot à mot → 3 preuves → CTA. Idéal stories.' },
   stats: { composition: 'ReelStat', label: 'Gros chiffres', duree: 10, tags: ['Résultats'], apercu: null, desc: 'Un chiffre géant par écran, qui compte en direct. Pour les posts à résultats.' },
   long: { composition: 'ReelLong', label: 'Narratif', duree: 22, tags: ['Storytelling'], apercu: null, desc: 'Accroche → contexte → preuves plein écran → leçon en citation → CTA.' },
+  motion: { composition: 'MotionTypo', label: 'Motion · Typo cinétique', duree: 16, tags: ['Motion design', 'Sans visuel'], apercu: null, desc: 'Ton message en typographie animée : mots révélés, barrés, surlignés, mot géant, machine à écrire. Aux couleurs de ta marque, aucun visuel requis.' },
 };
 
 const STYLES_SEQUENCE = Object.values(TEMPLATES)
@@ -86,6 +106,7 @@ const ROLE_RECO =
   '- impact : promo punchy courte format stories\n' +
   '- stats : posts à chiffres et résultats\n' +
   '- long : storytelling, leçon, récit personnel\n' +
+  '- motion : message fort et court à faire claquer en typographie animée, sans visuel (conviction, chiffre clé)\n' +
   'Réponds UNIQUEMENT en JSON strict : {"template": "id", "raison": "8-14 mots dans la langue du post"}';
 
 const ROLE = 'Tu es copywriter pour reels courts. A partir d\'un post, tu produis le script d\'un reel de 8 s :\n' +
@@ -484,6 +505,39 @@ export class ReelService {
   }
 
   /** Claude condense le post ; repli heuristique si l'appel échoue. */
+  private async scriptMotion(texte: string, marque: Record<string, unknown>): Promise<{ plans: PlanMotion[]; cta: string; hook: string }> {
+    const ctx = `\n\nMarque : ${marque.nom || ''}. Secteur : ${marque.secteur || ''}. Appels a l'action de la marque : ${marque.ctas || marque.cta || ''}.`;
+    try {
+      const resp = await this.claude.messagesCreate({
+        model: MODELE_SCRIPT,
+        max_tokens: 700,
+        system: ROLE_MOTION + ctx,
+        messages: [{ role: 'user', content: `Post :\n\n${texte.slice(0, 4000)}\n\nDonne le JSON.` }],
+      });
+      this.journalLlm(marque.telegram_id as string, 'reel_script', resp);
+      const data = this.parseJson<{ plans?: Array<Record<string, unknown>>; cta?: string }>(this.texteReponse(resp));
+      const plans: PlanMotion[] = [];
+      for (const pl of (data.plans || []).slice(0, 6)) {
+        const t = sansTiret(String(pl.texte || '').trim()).slice(0, 90);
+        if (!t) continue;
+        const effet = EFFETS_MOTION.includes(String(pl.effet)) ? String(pl.effet) : 'revele';
+        const n = Number(pl.dur);
+        const dur = Number.isFinite(n) ? Math.max(1.6, Math.min(4, n)) : 2.6;
+        const accents = (Array.isArray(pl.accents) ? pl.accents : []).map((a) => String(a).slice(0, 30)).filter((a) => a.trim()).slice(0, 2);
+        plans.push({ texte: t, accents, effet, dur });
+      }
+      if (plans.length >= 3) {
+        return { plans, cta: sansTiret(String(data.cta || marque.nom || '')).slice(0, 40), hook: plans[0].texte.slice(0, 80) };
+      }
+    } catch (e) {
+      this.logger.warn(`motion script LLM: ${e instanceof Error ? e.message : e}`);
+    }
+    const phrases = (texte || '').split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean).slice(0, 5);
+    const effets = ['revele', 'surligne', 'revele', 'machine', 'revele'];
+    const plans = (phrases.length ? phrases : ['Un message qui compte.']).map((ph, i) => ({ texte: ph.slice(0, 90), accents: [], effet: effets[i % effets.length], dur: 2.6 }));
+    return { plans, cta: String(marque.nom || '').slice(0, 40), hook: plans[0].texte.slice(0, 80) };
+  }
+
   private async scriptDepuisPost(texte: string, marque: Record<string, unknown>, long = false): Promise<{ hook: string; points: string[]; cta: string; contexte?: string; lecon?: string }> {
     try {
       const resp = await this.claude.messagesCreate({
@@ -906,6 +960,14 @@ export class ReelService {
       scenario.voix = opts.voix || null;
       script = { hook: (scenario.segments[0]?.texte || '').slice(0, 80) };
       props = await this.propsSequence(u, scenario, telegramId);
+    } else if (template === 'motion') {
+      const m = await this.scriptMotion(texte, u);
+      script = { hook: m.hook };
+      props = {
+        brand: { ...this.propsMarque(u, { hook: '', points: [], cta: '' }).brand, fond: '#020617', police: (u.typo_primaire as string) || null },
+        plans: m.plans,
+        cta: m.cta,
+      };
     } else if (template === 'affiche') {
       script = await this.scriptAffiche(texte, u);
       props = { brand: this.propsMarque(u, { hook: '', points: [], cta: '' }).brand, ...script, image: null };
