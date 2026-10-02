@@ -166,6 +166,28 @@ body{font-family:-apple-system,Segoe UI,sans-serif;background:#020617;color:#e8e
     return { publish_status: 'annulé', statut: 'Valider' };
   }
 
+  /** Webhook DÉDIÉ à `analytics.synced` (recommandation Zernio) : événement très fréquent
+   * (~1 par compte et par heure), isolé pour qu'une coupure ne fasse pas désactiver le webhook
+   * des posts. Réponse immédiate, rafraîchissement en tâche de fond. */
+  @Post('webhook-analytics')
+  async webhookAnalytics(@Req() req: AuthedRequest & { rawBody?: Buffer }) {
+    const raw = req.rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
+    const sig = (req.headers['x-zernio-signature'] as string) || (req.headers['x-late-signature'] as string) || '';
+    if (!this.lateService.verifySignature(raw, sig)) {
+      throw new HttpException('Signature invalide', HttpStatus.UNAUTHORIZED);
+    }
+    let payload: Record<string, unknown> = {};
+    try {
+      payload = raw.length ? JSON.parse(raw.toString('utf-8')) : {};
+    } catch {
+      payload = {};
+    }
+    const event = String(payload.event || '').toLowerCase();
+    if (event !== 'analytics.synced') return { received: true, ok: true, ignored: event };
+    void this.analyticsService.refreshDepuisWebhook(payload);
+    return { received: true, ok: true, event };
+  }
+
   /** Webhook Late (public, vérifié par signature HMAC best-effort) : met à jour le statut
    * de publication. */
   @Post('webhook')
