@@ -249,6 +249,29 @@ export class PostsController {
     return rows.map((r) => ({ ...r, type: labelTypeContenu(r.type as string | null) }));
   }
 
+  /** Reprise d'une ancienne carte du Studio : la range dans contenu au statut Brouillon. Sans IA, sans quota. */
+  @Post('brouillons-contenus')
+  async creerBrouillonContenu(@Body() body: Record<string, unknown>, @Req() req: AuthedRequest) {
+    const telegramId = req.user.telegram_id;
+    const contenu = typeof body.contenu === 'string' ? body.contenu.trim() : '';
+    if (!contenu) throw new BadRequestException('contenu requis');
+    const titre = (typeof body.titre === 'string' && body.titre.trim()) || contenu.slice(0, 80);
+    const original = (typeof body.contenu_original === 'string' && body.contenu_original.trim()) || contenu;
+    const data: Record<string, unknown> = {
+      telegram_id: telegramId,
+      titre: titre.trim().slice(0, 120),
+      contenu,
+      contenu_original: original,
+      statut: 'Brouillon',
+    };
+    const reseau = typeof body.reseau === 'string' ? body.reseau : '';
+    if (RESEAU_MAP[reseau]) data.reseau_cible = RESEAU_MAP[reseau];
+    if (body.type === 'Story') data.type = 'Story';
+    const row = await this.prisma.contenu.create({ data: data as never });
+    await this.contenuEvenement.log(row.id, 'genere', telegramId, original);
+    return { success: true, contenu_id: row.id };
+  }
+
   /** Retouche du texte d'un brouillon (sauvegarde auto du Studio). Ne touche QUE les brouillons. */
   @Patch('brouillons-contenus/:id')
   async majBrouillonContenu(@Param('id') id: string, @Body() body: Record<string, unknown>, @Req() req: AuthedRequest) {
