@@ -42,9 +42,12 @@ const ROLE_MOTION =
   'Varie les effets ; geant une fois au plus. accents = 1 a 2 mots EXACTS du plan a mettre en valeur. ' +
   "dur = duree en secondes (1.8 a 3.5) selon la longueur. N'invente aucun chiffre absent du post. " +
   "Jamais de tiret cadratin. cta = appel a l'action final de 2 a 5 mots. " +
-  'Reponds UNIQUEMENT en JSON strict : {"plans": [{"texte": "...", "accents": ["..."], "effet": "revele", "dur": 2.4}], "cta": "..."}';
+  'icone = UNE icone qui illustre le plan, parmi : fusee, horloge, cible, graphique, eclair, coeur, coche, croix, calendrier, message, personne, ampoule, argent, etoile, bouclier, telephone, megaphone, trophee ; ' +
+  "mets null si aucune ne colle vraiment, et pas d'icone sur un plan geant. Au moins la moitie des plans ont une icone. " +
+  'Reponds UNIQUEMENT en JSON strict : {"plans": [{"texte": "...", "accents": ["..."], "effet": "revele", "dur": 2.4, "icone": "cible"}], "cta": "..."}';
 const EFFETS_MOTION = ['revele', 'barre', 'surligne', 'geant', 'machine'];
-type PlanMotion = { texte: string; accents: string[]; effet: string; dur: number };
+const ICONES_MOTION = ['fusee', 'horloge', 'cible', 'graphique', 'eclair', 'coeur', 'coche', 'croix', 'calendrier', 'message', 'personne', 'ampoule', 'argent', 'etoile', 'bouclier', 'telephone', 'megaphone', 'trophee'];
+type PlanMotion = { texte: string; accents: string[]; effet: string; dur: number; icone: string | null };
 
 export type ReelSegment = MontageSegment & { debut?: number; fin?: number };
 
@@ -524,7 +527,8 @@ export class ReelService {
         const n = Number(pl.dur);
         const dur = Number.isFinite(n) ? Math.max(1.6, Math.min(4, n)) : 2.6;
         const accents = (Array.isArray(pl.accents) ? pl.accents : []).map((a) => String(a).slice(0, 30)).filter((a) => a.trim()).slice(0, 2);
-        plans.push({ texte: t, accents, effet, dur });
+        const icone = ICONES_MOTION.includes(String(pl.icone)) && effet !== 'geant' ? String(pl.icone) : null;
+        plans.push({ texte: t, accents, effet, dur, icone });
       }
       if (plans.length >= 3) {
         return { plans, cta: sansTiret(String(data.cta || marque.nom || '')).slice(0, 40), hook: plans[0].texte.slice(0, 80) };
@@ -534,7 +538,8 @@ export class ReelService {
     }
     const phrases = (texte || '').split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean).slice(0, 5);
     const effets = ['revele', 'surligne', 'revele', 'machine', 'revele'];
-    const plans = (phrases.length ? phrases : ['Un message qui compte.']).map((ph, i) => ({ texte: ph.slice(0, 90), accents: [], effet: effets[i % effets.length], dur: 2.6 }));
+    const icones = ['ampoule', 'cible', 'graphique', 'coche', 'fusee'];
+    const plans = (phrases.length ? phrases : ['Un message qui compte.']).map((ph, i) => ({ texte: ph.slice(0, 90), accents: [], effet: effets[i % effets.length], dur: 2.6, icone: icones[i % icones.length] }));
     return { plans, cta: String(marque.nom || '').slice(0, 40), hook: plans[0].texte.slice(0, 80) };
   }
 
