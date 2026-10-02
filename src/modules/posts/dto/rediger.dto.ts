@@ -22,4 +22,13 @@ export class RedigerDto {
   @IsOptional()
   @IsBoolean()
   save?: boolean;
+
+  /** Studio IA : enregistre tout de suite le post en base, au statut « Brouillon ». */
+  @IsOptional()
+  @IsBoolean()
+  brouillon?: boolean;
+
+  @IsOptional()
+  @IsString()
+  type?: string;
 }

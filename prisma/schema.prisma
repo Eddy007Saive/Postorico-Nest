@@ -844,6 +844,7 @@ enum statut_contenu {
   Publie
   Refuse
   A_tourner      @map("A tourner")
+  Brouillon
 }
 
 enum statut_interview {

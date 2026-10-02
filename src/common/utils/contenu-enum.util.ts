@@ -21,6 +21,7 @@ const STATUT_VERS_ENUM: Record<string, string> = {
   Publie: 'Publie',
   Refuse: 'Refuse',
   'A tourner': 'A_tourner',
+  Brouillon: 'Brouillon',
 };
 const STATUT_VERS_LABEL: Record<string, string> = Object.fromEntries(
   Object.entries(STATUT_VERS_ENUM).map(([label, enumVal]) => [enumVal, label]),

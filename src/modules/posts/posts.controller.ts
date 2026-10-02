@@ -6,7 +6,9 @@ import {
   Get,
   InternalServerErrorException,
   Logger,
+  NotFoundException,
   Param,
+  Patch,
   Put,
   Post,
   Query,
@@ -20,6 +22,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { v2 as cloudinary } from 'cloudinary';
 import type { Request } from 'express';
 import { mapAgentError, refusQuota } from '../../common/utils/agent-http-errors';
+import { labelTypeContenu } from '../../common/utils/contenu-enum.util';
 import { PrismaService } from '../../config/prisma.service';
 import { JwtPayload } from '../auth/auth.service';
 import { ContenuEvenementService } from '../contenus/contenu-evenement.service';
@@ -138,15 +141,21 @@ export class PostsController {
       usage: result.usage,
       quota: { action: 'post', used: q.used, limit: q.limit },
     };
-    if (dto.save) {
-      const row = await this.prisma.contenu.create({
-        data: {
-          telegram_id: telegramId,
-          titre: sujet.slice(0, 120),
-          contenu: result.contenu,
-          contenu_original: result.contenu,
-        },
-      });
+    if (dto.save || dto.brouillon) {
+      const data: Record<string, unknown> = {
+        telegram_id: telegramId,
+        titre: sujet.slice(0, 120),
+        contenu: result.contenu,
+        contenu_original: result.contenu,
+      };
+      if (dto.brouillon) {
+        // Studio IA : le post vit en base dès sa rédaction, au statut « Brouillon » (pas de
+        // créneau : il n'entre dans le planning qu'à la validation, via /agent/enregistrer).
+        data.statut = 'Brouillon';
+        if (dto.reseau && RESEAU_MAP[dto.reseau]) data.reseau_cible = RESEAU_MAP[dto.reseau];
+        if (dto.type === 'Story') data.type = 'Story';
+      }
+      const row = await this.prisma.contenu.create({ data: data as never });
       out.contenu_id = row.id;
       await this.contenuEvenement.log(row.id, 'genere', telegramId, result.contenu);
     }
@@ -228,6 +237,40 @@ export class PostsController {
     return { contenu_id: ins.id, contenu: texte, lien_visuel: lien, quota: { action: 'post', used: q.used, limit: q.limit } };
   }
 
+  // --- Brouillons du Studio IA (lignes de contenu au statut « Brouillon ») ---
+  @Get('brouillons-contenus')
+  async brouillonsContenus(@Req() req: AuthedRequest) {
+    const rows = await this.prisma.contenu.findMany({
+      where: { telegram_id: req.user.telegram_id, statut: 'Brouillon' as never },
+      select: { id: true, titre: true, contenu: true, contenu_original: true, reseau_cible: true, type: true, created_at: true },
+      orderBy: { created_at: 'desc' },
+      take: 50,
+    });
+    return rows.map((r) => ({ ...r, type: labelTypeContenu(r.type as string | null) }));
+  }
+
+  /** Retouche du texte d'un brouillon (sauvegarde auto du Studio). Ne touche QUE les brouillons. */
+  @Patch('brouillons-contenus/:id')
+  async majBrouillonContenu(@Param('id') id: string, @Body() body: Record<string, unknown>, @Req() req: AuthedRequest) {
+    const data: Record<string, unknown> = { updated_at: new Date() };
+    if (typeof body.contenu === 'string') data.contenu = body.contenu;
+    if (typeof body.contenu_original === 'string' && body.contenu_original.trim()) data.contenu_original = body.contenu_original;
+    const r = await this.prisma.contenu.updateMany({
+      where: { id, telegram_id: req.user.telegram_id, statut: 'Brouillon' as never },
+      data: data as never,
+    });
+    if (!r.count) throw new NotFoundException('Brouillon introuvable');
+    return { success: true };
+  }
+
+  @Delete('brouillons-contenus/:id')
+  async supprimerBrouillonContenu(@Param('id') id: string, @Req() req: AuthedRequest) {
+    await this.prisma.contenu.deleteMany({
+      where: { id, telegram_id: req.user.telegram_id, statut: 'Brouillon' as never },
+    });
+    return { success: true };
+  }
+
   /** Enregistre le texte (éventuellement édité) dans la table contenu. Gratuit. */
   @Post('enregistrer')
   async enregistrer(@Body() dto: EnregistrerDto, @Req() req: AuthedRequest) {
@@ -251,8 +294,25 @@ export class PostsController {
         const creneau = await this.planningService.prochainCreneau(telegramId, row.reseau_cible as string, row.type as string | undefined);
         if (creneau) row.date_publication = creneau;
       }
+      const contenuOriginal = (dto.contenu_original || '').trim();
+      // Brouillon du Studio IA déjà en base : on le PROMEUT (même ligne, même id) en « A valider ».
+      if (dto.contenu_id) {
+        const ex = await this.prisma.contenu.findFirst({
+          where: { id: dto.contenu_id, telegram_id: telegramId },
+          select: { statut: true },
+        });
+        if (ex?.statut === 'Brouillon') {
+          const { telegram_id: _t, ...maj } = row;
+          await this.prisma.contenu.update({
+            where: { id: dto.contenu_id },
+            data: { ...maj, statut: 'A_valider', updated_at: new Date() } as never,
+          });
+          return { success: true, contenu_id: dto.contenu_id };
+        }
+      }
+      if (contenuOriginal) row.contenu_original = contenuOriginal;
       const ins = await this.prisma.contenu.create({ data: row as never });
-      await this.contenuEvenement.log(ins.id, 'genere', telegramId, contenu);
+      await this.contenuEvenement.log(ins.id, 'genere', telegramId, contenuOriginal || contenu);
       return { success: true, contenu_id: ins.id };
     } catch (e) {
       if (e instanceof BadRequestException) throw e;
