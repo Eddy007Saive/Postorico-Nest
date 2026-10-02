@@ -121,6 +121,40 @@ export class SocialService {
     }
   }
 
+  /**
+   * Compte du réseau changé (autre compte, profil Zernio recréé, reconnexion après une déconnexion
+   * — Zernio donne alors un nouvel identifiant) : on ne reprogramme RIEN d'office, on lève un
+   * indicateur ; la page Paramètres propose ensuite au client de reprogrammer ses posts non publiés.
+   * Reconnecter le même compte (accès expiré) garde le même identifiant : rien n'est proposé.
+   */
+  private async marquerSiChange(telegramId: string, plateforme: string, ancien: string | undefined, nouveau: string): Promise<void> {
+    if (!nouveau || ancien === nouveau) return;
+    try {
+      await this.prisma.comptes_sociaux.updateMany({
+        where: { telegram_id: telegramId, plateforme: normPlatform(plateforme) },
+        data: { reprog_en_attente: true },
+      });
+    } catch (e) {
+      this.logger.error(`indicateur de reprogrammation ${telegramId}/${plateforme}: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
+  /** Réseaux dont le compte a changé et pour lesquels la question n'a pas encore été posée. */
+  async reprogEnAttente(telegramId: string): Promise<string[]> {
+    const rows = await this.prisma.comptes_sociaux.findMany({
+      where: { telegram_id: telegramId, reprog_en_attente: true },
+      select: { plateforme: true },
+    });
+    return rows.map((r) => r.plateforme);
+  }
+
+  async reprogTraitee(telegramId: string, plateforme: string): Promise<void> {
+    await this.prisma.comptes_sociaux.updateMany({
+      where: { telegram_id: telegramId, plateforme: normPlatform(plateforme) },
+      data: { reprog_en_attente: false },
+    });
+  }
+
   /** Après l'OAuth (Zernio a connecté le compte au profil), enregistre l'accountId dans
    * comptes_sociaux. accountId : fourni par Zernio dans le callback (le plus fiable) ;
    * sinon on interroge l'API Zernio pour retrouver le compte du bon réseau sur ce profil. */
@@ -132,6 +166,7 @@ export class SocialService {
     if (accountId) {
       if (await this.enregistrerCompte(telegramId, p, accountId)) {
         this.logger.log(`Compte ${p} connecté pour ${telegramId}: ${accountId} (via callback)`);
+        await this.marquerSiChange(telegramId, p, ancien, accountId);
         return { ok: true, account_id: accountId, compte_change: ancien !== accountId };
       }
       return { ok: false, error: "Erreur lors de l'enregistrement du compte." };
@@ -153,6 +188,7 @@ export class SocialService {
       if (!chosenId) return { ok: false, error: 'Compte non trouvé après connexion.' };
       await this.enregistrerCompte(telegramId, p, chosenId);
       this.logger.log(`Compte ${p} connecté pour ${telegramId}: ${chosenId}`);
+      await this.marquerSiChange(telegramId, p, ancien, chosenId);
       return { ok: true, account_id: chosenId, compte_change: ancien !== chosenId };
     } catch (e) {
       this.logger.error(`finalizeConnection error ${telegramId}/${p}: ${e instanceof Error ? e.message : e}`);

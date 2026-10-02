@@ -278,6 +278,8 @@ model comptes_sociaux {
   plateforme      String
   late_account_id String
   connecte_le     DateTime @default(now()) @db.Timestamptz(6)
+  /// Compte du réseau changé : la page Paramètres propose de reprogrammer les posts non publiés.
+  reprog_en_attente Boolean @default(false)
   users           users    @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([telegram_id, plateforme], map: "comptes_sociaux_unique")

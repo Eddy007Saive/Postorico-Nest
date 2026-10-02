@@ -61,6 +61,11 @@ export interface ProgrammerResult {
   error?: string;
 }
 
+const RESEAUX_ENUM: Record<string, string> = {
+  linkedin: 'LinkedIn', instagram: 'Instagram', facebook: 'Facebook',
+  tiktok: 'TikTok', youtube: 'YouTube', googlebusiness: 'GoogleBusiness',
+};
+
 @Injectable()
 export class LateService implements OnApplicationBootstrap {
   private readonly logger = new Logger(LateService.name);
@@ -483,37 +488,48 @@ export class LateService implements OnApplicationBootstrap {
    * L'ancien post Zernio éventuel est supprimé d'abord (sinon double publication si l'ancien compte
    * existe encore). Best-effort. Port de `reprogrammer_reseau` (late_service.py).
    */
-  async reprogrammerReseau(telegramId: string, plateforme: string): Promise<number> {
-    const RESEAUX: Record<string, string> = {
-      linkedin: 'LinkedIn', instagram: 'Instagram', facebook: 'Facebook',
-      tiktok: 'TikTok', youtube: 'YouTube', googlebusiness: 'GoogleBusiness',
-    };
-    const reseau = RESEAUX[(plateforme || '').toLowerCase()];
-    if (!reseau) return 0;
+  /** Posts pas encore publiés d'un réseau, programmés ou validés (date à venir, ou passée depuis
+   * au plus 30 jours) : ceux qu'on PROPOSE de reprogrammer quand le compte du réseau change. */
+  async candidatsReprogrammation(telegramId: string, plateforme: string) {
+    const reseau = RESEAUX_ENUM[(plateforme || '').toLowerCase()];
+    if (!reseau) return [];
     const now = new Date();
+    const rows = await this.prisma.contenu.findMany({
+      where: {
+        telegram_id: telegramId,
+        reseau_cible: reseau as never,
+        statut: { in: ['Planifie', 'Valider'] as never },
+        date_publication: { gte: new Date(now.getTime() - 30 * 86_400_000) },
+      },
+      select: { id: true, titre: true, late_post_id: true, publish_status: true, date_publication: true, type: true },
+      orderBy: { date_publication: 'asc' },
+      take: 100,
+    });
+    return rows
+      .filter((c) => c.publish_status !== 'publié' && c.date_publication)
+      .map((c) => ({ ...c, type: c.type as string | null, en_retard: (c.date_publication as Date) <= now }));
+  }
+
+  async reprogrammerReseau(telegramId: string, plateforme: string, ids?: string[]): Promise<number> {
+    const reseau = RESEAUX_ENUM[(plateforme || '').toLowerCase()];
+    if (!reseau) return 0;
     let n = 0;
-    let rows: { id: string; late_post_id: string | null; publish_status: string | null; date_publication: Date | null; type: string | null }[];
+    let rows: Awaited<ReturnType<LateService['candidatsReprogrammation']>>;
     try {
-      rows = await this.prisma.contenu.findMany({
-        where: {
-          telegram_id: telegramId,
-          reseau_cible: reseau as never,
-          statut: { in: ['Planifie', 'Valider'] as never },
-          date_publication: { gte: new Date(now.getTime() - 30 * 86_400_000) },
-        },
-        select: { id: true, late_post_id: true, publish_status: true, date_publication: true, type: true },
-        take: 100,
-      }) as never;
+      rows = await this.candidatsReprogrammation(telegramId, plateforme);
     } catch (e) {
       this.logger.error(`reprogrammerReseau lecture ${telegramId}/${reseau}: ${e instanceof Error ? e.message : e}`);
       return 0;
     }
+    if (ids) {
+      const voulus = new Set(ids);
+      rows = rows.filter((c) => voulus.has(c.id));
+    }
     for (const c of rows) {
-      if (c.publish_status === 'publié' || !c.date_publication) continue;
       try {
         if (c.late_post_id) await this.cancelPost(c.late_post_id); // ancienne programmation retirée
         const data: Record<string, unknown> = { late_post_id: null, publish_status: null, publish_error: null };
-        if (c.date_publication <= now) {
+        if (c.en_retard) {
           const creneau = await this.planningService.prochainCreneau(telegramId, reseau, c.type);
           if (!creneau) continue;
           data.date_publication = new Date(creneau);

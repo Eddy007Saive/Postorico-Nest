@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, HttpException, HttpStatus, Logger, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpException, HttpStatus, Logger, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 import { PrismaService } from '../../config/prisma.service';
@@ -39,9 +39,8 @@ export class LateController {
     try {
       const result = await this.socialService.finalizeConnection(telegramId, platform, accountId);
       ok = result.ok;
-      // Compte changé (ou première connexion) : les posts à venir de ce réseau sont reprogrammés
-      // chez Zernio sur le nouveau compte — en tâche de fond, sans retarder la fermeture du popup.
-      if (result.ok && result.compte_change) void this.lateService.reprogrammerReseau(telegramId, platform);
+      // Compte changé : rien n'est reprogrammé d'office — la page Paramètres pose la question
+      // (indicateur levé par finalizeConnection, lu par GET /late/a-reprogrammer).
     } catch (e) {
       this.logger.error(`oauth-callback error ${telegramId}/${platform}: ${e instanceof Error ? e.message : e}`);
     }
@@ -104,6 +103,36 @@ body{font-family:-apple-system,Segoe UI,sans-serif;background:#020617;color:#e8e
       data: { publish_status: 'échec', publish_error: res.error },
     });
     throw new HttpException(res.error || 'Échec de la publication', HttpStatus.BAD_GATEWAY);
+  }
+
+  /** Réseaux dont le compte vient de changer, avec les posts non publiés qu'on propose de
+   * reprogrammer. Un réseau sans aucun post concerné est marqué traité (rien à demander). */
+  @Get('a-reprogrammer')
+  @UseGuards(JwtAuthGuard)
+  async aReprogrammer(@Req() req: AuthedRequest) {
+    const telegramId = req.user.telegram_id;
+    const out: Record<string, { id: string; titre: string | null; date_publication: Date | null; en_retard: boolean }[]> = {};
+    for (const p of await this.socialService.reprogEnAttente(telegramId)) {
+      const posts = await this.lateService.candidatsReprogrammation(telegramId, p);
+      if (posts.length) {
+        out[p] = posts.map((c) => ({ id: c.id, titre: c.titre, date_publication: c.date_publication, en_retard: c.en_retard }));
+      } else {
+        await this.socialService.reprogTraitee(telegramId, p);
+      }
+    }
+    return out;
+  }
+
+  /** Réponse du client : `ids` = posts à reprogrammer (vide = « non merci »). Question close. */
+  @Post('reprogrammer')
+  @UseGuards(JwtAuthGuard)
+  async reprogrammer(@Body() body: { platform?: string; ids?: string[] }, @Req() req: AuthedRequest) {
+    const telegramId = req.user.telegram_id;
+    const platform = (body?.platform || '').toLowerCase();
+    const ids = Array.isArray(body?.ids) ? body.ids.map(String) : [];
+    const n = ids.length ? await this.lateService.reprogrammerReseau(telegramId, platform, ids) : 0;
+    await this.socialService.reprogTraitee(telegramId, platform);
+    return { success: true, reprogrammes: n };
   }
 
   /** Annule l'envoi d'un contenu programmé dans Late. */
