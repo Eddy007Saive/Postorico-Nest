@@ -260,6 +260,12 @@ export class PostsController {
       data: data as never,
     });
     if (!r.count) throw new NotFoundException('Brouillon introuvable');
+    // Suivi de la rédaction : nouvelle proposition de l'IA, ou retouche (une par session)
+    if (typeof data.contenu_original === 'string') {
+      await this.contenuEvenement.log(id, 'regenere', req.user.telegram_id, data.contenu_original);
+    } else if (typeof data.contenu === 'string') {
+      await this.contenuEvenement.logRetouche(id, req.user.telegram_id, data.contenu);
+    }
     return { success: true };
   }
 
@@ -299,7 +305,7 @@ export class PostsController {
       if (dto.contenu_id) {
         const ex = await this.prisma.contenu.findFirst({
           where: { id: dto.contenu_id, telegram_id: telegramId },
-          select: { statut: true },
+          select: { statut: true, contenu: true },
         });
         if (ex?.statut === 'Brouillon') {
           const { telegram_id: _t, ...maj } = row;
@@ -307,6 +313,10 @@ export class PostsController {
             where: { id: dto.contenu_id },
             data: { ...maj, statut: 'A_valider', updated_at: new Date() } as never,
           });
+          if (contenu !== (ex.contenu || '').trim()) {
+            await this.contenuEvenement.logRetouche(dto.contenu_id, telegramId, contenu); // dernière retouche non sauvegardée
+          }
+          await this.contenuEvenement.log(dto.contenu_id, 'soumis', telegramId, contenu); // envoyé « A valider »
           return { success: true, contenu_id: dto.contenu_id };
         }
       }
