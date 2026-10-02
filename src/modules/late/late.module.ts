@@ -4,6 +4,7 @@ import { AuthModule } from '../auth/auth.module';
 import { ContenuEvenementModule } from '../contenus/contenu-evenement.module';
 import { MailModule } from '../mail/mail.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PlanningModule } from '../planning/planning.module';
 import { QuotaModule } from '../quota/quota.module';
 import { SocialModule } from '../social/social.module';
 import { ZernioModule } from '../zernio/zernio.module';
@@ -20,6 +21,7 @@ import { LateService } from './late.service';
     SocialModule,
     NotificationsModule,
     ContenuEvenementModule,
+    PlanningModule,
   ],
   controllers: [LateController],
   providers: [LateService],

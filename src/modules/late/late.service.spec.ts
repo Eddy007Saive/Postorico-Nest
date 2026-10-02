@@ -29,7 +29,7 @@ describe('LateService.sweepPlanifies', () => {
     const configStub = { get: jest.fn().mockReturnValue('') } as unknown as ConfigService;
     const pushStub = { sendToUser: jest.fn().mockResolvedValue(true) } as never;
     const evenementStub = { log: jest.fn().mockResolvedValue(undefined) } as never;
-    const service = new LateService(prismaStub, zernioStub, mailStub, socialStub, pushStub, evenementStub, configStub);
+    const service = new LateService(prismaStub, zernioStub, mailStub, socialStub, pushStub, evenementStub, { prochainCreneau: jest.fn() } as never, configStub);
     return { service, findMany, update };
   }
 
@@ -170,7 +170,7 @@ function makeServiceForSignature(webhookSecret: string) {
   const configStub = {
     get: jest.fn().mockReturnValue(webhookSecret),
   } as unknown as ConfigService;
-  return new LateService(prismaStub, zernioStub, mailStub, socialStub, pushStub, { log: jest.fn() } as never, configStub);
+  return new LateService(prismaStub, zernioStub, mailStub, socialStub, pushStub, { log: jest.fn() } as never, { prochainCreneau: jest.fn() } as never, configStub);
 }
 
 // Port direct de backend/tests/test_webhooks.py (section Late), corrigé suite au scan
@@ -226,7 +226,7 @@ describe('LateService.handleWebhook — account.disconnected déclenche le push'
     const socialStub = {} as never;
     const pushStub = { sendToUser: jest.fn().mockResolvedValue(true) };
     const configStub = { get: jest.fn().mockReturnValue('') } as unknown as ConfigService;
-    const service = new LateService(prismaStub, zernioStub, mailStub, socialStub, pushStub as never, { log: jest.fn().mockResolvedValue(undefined) } as never, configStub);
+    const service = new LateService(prismaStub, zernioStub, mailStub, socialStub, pushStub as never, { log: jest.fn().mockResolvedValue(undefined) } as never, { prochainCreneau: jest.fn() } as never, configStub);
 
     await service.handleWebhook({ event: 'account.disconnected', account: { platform: 'instagram', id: 'acc-1' } });
 
@@ -257,7 +257,7 @@ describe('LateService.handleWebhook — post.published déclenche aussi le push'
     const socialStub = {} as never;
     const pushStub = { sendToUser: jest.fn().mockResolvedValue(true) };
     const configStub = { get: jest.fn().mockReturnValue('') } as unknown as ConfigService;
-    const service = new LateService(prismaStub, zernioStub, mailStub, socialStub, pushStub as never, { log: jest.fn().mockResolvedValue(undefined) } as never, configStub);
+    const service = new LateService(prismaStub, zernioStub, mailStub, socialStub, pushStub as never, { log: jest.fn().mockResolvedValue(undefined) } as never, { prochainCreneau: jest.fn() } as never, configStub);
 
     await service.handleWebhook({ event: 'post.published', post: { id: 'late-1' } });
 

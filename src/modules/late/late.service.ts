@@ -5,6 +5,7 @@ import { PrismaService } from '../../config/prisma.service';
 import { ContenuEvenementService } from '../contenus/contenu-evenement.service';
 import { MailService } from '../mail/mail.service';
 import { PushService } from '../notifications/push.service';
+import { PlanningService } from '../planning/planning.service';
 import { SocialService } from '../social/social.service';
 import { ZernioClientService, ZernioError } from '../zernio/zernio-client.service';
 import { ZernioMediaItem, ZernioPlatformEntry } from '../zernio/interfaces/zernio.interface';
@@ -73,6 +74,7 @@ export class LateService implements OnApplicationBootstrap {
     private readonly socialService: SocialService,
     private readonly pushService: PushService,
     private readonly contenuEvenement: ContenuEvenementService,
+    private readonly planningService: PlanningService,
     config: ConfigService,
   ) {
     this.webhookSecret = config.get<string>('app.lateWebhookSecret') || '';
@@ -470,6 +472,61 @@ export class LateService implements OnApplicationBootstrap {
       this.logger.error(`programmerContenu ${contenuId}: ${e instanceof Error ? e.message : e}`);
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
+  }
+
+  /**
+   * Filet de sécurité quand le compte d'un réseau CHANGE (reconnexion avec un autre compte, profil
+   * Zernio recréé, première connexion après des posts validés sans réseau) : les posts pas encore
+   * publiés de ce réseau sont reprogrammés chez Zernio sur le nouveau compte.
+   * - date encore à venir : on GARDE la date ;
+   * - date déjà passée (post jamais parti, au plus 30 jours) : prochain créneau libre.
+   * L'ancien post Zernio éventuel est supprimé d'abord (sinon double publication si l'ancien compte
+   * existe encore). Best-effort. Port de `reprogrammer_reseau` (late_service.py).
+   */
+  async reprogrammerReseau(telegramId: string, plateforme: string): Promise<number> {
+    const RESEAUX: Record<string, string> = {
+      linkedin: 'LinkedIn', instagram: 'Instagram', facebook: 'Facebook',
+      tiktok: 'TikTok', youtube: 'YouTube', googlebusiness: 'GoogleBusiness',
+    };
+    const reseau = RESEAUX[(plateforme || '').toLowerCase()];
+    if (!reseau) return 0;
+    const now = new Date();
+    let n = 0;
+    let rows: { id: string; late_post_id: string | null; publish_status: string | null; date_publication: Date | null; type: string | null }[];
+    try {
+      rows = await this.prisma.contenu.findMany({
+        where: {
+          telegram_id: telegramId,
+          reseau_cible: reseau as never,
+          statut: { in: ['Planifie', 'Valider'] as never },
+          date_publication: { gte: new Date(now.getTime() - 30 * 86_400_000) },
+        },
+        select: { id: true, late_post_id: true, publish_status: true, date_publication: true, type: true },
+        take: 100,
+      }) as never;
+    } catch (e) {
+      this.logger.error(`reprogrammerReseau lecture ${telegramId}/${reseau}: ${e instanceof Error ? e.message : e}`);
+      return 0;
+    }
+    for (const c of rows) {
+      if (c.publish_status === 'publié' || !c.date_publication) continue;
+      try {
+        if (c.late_post_id) await this.cancelPost(c.late_post_id); // ancienne programmation retirée
+        const data: Record<string, unknown> = { late_post_id: null, publish_status: null, publish_error: null };
+        if (c.date_publication <= now) {
+          const creneau = await this.planningService.prochainCreneau(telegramId, reseau, c.type);
+          if (!creneau) continue;
+          data.date_publication = new Date(creneau);
+        }
+        await this.prisma.contenu.update({ where: { id: c.id }, data: data as never });
+        const res = await this.programmerContenu(telegramId, c.id);
+        if (res.ok) n += 1;
+      } catch (e) {
+        this.logger.error(`reprogrammerReseau contenu ${c.id}: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    if (rows.length) this.logger.log(`reprogrammerReseau ${telegramId}/${reseau}: ${n}/${rows.length} post(s) reprogrammé(s)`);
+    return n;
   }
 
   /** Supprime un post dans Zernio — annulation d'envoi ou suppression. */

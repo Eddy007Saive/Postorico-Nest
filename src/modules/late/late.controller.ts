@@ -39,6 +39,9 @@ export class LateController {
     try {
       const result = await this.socialService.finalizeConnection(telegramId, platform, accountId);
       ok = result.ok;
+      // Compte changé (ou première connexion) : les posts à venir de ce réseau sont reprogrammés
+      // chez Zernio sur le nouveau compte — en tâche de fond, sans retarder la fermeture du popup.
+      if (result.ok && result.compte_change) void this.lateService.reprogrammerReseau(telegramId, platform);
     } catch (e) {
       this.logger.error(`oauth-callback error ${telegramId}/${platform}: ${e instanceof Error ? e.message : e}`);
     }

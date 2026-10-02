@@ -33,6 +33,8 @@ export interface FinalizeConnectionResult {
   ok: boolean;
   account_id?: string;
   error?: string;
+  /** Le compte du réseau a changé (ou première connexion) : les posts à venir sont à reprogrammer. */
+  compte_change?: boolean;
 }
 
 export interface CreateLateProfileResult {
@@ -125,11 +127,12 @@ export class SocialService {
   async finalizeConnection(telegramId: string, platform: string, accountId?: string): Promise<FinalizeConnectionResult> {
     const p = normPlatform(platform);
     if (!VALID_PLATFORMS.has(p)) return { ok: false, error: 'Plateforme inconnue.' };
+    const ancien = await this.compte(telegramId, p); // pour savoir si le compte change
 
     if (accountId) {
       if (await this.enregistrerCompte(telegramId, p, accountId)) {
         this.logger.log(`Compte ${p} connecté pour ${telegramId}: ${accountId} (via callback)`);
-        return { ok: true, account_id: accountId };
+        return { ok: true, account_id: accountId, compte_change: ancien !== accountId };
       }
       return { ok: false, error: "Erreur lors de l'enregistrement du compte." };
     }
@@ -150,7 +153,7 @@ export class SocialService {
       if (!chosenId) return { ok: false, error: 'Compte non trouvé après connexion.' };
       await this.enregistrerCompte(telegramId, p, chosenId);
       this.logger.log(`Compte ${p} connecté pour ${telegramId}: ${chosenId}`);
-      return { ok: true, account_id: chosenId };
+      return { ok: true, account_id: chosenId, compte_change: ancien !== chosenId };
     } catch (e) {
       this.logger.error(`finalizeConnection error ${telegramId}/${p}: ${e instanceof Error ? e.message : e}`);
       return { ok: false, error: "Erreur lors de l'enregistrement du compte." };
