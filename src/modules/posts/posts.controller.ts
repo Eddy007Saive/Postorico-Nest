@@ -242,7 +242,7 @@ export class PostsController {
   async brouillonsContenus(@Req() req: AuthedRequest) {
     const rows = await this.prisma.contenu.findMany({
       where: { telegram_id: req.user.telegram_id, statut: 'Brouillon' as never },
-      select: { id: true, titre: true, contenu: true, contenu_original: true, reseau_cible: true, type: true, created_at: true },
+      select: { id: true, titre: true, contenu: true, contenu_original: true, script: true, reseau_cible: true, type: true, created_at: true },
       orderBy: { created_at: 'desc' },
       take: 50,
     });
@@ -254,21 +254,33 @@ export class PostsController {
   async creerBrouillonContenu(@Body() body: Record<string, unknown>, @Req() req: AuthedRequest) {
     const telegramId = req.user.telegram_id;
     const contenu = typeof body.contenu === 'string' ? body.contenu.trim() : '';
-    if (!contenu) throw new BadRequestException('contenu requis');
-    const titre = (typeof body.titre === 'string' && body.titre.trim()) || contenu.slice(0, 80);
-    const original = (typeof body.contenu_original === 'string' && body.contenu_original.trim()) || contenu;
+    const scriptTxt = typeof body.script === 'string' ? body.script.trim() : '';
+    if (!contenu && !scriptTxt) throw new BadRequestException('contenu requis');
+    const titre = (typeof body.titre === 'string' && body.titre.trim()) || (contenu || scriptTxt).slice(0, 80);
+    const original = scriptTxt ? null : (typeof body.contenu_original === 'string' && body.contenu_original.trim()) || contenu;
     const data: Record<string, unknown> = {
       telegram_id: telegramId,
       titre: titre.trim().slice(0, 120),
-      contenu,
-      contenu_original: original,
       statut: 'Brouillon',
+      // script vidéo : prend le chemin « A tourner » à la validation
+      ...(scriptTxt ? { type: 'Reel', script: scriptTxt } : { contenu, contenu_original: original }),
     };
-    const reseau = typeof body.reseau === 'string' ? body.reseau : '';
+    const reseau = typeof body.reseau === 'string' ? body.reseau.toLowerCase() : ''; // ancienne carte : « LinkedIn »
     if (RESEAU_MAP[reseau]) data.reseau_cible = RESEAU_MAP[reseau];
     if (body.type === 'Story') data.type = 'Story';
+    // Reprise idempotente : la même carte reprise deux fois renvoie le brouillon déjà créé.
+    const deja = await this.prisma.contenu.findFirst({
+      where: {
+        telegram_id: telegramId,
+        statut: 'Brouillon' as never,
+        titre: data.titre as string,
+        ...(scriptTxt ? { script: scriptTxt } : { contenu }),
+      },
+      select: { id: true },
+    });
+    if (deja) return { success: true, contenu_id: deja.id };
     const row = await this.prisma.contenu.create({ data: data as never });
-    await this.contenuEvenement.log(row.id, 'genere', telegramId, original);
+    await this.contenuEvenement.log(row.id, 'genere', telegramId, original || scriptTxt);
     return { success: true, contenu_id: row.id };
   }
 
@@ -278,16 +290,18 @@ export class PostsController {
     const data: Record<string, unknown> = { updated_at: new Date() };
     if (typeof body.contenu === 'string') data.contenu = body.contenu;
     if (typeof body.contenu_original === 'string' && body.contenu_original.trim()) data.contenu_original = body.contenu_original;
+    if (typeof body.script === 'string') data.script = body.script;
     const r = await this.prisma.contenu.updateMany({
       where: { id, telegram_id: req.user.telegram_id, statut: 'Brouillon' as never },
       data: data as never,
     });
     if (!r.count) throw new NotFoundException('Brouillon introuvable');
     // Suivi de la rédaction : nouvelle proposition de l'IA, ou retouche (une par session)
-    if (typeof data.contenu_original === 'string') {
-      await this.contenuEvenement.log(id, 'regenere', req.user.telegram_id, data.contenu_original);
-    } else if (typeof data.contenu === 'string') {
-      await this.contenuEvenement.logRetouche(id, req.user.telegram_id, data.contenu);
+    const texte = (data.contenu_original ?? data.contenu ?? data.script) as string | undefined;
+    if (typeof data.contenu_original === 'string' || body.regenere === true) {
+      await this.contenuEvenement.log(id, 'regenere', req.user.telegram_id, texte ?? null);
+    } else if (typeof texte === 'string') {
+      await this.contenuEvenement.logRetouche(id, req.user.telegram_id, texte);
     }
     return { success: true };
   }

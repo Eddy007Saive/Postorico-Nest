@@ -89,7 +89,7 @@ export class VideoController {
   /** Crée un contenu-script (statut « À tourner ») depuis un script. Gratuit. */
   @Post('draft')
   async draft(@Body() body: VideoDraftDto, @Req() req: AuthedRequest) {
-    return this.videoService.draft(req.user.telegram_id, body.script, body.titre, body.reseau);
+    return this.videoService.draft(req.user.telegram_id, body.script, body.titre, body.reseau, body.contenu_id);
   }
 
   /** Lance le montage Studio Montage sur une vidéo déjà uploadée. Consomme un quota 'video'. */

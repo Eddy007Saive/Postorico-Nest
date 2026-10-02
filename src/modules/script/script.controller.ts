@@ -5,6 +5,7 @@ import { PrismaService } from '../../config/prisma.service';
 import { JwtPayload } from '../auth/auth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { QUALITE_MODELS } from '../claude/claude.service';
+import { ContenuEvenementService } from '../contenus/contenu-evenement.service';
 import { DemarrageService } from '../demarrage/demarrage.service';
 import { QuotaService } from '../quota/quota.service';
 import { UsageService } from '../usage/usage.service';
@@ -13,6 +14,15 @@ import { ScriptDto } from './dto/script.dto';
 import { ScriptService } from './script.service';
 
 type AuthedRequest = Request & { user: JwtPayload };
+
+const RESEAU_MAP: Record<string, string> = {
+  linkedin: 'LinkedIn',
+  instagram: 'Instagram',
+  facebook: 'Facebook',
+  tiktok: 'TikTok',
+  youtube: 'YouTube',
+  googlebusiness: 'GoogleBusiness',
+};
 
 @Controller('agent')
 @UseGuards(JwtAuthGuard)
@@ -25,6 +35,7 @@ export class ScriptController {
     private readonly quotaService: QuotaService,
     private readonly usageService: UsageService,
     private readonly prisma: PrismaService,
+    private readonly contenuEvenement: ContenuEvenementService,
   ) {}
 
   @Post('script')
@@ -58,7 +69,29 @@ export class ScriptController {
     }
     await this.quotaService.confirm(q);
     await this.usageService.log(telegramId, 'script', QUALITE_MODELS[qualite], result.usage, q.unit_cost ?? 0, qualite);
-    return { ...result, quota: { action: 'post', used: q.used, limit: q.limit } };
+    let contenuId: string | undefined;
+    const scriptTxt = typeof result.script === 'string' ? result.script.trim() : '';
+    if (dto.brouillon && scriptTxt) {
+      // Studio IA : le script vit en base dès sa rédaction, au statut « Brouillon » ; il passe
+      // « A tourner » à la validation (/video/draft avec contenu_id).
+      const data: Record<string, unknown> = {
+        telegram_id: telegramId,
+        titre: sujet.slice(0, 120),
+        type: 'Reel',
+        statut: 'Brouillon',
+        script: result.script,
+      };
+      const net = RESEAU_MAP[(dto.reseau || '').toLowerCase()];
+      if (net) data.reseau_cible = net;
+      const row = await this.prisma.contenu.create({ data: data as never });
+      contenuId = row.id;
+      await this.contenuEvenement.log(row.id, 'genere', telegramId, result.script as string);
+    }
+    return {
+      ...result,
+      ...(contenuId ? { contenu_id: contenuId } : {}),
+      quota: { action: 'post', used: q.used, limit: q.limit },
+    };
   }
 
   /** Enregistre le script (éventuellement édité) dans la table studio. Gratuit. */

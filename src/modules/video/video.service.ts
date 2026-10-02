@@ -7,6 +7,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import { PrismaService } from '../../config/prisma.service';
 import { normStatutContenu, normTypeContenu } from '../../common/utils/contenu-enum.util';
 import { QuotaService } from '../quota/quota.service';
+import { ContenuEvenementService } from '../contenus/contenu-evenement.service';
 import { DONE, FAILED, MontagePocService } from './montage-poc.service';
 
 /**
@@ -59,6 +60,7 @@ export class VideoService {
     private readonly prisma: PrismaService,
     private readonly montagePoc: MontagePocService,
     private readonly quotaService: QuotaService,
+    private readonly contenuEvenement: ContenuEvenementService,
     config: ConfigService,
   ) {
     cloudinary.config({
@@ -95,7 +97,13 @@ export class VideoService {
   }
 
   /** Crée un contenu-script (statut « À tourner ») depuis un script — apparaît dans Contenus. */
-  async draft(telegramId: string, script?: string | null, titre?: string | null, reseau?: string | null): Promise<{ contenu_id: string | null }> {
+  async draft(
+    telegramId: string,
+    script?: string | null,
+    titre?: string | null,
+    reseau?: string | null,
+    brouillonId?: string | null,
+  ): Promise<{ contenu_id: string | null }> {
     const scriptTxt = (script || '').trim();
     const titreEff = (titre || (scriptTxt ? scriptTxt.slice(0, 80) : 'Vidéo')).trim().slice(0, 120);
     const row: Record<string, unknown> = {
@@ -107,6 +115,22 @@ export class VideoService {
     };
     const net = RESEAU_MAP[(reseau || '').toLowerCase()];
     if (net) row.reseau_cible = net;
+    // Script du Studio IA déjà en base (statut Brouillon) : on le PROMEUT (même ligne) en « A tourner ».
+    if (brouillonId) {
+      const ex = await this.prisma.contenu.findFirst({
+        where: { id: brouillonId, telegram_id: telegramId },
+        select: { statut: true, script: true },
+      });
+      if (ex?.statut === 'Brouillon') {
+        const { telegram_id: _t, ...maj } = row;
+        await this.prisma.contenu.update({ where: { id: brouillonId }, data: { ...maj, updated_at: new Date() } as never });
+        if (scriptTxt && scriptTxt !== (ex.script || '').trim()) {
+          await this.contenuEvenement.logRetouche(brouillonId, telegramId, scriptTxt);
+        }
+        await this.contenuEvenement.log(brouillonId, 'soumis', telegramId, scriptTxt);
+        return { contenu_id: brouillonId };
+      }
+    }
     const ins = await this.prisma.contenu.create({ data: row as never });
     return { contenu_id: ins.id };
   }
