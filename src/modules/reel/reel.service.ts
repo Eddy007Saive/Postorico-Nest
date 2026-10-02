@@ -30,9 +30,11 @@ const MODELE_SCRIPT = 'claude-haiku-4-5';
 
 // Format Motion (typo cinétique) — port de reel_service._ROLE_MOTION / _script_motion.
 const ROLE_MOTION =
-  'Tu es motion designer. Tu transformes un post en TYPOGRAPHIE CINETIQUE verticale (reel 9:16) ' +
-  'de 4 a 6 plans de texte, dans la langue du post. Chaque plan = une phrase courte (2 a 9 mots), ' +
-  "lisible en 2-3 secondes ; l'ensemble raconte le message du post, de l'accroche a la conclusion. " +
+  'Tu es motion designer. Tu transformes un post en video de TYPOGRAPHIE CINETIQUE verticale (9:16) ' +
+  "d'AU MOINS 60 SECONDES : 15 a 20 plans de texte, dans la langue du post. Chaque plan = une phrase courte " +
+  '(2 a 10 mots). Structure : accroche forte (2-3 plans), puis le developpement en 3 ou 4 temps (le probleme, ' +
+  "pourquoi, ce qui change, la preuve ou l'exemple du post), puis la conclusion (2-3 plans). Developpe uniquement " +
+  'les idees du post, sans rien inventer. ' +
   'Pour chaque plan choisis UN effet parmi : ' +
   'revele (mots qui apparaissent un a un, defaut), ' +
   "barre (les mots accentues sont barres en rouge : ce qu'on rejette, l'ancienne facon de faire), " +
@@ -40,7 +42,7 @@ const ROLE_MOTION =
   'geant (UN mot ou chiffre enorme, le reste en petit dessous : chiffre, mot-choc), ' +
   'machine (machine a ecrire : affirmation calme, conclusion). ' +
   'Varie les effets ; geant une fois au plus. accents = 1 a 2 mots EXACTS du plan a mettre en valeur. ' +
-  "dur = duree en secondes (1.8 a 3.5) selon la longueur. N'invente aucun chiffre absent du post. " +
+  "dur = duree en secondes (2.8 a 4.5) selon la longueur ; la somme des dur doit atteindre 55 s. N'invente aucun chiffre absent du post. " +
   "Jamais de tiret cadratin. cta = appel a l'action final de 2 a 5 mots. " +
   'icone = UNE icone qui illustre le plan, parmi : fusee, horloge, cible, graphique, eclair, coeur, coche, croix, calendrier, message, personne, ampoule, argent, etoile, bouclier, telephone, megaphone, trophee ; ' +
   "mets null si aucune ne colle vraiment, et pas d'icone sur un plan geant. Au moins la moitie des plans ont une icone. " +
@@ -86,7 +88,7 @@ export const TEMPLATES: Record<string, { composition: string; label: string; dur
   impact: { composition: 'ReelBrand', label: 'Impact', duree: 8, tags: ['Promo', 'Stories'], apercu: null, desc: 'Punchy : accroche mot à mot → 3 preuves → CTA. Idéal stories.' },
   stats: { composition: 'ReelStat', label: 'Gros chiffres', duree: 10, tags: ['Résultats'], apercu: null, desc: 'Un chiffre géant par écran, qui compte en direct. Pour les posts à résultats.' },
   long: { composition: 'ReelLong', label: 'Narratif', duree: 22, tags: ['Storytelling'], apercu: null, desc: 'Accroche → contexte → preuves plein écran → leçon en citation → CTA.' },
-  motion: { composition: 'MotionTypo', label: 'Motion · Typo cinétique', duree: 16, tags: ['Motion design', 'Sans visuel'], apercu: null, desc: 'Ton message en typographie animée : mots révélés, barrés, surlignés, mot géant, machine à écrire. Aux couleurs de ta marque, aucun visuel requis.' },
+  motion: { composition: 'MotionTypo', label: 'Motion · Typo cinétique', duree: 60, tags: ['Motion design', 'Sans visuel'], apercu: null, desc: 'Ton message en typographie animée : mots révélés, barrés, surlignés, mot géant, machine à écrire. Aux couleurs de ta marque, aucun visuel requis.' },
 };
 
 const STYLES_SEQUENCE = Object.values(TEMPLATES)
@@ -513,33 +515,36 @@ export class ReelService {
     try {
       const resp = await this.claude.messagesCreate({
         model: MODELE_SCRIPT,
-        max_tokens: 700,
+        max_tokens: 2600,
         system: ROLE_MOTION + ctx,
         messages: [{ role: 'user', content: `Post :\n\n${texte.slice(0, 4000)}\n\nDonne le JSON.` }],
       });
       this.journalLlm(marque.telegram_id as string, 'reel_script', resp);
       const data = this.parseJson<{ plans?: Array<Record<string, unknown>>; cta?: string }>(this.texteReponse(resp));
       const plans: PlanMotion[] = [];
-      for (const pl of (data.plans || []).slice(0, 6)) {
+      for (const pl of (data.plans || []).slice(0, 22)) {
         const t = sansTiret(String(pl.texte || '').trim()).slice(0, 90);
         if (!t) continue;
         const effet = EFFETS_MOTION.includes(String(pl.effet)) ? String(pl.effet) : 'revele';
         const n = Number(pl.dur);
-        const dur = Number.isFinite(n) ? Math.max(1.6, Math.min(4, n)) : 2.6;
+        const dur = Number.isFinite(n) ? Math.max(2, Math.min(5, n)) : 3.2;
         const accents = (Array.isArray(pl.accents) ? pl.accents : []).map((a) => String(a).slice(0, 30)).filter((a) => a.trim()).slice(0, 2);
         const icone = ICONES_MOTION.includes(String(pl.icone)) && effet !== 'geant' ? String(pl.icone) : null;
         plans.push({ texte: t, accents, effet, dur, icone });
       }
-      if (plans.length >= 3) {
+      if (plans.length >= 8) {
         return { plans, cta: sansTiret(String(data.cta || marque.nom || '')).slice(0, 40), hook: plans[0].texte.slice(0, 80) };
       }
     } catch (e) {
       this.logger.warn(`motion script LLM: ${e instanceof Error ? e.message : e}`);
     }
-    const phrases = (texte || '').split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean).slice(0, 5);
+    // Repli : découpe le post en morceaux courts (phrases puis virgules) pour nourrir ~60 s
+    const phrases = (texte || '').split(/(?<=[.!?])\s+/)
+      .flatMap((ph) => ph.trim().split(/(?<=[,;:])\s+/))
+      .map((x) => x.trim()).filter(Boolean).slice(0, 20);
     const effets = ['revele', 'surligne', 'revele', 'machine', 'revele'];
     const icones = ['ampoule', 'cible', 'graphique', 'coche', 'fusee'];
-    const plans = (phrases.length ? phrases : ['Un message qui compte.']).map((ph, i) => ({ texte: ph.slice(0, 90), accents: [], effet: effets[i % effets.length], dur: 2.6, icone: icones[i % icones.length] }));
+    const plans = (phrases.length ? phrases : ['Un message qui compte.']).map((ph, i) => ({ texte: ph.slice(0, 90), accents: [], effet: effets[i % effets.length], dur: 3.2, icone: icones[i % icones.length] }));
     return { plans, cta: String(marque.nom || '').slice(0, 40), hook: plans[0].texte.slice(0, 80) };
   }
 
