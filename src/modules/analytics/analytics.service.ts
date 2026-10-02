@@ -145,6 +145,36 @@ export class AnalyticsService implements OnApplicationBootstrap {
     return data;
   }
 
+  private readonly dernierRefresh = new Map<string, number>();
+
+  /**
+   * `analytics.synced` : Zernio annonce que les chiffres d'UN compte ont changé (le message ne
+   * contient aucun chiffre). On rafraîchit le cache du client propriétaire, au plus une fois par
+   * 10 min (un événement arrive par compte connecté). Le cron reste en secours (quotidien).
+   * Port de `refresh_depuis_webhook` (analytics_service.py).
+   */
+  async refreshDepuisWebhook(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const account = (payload.account as Record<string, unknown>) || {};
+    const accountId = (account.accountId || account.id || account._id || payload.accountId) as string | undefined;
+    if (!accountId) return { ok: true, no_user: true };
+    const row = await this.prisma.comptes_sociaux.findFirst({ where: { late_account_id: accountId }, select: { telegram_id: true } });
+    if (!row) {
+      this.logger.log(`analytics.synced: compte ${accountId} sans client connu`);
+      return { ok: true, no_user: true };
+    }
+    const maintenant = Date.now();
+    if (maintenant - (this.dernierRefresh.get(row.telegram_id) ?? 0) < 10 * 60 * 1000) return { ok: true, debounced: true };
+    this.dernierRefresh.set(row.telegram_id, maintenant);
+    try {
+      await this.refreshUser(row.telegram_id);
+      this.logger.log(`analytics.synced: cache rafraîchi pour ${row.telegram_id}`);
+      return { ok: true, telegram_id: row.telegram_id };
+    } catch (e) {
+      this.logger.warn(`analytics.synced refresh ${row.telegram_id}: ${e instanceof Error ? e.message : e}`);
+      return { ok: false };
+    }
+  }
+
   /** Cron : rafraîchit le cache analytics de tous les users actifs ayant un profil Late. */
   async refreshAll(): Promise<{ ok: boolean; skipped?: string; error?: string; refreshed?: number; errors?: number }> {
     if (!this.lateApiKey) return { ok: false, skipped: 'no_late_key' };

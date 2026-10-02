@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, InternalServerErrorException, Logger, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, InternalServerErrorException, Logger, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { JwtPayload } from '../auth/auth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -23,16 +23,24 @@ export class NotificationsController {
         orderBy: { created_at: 'desc' },
         take: 50,
       });
-      return { items, unread: items.filter((n) => !n.lu).length };
+      return {
+        items,
+        unread: items.filter((n) => !n.lu).length,
+        commentaires: items.filter((n) => !n.lu && n.type === 'commentaire').length,
+      };
     } catch (e) {
       this.logger.error(`list notifications error: ${e instanceof Error ? e.message : e}`);
       return { items: [], unread: 0 };
     }
   }
 
+  /** Tout marquer lu, ou seulement un type (?type=commentaire à l'ouverture de Commentaires). */
   @Post('lus')
-  async markAllRead(@Req() req: AuthedRequest) {
-    await this.prisma.notifications.updateMany({ where: { telegram_id: req.user.telegram_id, lu: false }, data: { lu: true } });
+  async markAllRead(@Req() req: AuthedRequest, @Query('type') type?: string) {
+    await this.prisma.notifications.updateMany({
+      where: { telegram_id: req.user.telegram_id, lu: false, ...(type ? { type } : {}) },
+      data: { lu: true },
+    });
     return { ok: true };
   }
 

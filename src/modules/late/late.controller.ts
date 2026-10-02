@@ -1,9 +1,12 @@
 import { BadRequestException, Body, Controller, Get, HttpException, HttpStatus, Logger, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ModuleRef } from '@nestjs/core';
 import type { Request, Response } from 'express';
 import { PrismaService } from '../../config/prisma.service';
 import { JwtPayload } from '../auth/auth.service';
+import { AnalyticsService } from '../analytics/analytics.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { InboxService } from '../comments/inbox.service';
 import { QuotaService } from '../quota/quota.service';
 import { SocialService } from '../social/social.service';
 import { LateService } from './late.service';
@@ -21,6 +24,10 @@ export class LateController {
     private readonly socialService: SocialService,
     private readonly quotaService: QuotaService,
     private readonly prisma: PrismaService,
+    private readonly analyticsService: AnalyticsService,
+    // InboxService vit dans CommentsModule, qui importe déjà LateModule : on le résout à la
+    // demande (ModuleRef) plutôt que de créer un import circulaire.
+    private readonly moduleRef: ModuleRef,
     config: ConfigService,
   ) {
     this.frontendUrl = config.get<string>('app.frontendUrl') || 'http://localhost:3000';
@@ -164,7 +171,8 @@ body{font-family:-apple-system,Segoe UI,sans-serif;background:#020617;color:#e8e
   @Post('webhook')
   async webhook(@Req() req: AuthedRequest & { rawBody?: Buffer }) {
     const raw = req.rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
-    const sig = (req.headers['x-late-signature'] as string) || '';
+    // Zernio signe avec X-Zernio-Signature (ancien nom : X-Late-Signature)
+    const sig = (req.headers['x-zernio-signature'] as string) || (req.headers['x-late-signature'] as string) || '';
     if (!this.lateService.verifySignature(raw, sig)) {
       throw new HttpException('Signature invalide', HttpStatus.UNAUTHORIZED);
     }
@@ -174,9 +182,17 @@ body{font-family:-apple-system,Segoe UI,sans-serif;background:#020617;color:#e8e
     } catch {
       payload = {};
     }
+    const event = String(payload.event || '').toLowerCase();
+    if (event === 'analytics.synced') {
+      // Gros volume (un par compte et par cycle) : réponse immédiate, rafraîchissement en fond.
+      void this.analyticsService.refreshDepuisWebhook(payload);
+      return { received: true, ok: true, event };
+    }
     let res: Record<string, unknown>;
     try {
-      res = await this.lateService.handleWebhook(payload);
+      res = event.startsWith('comment.')
+        ? await this.moduleRef.get(InboxService, { strict: false }).handleCommentWebhook(payload)
+        : await this.lateService.handleWebhook(payload);
     } catch (e) {
       this.logger.error(`Late webhook error: ${e instanceof Error ? e.message : e}`);
       res = { ok: false, error: e instanceof Error ? e.message : String(e) };

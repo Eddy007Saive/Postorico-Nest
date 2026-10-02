@@ -40,16 +40,20 @@ export class InboxService {
     }
   }
 
-  /** Traite l'event `comment.received` : notifie l'utilisateur par push. */
+  /** Traite l'event `comment.received` : notification dans l'app (cloche + compteur sur
+   * « Commentaires ») et push. Champs lus de façon tolérante : la doc Zernio annonce
+   * `account.accountId`, l'ancien format envoyait `account.id`. */
   async handleCommentWebhook(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
     const event = String(payload.event || payload.type || '').toLowerCase();
     if (event !== 'comment.received') return { ok: true, ignored: event };
     const comment = (payload.comment as Record<string, unknown>) || {};
     const account = (payload.account as Record<string, unknown>) || {};
-    const author = (comment.author as Record<string, unknown>) || {};
+    const post = (payload.post as Record<string, unknown>) || {};
+    const author = ((comment.author || comment.from) as Record<string, unknown>) || {};
+    this.logger.log(`comment webhook: cles=${Object.keys(payload)} comment=${Object.keys(comment)} account=${Object.keys(account)}`);
 
-    const platform = this.normPlatform((account.platform as string) || (comment.platform as string));
-    const accountId = account.id as string | undefined;
+    const platform = this.normPlatform((account.platform as string) || (comment.platform as string) || (post.platform as string));
+    const accountId = (account.accountId || account.id || account._id || payload.accountId) as string | undefined;
     // Ignore nos propres commentaires/réponses
     if (author.username && account.username && author.username === account.username) return { ok: true, ignored: 'self' };
 
@@ -60,14 +64,22 @@ export class InboxService {
     }
 
     const authorName = (author.name as string) || (author.username as string) || "Quelqu'un";
-    const texte = String(comment.text || '').trim();
+    const texte = String(comment.text || comment.message || comment.content || '').trim();
     const titre = `💬 Nouveau commentaire · ${platform.charAt(0).toUpperCase()}${platform.slice(1)}`;
     const body = texte ? `${authorName}: ${texte.slice(0, 90)}` : `${authorName} a commenté ton post`;
+    // Notification dans l'app : cloche + compteur sur « Commentaires » (lu à l'ouverture de la page)
+    try {
+      await this.prisma.notifications.create({
+        data: { telegram_id: telegramId, type: 'commentaire', event, titre, message: body, reseau: platform },
+      });
+    } catch (e) {
+      this.logger.warn(`comment webhook notification: ${e instanceof Error ? e.message : e}`);
+    }
     try {
       await this.pushService.sendToUser(telegramId, titre, body, {
         type: 'comment',
         platform,
-        post_id: String(comment.postId || comment.platformPostId || ''),
+        post_id: String(comment.postId || comment.platformPostId || post.id || ''),
         account_id: String(accountId || ''),
       });
     } catch (e) {

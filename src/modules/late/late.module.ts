@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../config/prisma.module';
+import { AnalyticsModule } from '../analytics/analytics.module';
 import { AuthModule } from '../auth/auth.module';
 import { ContenuEvenementModule } from '../contenus/contenu-evenement.module';
 import { MailModule } from '../mail/mail.module';
@@ -22,6 +23,7 @@ import { LateService } from './late.service';
     NotificationsModule,
     ContenuEvenementModule,
     PlanningModule,
+    AnalyticsModule,
   ],
   controllers: [LateController],
   providers: [LateService],

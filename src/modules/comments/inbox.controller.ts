@@ -23,7 +23,8 @@ export class InboxController {
   @Post('webhook')
   async webhook(@Req() req: AuthedRequest & { rawBody?: Buffer }) {
     const raw = req.rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
-    const sig = (req.headers['x-late-signature'] as string) || '';
+    // Zernio signe avec X-Zernio-Signature (ancien nom : X-Late-Signature)
+    const sig = (req.headers['x-zernio-signature'] as string) || (req.headers['x-late-signature'] as string) || '';
     if (!this.lateService.verifySignature(raw, sig)) {
       throw new HttpException('Signature invalide', HttpStatus.UNAUTHORIZED);
     }
