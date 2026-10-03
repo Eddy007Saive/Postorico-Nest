@@ -13,14 +13,10 @@ import { LlmUsage } from '../usage/interfaces/llm-usage.interface';
 /** Erreur de génération présentée à l'utilisateur (message générique, sans fuite du fournisseur). */
 export class GenerationError extends Error {}
 
-// Niveaux de qualité (noms neutres côté UI) → modèle réel (jamais exposé). Partagé par
-// tous les agents de génération (post, carrousel, plus tard script) — port direct de
-// QUALITE_MODELS (backend/services/agent_service.py).
-export const QUALITE_MODELS: Record<string, string> = {
-  rapide: 'claude-haiku-4-5',
-  equilibre: 'claude-sonnet-4-6',
-  premium: 'claude-opus-4-8',
-};
+// Un seul modèle rédige tous les contenus (posts, stories, carrousels, scripts). L'ancien
+// choix de « qualité » (rapide / équilibré / premium) a été retiré de l'interface ; s'il
+// arrive encore dans une requête, il est ignoré. Port de MODELE_REDACTION (agent_service.py).
+export const MODELE_REDACTION = 'claude-sonnet-4-6';
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

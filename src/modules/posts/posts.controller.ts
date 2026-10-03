@@ -43,7 +43,7 @@ import { RedigerDto } from './dto/rediger.dto';
 import { EnregistrerDto } from './dto/enregistrer.dto';
 import { CreateTemplateDto } from './dto/create-template.dto';
 import { PutDraftsDto } from './dto/put-drafts.dto';
-import { PostsService, QUALITE_MODELS } from './posts.service';
+import { PostsService, MODELE_REDACTION } from './posts.service';
 
 type AuthedRequest = Request & { user: JwtPayload };
 
@@ -98,7 +98,7 @@ export class PostsController {
     const telegramId = req.user.telegram_id;
     const sujet = dto.sujet.trim();
     if (!sujet) throw new BadRequestException('sujet requis');
-    const qualite = dto.qualite ?? 'equilibre';
+    const qualite = 'equilibre'; // un seul modèle de rédaction : le paramètre reçu est ignoré
     await this.demarrageService.exigerProfil(telegramId); // profil de marque minimum, avant de consommer
     const q = await this.quotaService.consume(telegramId, 'post');
     if (!q.ok) throw refusQuota(q);
@@ -110,7 +110,7 @@ export class PostsController {
         telegramId,
         sujet,
         dto.reseau || 'linkedin',
-        QUALITE_MODELS[qualite],
+        MODELE_REDACTION,
         false,
         dto.dimensions,
       );
@@ -128,7 +128,7 @@ export class PostsController {
     await this.usageService.log(
       telegramId,
       'post',
-      QUALITE_MODELS[qualite],
+      MODELE_REDACTION,
       result.usage,
       q.unit_cost ?? 0,
       qualite,
@@ -177,7 +177,7 @@ export class PostsController {
     }
     if (file.size > 10 * 1024 * 1024) throw new BadRequestException('Image trop lourde (max 10 Mo)');
     const reseau = (dto.reseau || 'linkedin').toLowerCase();
-    const qualite = dto.qualite ?? 'equilibre';
+    const qualite = 'equilibre'; // un seul modèle de rédaction : le paramètre reçu est ignoré
     await this.demarrageService.exigerProfil(telegramId);
     const q = await this.quotaService.consume(telegramId, 'post');
     if (!q.ok) throw refusQuota(q);
@@ -190,7 +190,7 @@ export class PostsController {
         file.buffer.toString('base64'),
         file.mimetype,
         reseau,
-        QUALITE_MODELS[qualite],
+        MODELE_REDACTION,
       );
     } catch (e: unknown) {
       await this.quotaService.refund(q);
@@ -203,7 +203,7 @@ export class PostsController {
       mapAgentError(r.error);
     }
     await this.quotaService.confirm(q);
-    await this.usageService.log(telegramId, 'post', QUALITE_MODELS[qualite], r.usage, q.unit_cost ?? 0, qualite, undefined, dureeS);
+    await this.usageService.log(telegramId, 'post', MODELE_REDACTION, r.usage, q.unit_cost ?? 0, qualite, undefined, dureeS);
 
     const texte = r.contenu;
     let lien: string | null = null;
@@ -489,7 +489,7 @@ export class PostsController {
       const sujet = (it.sujet || '').trim();
       const dims = it.dimensions;
       const reseauLow = (it.reseau || '').toLowerCase();
-      const qualite = it.qualite || 'equilibre';
+      const qualite = 'equilibre'; // un seul modèle de rédaction : le paramètre reçu est ignoré
       const reseauCap = RESEAU_MAP[reseauLow];
       if (!sujet || !reseauCap) {
         errors.push({ sujet, reseau: reseauLow, err: 'invalide' });
@@ -508,7 +508,7 @@ export class PostsController {
         break; // quota atteint -> on arrête la rafale
       }
       try {
-        const model = QUALITE_MODELS[qualite];
+        const model = MODELE_REDACTION;
         let ccontent: CarrouselContent | undefined;
         let texte = '';
         let genError: string | undefined;

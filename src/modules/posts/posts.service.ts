@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { nettoyerTexteGenere } from '../../common/utils/texte-genere.util';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
-import { ClaudeService, QUALITE_MODELS } from '../claude/claude.service';
+import { ClaudeService, MODELE_REDACTION } from '../claude/claude.service';
 import { DimensionsService, DIM_LABELS } from '../dimensions/dimensions.service';
 import { MarqueService } from '../marque/marque.service';
 import { MemoireService } from '../memoire/memoire.service';
@@ -15,7 +15,7 @@ import { RedigerPostResult } from './interfaces/rediger-post-result.interface';
  * carrousel/script/gabarit n'est pas dans ce portage.
  */
 
-export { QUALITE_MODELS };
+export { MODELE_REDACTION };
 
 const RESEAUX: Record<string, string> = {
   linkedin: 'LinkedIn',

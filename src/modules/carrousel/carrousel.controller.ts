@@ -18,7 +18,7 @@ import { PrismaService } from '../../config/prisma.service';
 import { JwtPayload } from '../auth/auth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ContenuEvenementService } from '../contenus/contenu-evenement.service';
-import { QUALITE_MODELS } from '../claude/claude.service';
+import { MODELE_REDACTION } from '../claude/claude.service';
 import { DemarrageService } from '../demarrage/demarrage.service';
 import { PlanService } from '../planning/plan.service';
 import { PlanningService } from '../planning/planning.service';
@@ -92,7 +92,7 @@ export class CarrouselController {
     if (!sujet) throw new BadRequestException('sujet requis');
     const reseau = (dto.reseau || 'linkedin').toLowerCase();
     const nb = Math.max(3, Math.min(10, dto.nb_slides ?? 5));
-    const qualite = dto.qualite ?? 'equilibre';
+    const qualite = 'equilibre'; // un seul modèle de rédaction : le paramètre reçu est ignoré
     // Gabarit du carrousel : override explicite sinon celui configuré pour ce réseau.
     let tmpl = dto.template;
     if (!tmpl) {
@@ -111,7 +111,7 @@ export class CarrouselController {
         telegramId,
         sujet,
         nb,
-        QUALITE_MODELS[qualite],
+        MODELE_REDACTION,
         false,
         dto.dimensions,
       );
@@ -132,7 +132,7 @@ export class CarrouselController {
     await this.usageService.log(
       telegramId,
       'carrousel',
-      QUALITE_MODELS[qualite],
+      MODELE_REDACTION,
       result.usage,
       q.unit_cost ?? 0,
       qualite,

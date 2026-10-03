@@ -4,7 +4,7 @@ import { mapAgentError, refusQuota } from '../../common/utils/agent-http-errors'
 import { PrismaService } from '../../config/prisma.service';
 import { JwtPayload } from '../auth/auth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { QUALITE_MODELS } from '../claude/claude.service';
+import { MODELE_REDACTION } from '../claude/claude.service';
 import { ContenuEvenementService } from '../contenus/contenu-evenement.service';
 import { DemarrageService } from '../demarrage/demarrage.service';
 import { QuotaService } from '../quota/quota.service';
@@ -43,7 +43,7 @@ export class ScriptController {
     const telegramId = req.user.telegram_id;
     const sujet = dto.sujet.trim();
     if (!sujet) throw new BadRequestException('sujet requis');
-    const qualite = dto.qualite ?? 'equilibre';
+    const qualite = 'equilibre'; // un seul modèle de rédaction : le paramètre reçu est ignoré
     await this.demarrageService.exigerProfil(telegramId); // profil de marque minimum, avant de consommer
     const q = await this.quotaService.consume(telegramId, 'post'); // script vidéo compte comme un post
     if (!q.ok) throw refusQuota(q);
@@ -54,7 +54,7 @@ export class ScriptController {
         telegramId,
         sujet,
         dto.type_video || 'Reel',
-        QUALITE_MODELS[qualite],
+        MODELE_REDACTION,
         false,
         dto.dimensions,
       );
@@ -68,7 +68,7 @@ export class ScriptController {
       mapAgentError(result.error);
     }
     await this.quotaService.confirm(q);
-    await this.usageService.log(telegramId, 'script', QUALITE_MODELS[qualite], result.usage, q.unit_cost ?? 0, qualite);
+    await this.usageService.log(telegramId, 'script', MODELE_REDACTION, result.usage, q.unit_cost ?? 0, qualite);
     let contenuId: string | undefined;
     const scriptTxt = typeof result.script === 'string' ? result.script.trim() : '';
     if (dto.brouillon && scriptTxt) {
