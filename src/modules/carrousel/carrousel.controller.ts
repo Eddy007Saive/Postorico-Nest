@@ -163,6 +163,7 @@ export class CarrouselController {
         type: 'Carrousel',
         carrousel_data: content as object,
       };
+      if (result.formule_accroche) row.formule_accroche = result.formule_accroche; // formule de la couverture
       if (RESEAU_MAP[reseau]) {
         row.reseau_cible = RESEAU_MAP[reseau];
         // Réservation du créneau DÈS la création : évite que deux contenus non encore

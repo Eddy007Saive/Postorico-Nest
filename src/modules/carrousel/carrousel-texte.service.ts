@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { nettoyerProfond } from '../../common/utils/texte-genere.util';
+import { blocConsigneCarrousel, chiffresNonSources, formuleValide } from '../../common/utils/accroche.util';
 import { ClaudeService } from '../claude/claude.service';
 import { DimensionsService } from '../dimensions/dimensions.service';
 import { MarqueService } from '../marque/marque.service';
@@ -95,7 +96,11 @@ export class CarrouselTexteService {
     model?: string,
     cache = false,
     dimensions?: Record<string, unknown>,
-  ): Promise<{ content: CarrouselContent; usage: LlmUsage } | { error: string }> {
+    accroche = true,
+  ): Promise<
+    | { content: CarrouselContent; usage: LlmUsage; formule_accroche?: number | null; accroche_chiffres_non_sources?: string[] }
+    | { error: string }
+  > {
     if (!this.claude.isConfigured) return { error: 'no_api_key' };
     const u = await this.marqueService.chargerMarque(telegramId);
     if (!String(u.secteur ?? '').trim()) return { error: 'profil_incomplet' };
@@ -117,7 +122,8 @@ export class CarrouselTexteService {
             (await this.blocOffre(telegramId, dimensions)) +
             '\n' +
             `Give the hook, the legende (short: hook + swipe invitation + 1 CTA, without repeating the slides), ` +
-            `EXACTLY ${nbIdees} ideas (with short titre, texte, pills, pro_tip) and the cta, as JSON.`,
+            `EXACTLY ${nbIdees} ideas (with short titre, texte, pills, pro_tip) and the cta, as JSON.` +
+            (accroche ? blocConsigneCarrousel(sujet, contexte, dimensions) : ''),
         },
       ],
     });
@@ -167,6 +173,14 @@ export class CarrouselTexteService {
       },
     };
     if (!content.hook && !slides.length) return { error: 'parse' };
-    return { content: nettoyerProfond(content), usage: this.claude.usage(resp) };
+    const propre = nettoyerProfond(content);
+    // Accroche de la couverture : formule retenue (mesure future), chiffre non sourcé signalé
+    const sources = `${sujet} ${this.briefDimensions(dimensions)} ${contexte}`;
+    return {
+      content: propre,
+      usage: this.claude.usage(resp),
+      formule_accroche: formuleValide(data.formule),
+      accroche_chiffres_non_sources: chiffresNonSources(propre.hook || '', sources),
+    };
   }
 }
