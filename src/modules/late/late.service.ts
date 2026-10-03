@@ -61,6 +61,29 @@ export interface ProgrammerResult {
   error?: string;
 }
 
+// Réseaux qui refusent un post sans média (Late répond sinon « require media content »)
+const MEDIA_OBLIGATOIRE: Record<string, string> = { instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube' };
+
+/** Erreur de Late (souvent en anglais) -> message compréhensible — port de `_erreur_lisible`. */
+export function erreurLisible(msg: string, reseau = ''): string {
+  const low = (msg || '').toLowerCase();
+  const nom = MEDIA_OBLIGATOIRE[reseau] || (reseau ? reseau.charAt(0).toUpperCase() + reseau.slice(1) : 'Ce réseau');
+  if (low.includes('require media') || low.includes('media content')) {
+    return `${nom} ne publie pas de texte seul : ajoute une image ou une vidéo, puis revalide.`;
+  }
+  if (low.includes('do not belong') || low.includes('account not found') || low.includes('not found for this user')) {
+    return `Ton compte ${nom} n'est plus relié à ton espace de publication. Reconnecte-le dans Paramètres, puis revalide.`;
+  }
+  if (low.includes('token') && (low.includes('expired') || low.includes('invalid'))) {
+    return `La connexion à ${nom} a expiré. Reconnecte-le dans Paramètres, puis revalide.`;
+  }
+  if (low.includes('aspect ratio')) return `${nom} refuse le format de l'image (proportions). Change de visuel, puis revalide.`;
+  if (low.includes('rate limit') || low.includes('too many')) {
+    return `${nom} limite le nombre de publications pour le moment. Réessaie un peu plus tard.`;
+  }
+  return `${nom} a refusé la publication : ${msg}`;
+}
+
 const RESEAUX_ENUM: Record<string, string> = {
   linkedin: 'LinkedIn', instagram: 'Instagram', facebook: 'Facebook',
   tiktok: 'TikTok', youtube: 'YouTube', googlebusiness: 'GoogleBusiness',
@@ -255,6 +278,10 @@ export class LateService implements OnApplicationBootstrap {
     const content = String(contenu.contenu || '');
     const media = this.mediaItems(contenu, reseau);
     if (!content && !media.length) return { ok: false, error: 'Le contenu est vide (ni texte ni visuel).' };
+    if (MEDIA_OBLIGATOIRE[reseau] && !media.length) {
+      // Vérifié ICI plutôt que de laisser Late refuser (en anglais) après coup
+      return { ok: false, error: erreurLisible('require media content', reseau) };
+    }
 
     const limite = CAPTION_LIMITS[reseau];
     if (limite && content.length > limite) {
@@ -302,7 +329,7 @@ export class LateService implements OnApplicationBootstrap {
               'Modifie légèrement le texte pour pouvoir republier.',
           };
         }
-        return { ok: false, error: e.message };
+        return { ok: false, error: erreurLisible(e.message, reseau) };
       }
       this.logger.error(`Late publish exception: ${e instanceof Error ? e.message : e}`);
       return { ok: false, error: 'Late injoignable, réessaie.' };

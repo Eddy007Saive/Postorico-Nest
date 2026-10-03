@@ -136,9 +136,18 @@ export class PostsController {
       dureeS,
     );
 
-    const out: { contenu: string; usage: unknown; contenu_id?: string | null; quota: unknown } = {
+    const out: {
+      contenu: string;
+      usage: unknown;
+      contenu_id?: string | null;
+      quota: unknown;
+      formule_accroche?: number | null;
+      accroche_chiffres_non_sources?: string[];
+    } = {
       contenu: result.contenu,
       usage: result.usage,
+      formule_accroche: result.formule_accroche ?? null,
+      accroche_chiffres_non_sources: result.accroche_chiffres_non_sources ?? [],
       quota: { action: 'post', used: q.used, limit: q.limit },
     };
     if (dto.save || dto.brouillon) {
@@ -155,6 +164,7 @@ export class PostsController {
         if (dto.reseau && RESEAU_MAP[dto.reseau]) data.reseau_cible = RESEAU_MAP[dto.reseau];
         if (dto.type === 'Story') data.type = 'Story';
       }
+      if (result.formule_accroche) data.formule_accroche = result.formule_accroche; // formule retenue par l'IA
       const row = await this.prisma.contenu.create({ data: data as never });
       out.contenu_id = row.id;
       await this.contenuEvenement.log(row.id, 'genere', telegramId, result.contenu);
@@ -291,6 +301,7 @@ export class PostsController {
     if (typeof body.contenu === 'string') data.contenu = body.contenu;
     if (typeof body.contenu_original === 'string' && body.contenu_original.trim()) data.contenu_original = body.contenu_original;
     if (typeof body.script === 'string') data.script = body.script;
+    if (Number.isInteger(body.formule_accroche)) data.formule_accroche = body.formule_accroche; // régénération
     const r = await this.prisma.contenu.updateMany({
       where: { id, telegram_id: req.user.telegram_id, statut: 'Brouillon' as never },
       data: data as never,

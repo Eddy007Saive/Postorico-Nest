@@ -1,5 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { nettoyerTexteGenere } from '../../common/utils/texte-genere.util';
+import {
+  blocConsigneAccroche,
+  chiffresNonSources,
+  extraireFormule,
+  premiereLigne,
+  sansInvisibles,
+} from '../../common/utils/accroche.util';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
 import { ClaudeService, MODELE_REDACTION } from '../claude/claude.service';
@@ -118,6 +125,7 @@ export class PostsService {
     model?: string,
     cache = false,
     dimensions?: Record<string, unknown>,
+    accroche = true,
   ): Promise<RedigerPostResult | { error: string }> {
     if (!this.claude.isConfigured) return { error: 'no_api_key' };
     const reseauLabel = RESEAUX[reseau] ?? 'LinkedIn';
@@ -149,11 +157,22 @@ export class PostsService {
             `\n\n${reseauLabel} format: strong hook on the first line, short airy lines, ` +
             'one central idea, and a question / engagement prompt at the end.' +
             this.consigneLongueur(reseau) +
-            ' Give only the post text.',
+            (accroche ? blocConsigneAccroche(sujet, contexte, dimensions) : '') +
+            ' Give only the post text' +
+            (accroche ? ' and the final FORMULE line.' : '.'),
         },
       ],
     });
-    return { contenu: nettoyerTexteGenere(this.claude.texte(resp)), usage: this.claude.usage(resp) };
+    // Accroche : ligne technique retirée, formule gardée, chiffre non sourcé signalé
+    const { texte: brut, formule } = extraireFormule(this.claude.texte(resp));
+    const texte = nettoyerTexteGenere(sansInvisibles(brut));
+    const sources = `${sujet} ${this.briefDimensions(dimensions)} ${contexte}`;
+    return {
+      contenu: texte,
+      usage: this.claude.usage(resp),
+      formule_accroche: formule,
+      accroche_chiffres_non_sources: chiffresNonSources(premiereLigne(texte), sources),
+    };
   }
 
   /** Vision : analyse une photo fournie et écrit un post adapté au réseau, dans la voix de

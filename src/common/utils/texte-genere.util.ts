@@ -14,6 +14,9 @@ const MD_ITALIQUE = /(?<![\w*])\*([^*\n]+?)\*(?![\w*])/g;
 const MD_TITRE = /^[ \t]*#{1,6}[ \t]+/gm;
 const MD_PUCE = /^[ \t]*\*[ \t]+/gm;
 const TIRET_PUCE = /^[ \t]*[—–][ \t]*/gm;
+// Séparateur Markdown : une ligne faite seulement de tirets, étoiles ou soulignés (« --- »,
+// « *** », « ___ », « ——— »). Les réseaux l'affichent tel quel : on retire la ligne.
+const MD_SEPARATEUR = /^[ \t]*(?:[-*_—–][ \t]*){3,}$/gm;
 
 /** Port de `_sans_tiret` : aucun tiret cadratin/demi-cadratin, remplacé par une virgule. */
 export function sansTiret(txt: string): string {
@@ -27,7 +30,8 @@ export function sansTiret(txt: string): string {
 }
 
 export function nettoyerTexteGenere(txt: string): string {
-  let t = txt.replace(MD_GRAS, '$1').replace(MD_GRAS_US, '$1').replace(MD_ITALIQUE, '$1');
+  // séparateurs d'abord : les puces et l'italique les transformeraient
+  let t = txt.replace(MD_SEPARATEUR, '').replace(MD_GRAS, '$1').replace(MD_GRAS_US, '$1').replace(MD_ITALIQUE, '$1');
   t = t.split('**').join('');
   t = t.replace(MD_TITRE, '').replace(MD_PUCE, '• ');
   t = t.split('`').join('');
@@ -37,6 +41,7 @@ export function nettoyerTexteGenere(txt: string): string {
     .split('\n')
     .map((l) => l.replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+$/, ''))
     .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
