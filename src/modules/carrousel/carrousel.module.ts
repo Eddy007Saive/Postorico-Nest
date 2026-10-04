@@ -1,3 +1,4 @@
+import { PexelsService } from './pexels.service';
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../config/prisma.module';
 import { AuthModule } from '../auth/auth.module';
@@ -40,6 +41,7 @@ import { RicoPosesService } from './rico-poses.service';
     CarrouselRenduService,
     CarrouselCustomService,
     RicoPosesService,
+    PexelsService,
   ],
   // CarrouselRenduService::templateValide est réutilisé par ScheduleService (validation du
   // template choisi par réseau) — voir modules/users/schedule.service.ts.

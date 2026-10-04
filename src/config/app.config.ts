@@ -35,6 +35,8 @@ export default registerAs('app', () => {
   embeddingModel: process.env.EMBEDDING_MODEL || 'text-embedding-3-small',
   memoireVoixActive: process.env.MEMOIRE_VOIX_ACTIVE !== '0',
   cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
+  // Pexels : photos libres de droits des styles de carrousel avec photos (vide = aplats à la place)
+  pexelsApiKey: process.env.PEXELS_API_KEY || '',
   cloudinaryApiKey: process.env.CLOUDINARY_API_KEY || '',
   cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET || '',
   // Optionnel : force le binaire Chromium utilisé par Playwright (carrousels). Utile en

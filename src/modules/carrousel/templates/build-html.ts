@@ -1,3 +1,4 @@
+import { STYLES_PARTAGES, stylePartage } from './style-partage.util';
 import { CarrouselContentShape } from './common.util';
 import { construire } from './custom-template.util';
 import { tplAlterne } from './tpl-alterne';
@@ -16,6 +17,8 @@ import { tplRicoStudio } from './tpl-rico-studio';
 export const TEMPLATES = [
   'creme', 'sombre', 'alterne', 'editorial', 'pop', 'clean', 'neon', 'chiffres',
   'postorico', 'rico-studio', 'rico-scene',
+  // styles écrits une seule fois en JS (assets/carrousel/styles_carrousel.js, partagé avec l'aperçu)
+  ...STYLES_PARTAGES,
 ];
 
 // Templates sur mesure : invisibles par défaut, attribués compte par compte depuis le
@@ -65,6 +68,7 @@ export function buildHtml(
   logo?: string | null,
   poseUrls?: string[],
   custom?: { html: string } | null,
+  photos?: string[],
 ): string {
   let secteurCourt = (secteur || '').trim();
   if (secteurCourt.length > 42) secteurCourt = secteurCourt.slice(0, 42).trimEnd() + '…';
@@ -76,6 +80,10 @@ export function buildHtml(
   // que le dict.get(template, _tpl_creme) du Python).
   if (custom) {
     return construire(custom.html, content, p || '#003D2E', s || '#0077FF', a || '#3AFFA3', nom, secteurCourt, logo);
+  }
+
+  if (STYLES_PARTAGES.has(template)) {
+    return stylePartage(template, content, p || '#1652A6', s || '#8A6CFF', a || '#F26B3A', nom, secteurCourt, logo, photos);
   }
 
   if (RICO_TEMPLATES.has(template)) {

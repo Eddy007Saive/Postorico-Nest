@@ -14,6 +14,7 @@ import {
   PayloadTooLargeException,
   Post,
   Put,
+  Query,
   Req,
   UnprocessableEntityException,
   UseGuards,
@@ -33,6 +34,7 @@ import { UsageService } from '../usage/usage.service';
 import { CarrouselCustomService } from './carrousel-custom.service';
 import { AtelierSatureError, CarrouselRenduService } from './carrousel-rendu.service';
 import { CarrouselTexteService } from './carrousel-texte.service';
+import { PexelsService } from './pexels.service';
 import { ModeleInvalide } from './templates/modele-client.util';
 import { CarrouselDto } from './dto/carrousel.dto';
 import { RecolorDto } from './dto/recolor.dto';
@@ -77,6 +79,7 @@ export class CarrouselController {
     private readonly usageService: UsageService,
     private readonly prisma: PrismaService,
     private readonly contenuEvenement: ContenuEvenementService,
+    private readonly pexels: PexelsService,
   ) {}
 
   /** Templates de carrousel proposables à ce compte (les sur-mesure non attribués sont
@@ -93,6 +96,15 @@ export class CarrouselController {
       importes.push({ id: t.id, label: t.label, preview_url: t.preview_url, perso: true, html: t.html });
     }
     return { templates: autorises, importes };
+  }
+
+  /** Photos (Pexels) d'un carrousel en style photo, pour l'aperçu : mêmes photos qu'au rendu
+   * final (même secteur, même graine = le contenu, réduite comme la base du rendu). */
+  @Get('carrousel/photos')
+  async photosCarrousel(@Query('graine') graine: string | undefined, @Req() req: AuthedRequest) {
+    const secteur = await this.carrouselRenduService.secteurDe(req.user.telegram_id);
+    const base = (graine || 'demo').slice(0, 64).replace(/-/g, '').slice(0, 16);
+    return { photos: await this.pexels.photos(secteur, base) };
   }
 
   /** Modèles de carrousel créés par ce client dans l'éditeur. */

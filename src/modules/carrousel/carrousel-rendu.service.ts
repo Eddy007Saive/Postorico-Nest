@@ -12,6 +12,8 @@ import { RicoPosesService } from './rico-poses.service';
 import { buildHtml, EXCLUSIFS, TEMPLATES } from './templates/build-html';
 import { CarrouselContentShape, parts } from './templates/common.util';
 import { FIT_JS } from './templates/modele-client.util';
+import { PexelsService } from './pexels.service';
+import { STYLES_PHOTOS } from './templates/style-partage.util';
 import { CUSTOM_FONTS, fontFaceCss } from './templates/polices.util';
 
 const SLIDE_W = 360;
@@ -171,6 +173,7 @@ export class CarrouselRenduService {
     private readonly marqueService: MarqueService,
     private readonly carrouselCustomService: CarrouselCustomService,
     private readonly ricoPosesService: RicoPosesService,
+    private readonly pexels: PexelsService,
     private readonly usageService: UsageService,
     private readonly playwrightBrowser: PlaywrightBrowserService,
     config: ConfigService,
@@ -199,6 +202,12 @@ export class CarrouselRenduService {
       this.logger.warn(`exclusifs carrousel ${telegramId}: ${e instanceof Error ? e.message : e}`);
       return new Set();
     }
+  }
+
+  /** Secteur de la marque (requête des photos Pexels de l'aperçu). */
+  async secteurDe(telegramId: string): Promise<string> {
+    const u = await this.marqueService.chargerMarque(telegramId);
+    return (u?.secteur as string) || '';
   }
 
   /** Templates proposables à ce compte : les communs + ceux qu'un admin lui a attribués
@@ -246,6 +255,8 @@ export class CarrouselRenduService {
     fontCorps: string | null | undefined,
     customHtml: string | null,
   ): Promise<CarrouselRenduResult> {
+    // Styles avec photos : photos libres (Pexels) d'après le secteur, stables pour ce carrousel.
+    const photos = STYLES_PHOTOS.has(template) ? await this.pexels.photos(secteur, base) : undefined;
     let poseUrls: string[] | undefined;
     if (template === 'rico-studio' || template === 'rico-scene') {
       const [hook, slides, cta] = parts(content);
@@ -253,7 +264,7 @@ export class CarrouselRenduService {
       poseUrls = poses.map((pose) => this.ricoPosesService.url(pose));
     }
     const htmlStr = applyFont(
-      buildHtml(content, p, s, a, nom, secteur, template, logo, poseUrls, customHtml ? { html: customHtml } : null),
+      buildHtml(content, p, s, a, nom, secteur, template, logo, poseUrls, customHtml ? { html: customHtml } : null, photos),
       font,
       fontCorps,
       this.frontendUrl,
