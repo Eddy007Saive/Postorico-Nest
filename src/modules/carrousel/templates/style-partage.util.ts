@@ -8,7 +8,7 @@ import { CarrouselContentShape, parts } from './common.util';
  * copie identique de frontend/src/lib/stylesCarrousel.js) construit les slides dans la page
  * Playwright : même code que l'aperçu du navigateur.
  */
-export const STYLES_PARTAGES = new Set(['kraft', 'surligne', 'grand-chiffre', 'duo', 'organique', 'poudre', 'maison', 'cafe']);
+export const STYLES_PARTAGES = new Set(['kraft', 'surligne', 'grand-chiffre', 'duo', 'organique', 'poudre', 'maison', 'cafe', 'halo', 'pastel']);
 export const STYLES_PHOTOS = new Set(['duo', 'organique', 'poudre', 'maison', 'cafe']);
 
 let generateur: string | null = null;

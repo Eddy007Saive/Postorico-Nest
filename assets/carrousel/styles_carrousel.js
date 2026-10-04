@@ -309,6 +309,101 @@
     return out;
   }
 
+  // ================================================================== Halo
+  // Gris clair, halo flou à la couleur d'accent qui change de coin d'une slide à l'autre,
+  // grand titre condensé dont les derniers mots passent à l'accent, flèche dans un rond.
+  var CSS_HALO = ".sc-halo{background-color:#ECECEC;color:#161616;font-family:'Barlow',sans-serif;padding:26px 26px 22px;display:flex;flex-direction:column;box-sizing:border-box}"
+    + '.sc-halo>*{position:relative}.sc-halo *{margin:0;box-sizing:border-box}'
+    + '.sc-halo .haut,.sc-halo .bas{display:flex;justify-content:space-between;align-items:center;font-size:7.5px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase}'
+    + '.sc-halo .bas{margin-top:auto}'
+    + ".sc-halo h2{font-family:'Big Shoulders Display',sans-serif;font-weight:900;text-transform:uppercase;line-height:.88;letter-spacing:.2px}"
+    + '.sc-halo .corps{margin-top:18px;font-size:12.5px;line-height:1.5;color:#2b2b2b;max-width:250px}'
+    + '.sc-halo .conseil{margin-top:12px;font-size:11.5px;line-height:1.45;color:#555;max-width:250px}';
+  // Coins du halo, dans l'ordre des slides (x %, y %, taille)
+  var COINS_HALO = [[108, 36, 70], [-6, -4, 60], [-8, 104, 64], [106, 104, 62], [104, -6, 60]];
+
+  function halo(d, c) {
+    var A = c.a, n = d.slides.length + 2;
+    var ACC = lum(A) > 0.55 ? mix(A, '#000000', 0.35) : A; // accent lisible sur gris clair
+    function fond(i) {
+      var k = COINS_HALO[i % COINS_HALO.length];
+      return 'background-image:radial-gradient(circle at ' + k[0] + '% ' + k[1] + '%, ' + A + ' 0%, ' + mix(A, '#ECECEC', 0.45) + ' ' + Math.round(k[2] * 0.3) + '%, rgba(236,236,236,0) ' + k[2] + '%);';
+    }
+    var fleche = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#161616" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="9"/><path d="M6 10h8M10.5 6.5 14 10l-3.5 3.5"/></svg>';
+    var etiquette = esc(d.secteur || d.nom);
+    function titre(t, base, k) {
+      var mots = String(t || '').split(' ');
+      var p = mots.length > 2 ? decoupe(t, k) : ['', t];
+      return '<h2 ' + T + ' style="font-size:' + fitFs(t, base) + 'px">' + (p[0] ? esc(p[0]) + ' ' : '') + '<span style="color:' + ACC + '">' + esc(p[1]) + '</span></h2>';
+    }
+    var out = [];
+    out.push(slide('sc-halo', CSS_HALO, fond(0), '<div class="haut"><span>' + etiquette + '</span>' + fleche + '</div>'
+      + '<div style="margin:auto 0">' + titre(d.hook, 66, Math.min(2, Math.max(1, Math.floor(String(d.hook).split(' ').length / 3)))) + '</div>'
+      + '<div class="bas"><span>' + esc(d.nom) + '</span><span>1/' + n + '</span></div>'));
+    d.slides.forEach(function (s, i) {
+      out.push(slide('sc-halo', CSS_HALO, fond(i + 1), '<div class="haut"><span>' + etiquette + '</span><span>' + esc(d.nom) + '</span></div>'
+        + '<div style="margin:auto 0"><h2 ' + T + ' style="font-size:' + fitFs(s.titre, 52) + 'px">' + esc(s.titre) + '</h2>'
+        + (s.texte ? '<p ' + P + ' class="corps">' + esc(s.texte) + '</p>' : '')
+        + (s.tip ? '<p ' + P + ' class="conseil"><b style="color:#161616">Le geste :</b> ' + esc(s.tip) + '</p>' : '') + '</div>'
+        + '<div class="bas"><span>' + (i + 2) + '/' + n + '</span>' + fleche + '</div>'));
+    });
+    out.push(slide('sc-halo', CSS_HALO, fond(n - 1), '<div class="haut"><span>' + etiquette + '</span><span>' + esc(d.nom) + '</span></div>'
+      + '<div style="margin:auto 0">' + titre(d.cta.titre, 52, 1) + (d.cta.texte ? '<p ' + P + ' class="corps">' + esc(d.cta.texte) + '</p>' : '') + '</div>'
+      + '<div class="bas"><span>' + n + '/' + n + '</span><span></span></div>'));
+    return out;
+  }
+
+  // ================================================================== Pastel
+  // Fond pastel tiré de la couleur principale, grand guillemet en filigrane, taches floues,
+  // serif centré dont une partie passe à l'accent, numéro souligné d'un coup de pinceau.
+  var CSS_PASTEL = ".sc-pas{font-family:Inter,sans-serif;padding:34px 32px 26px;display:flex;flex-direction:column;box-sizing:border-box}"
+    + '.sc-pas>*{position:relative}.sc-pas *{margin:0;box-sizing:border-box}'
+    + ".sc-pas .num{font-family:'DM Serif Display',serif;font-size:21px;line-height:1}"
+    + ".sc-pas h2{font-family:'DM Serif Display',serif;font-weight:400;line-height:1.12;text-align:center}"
+    + '.sc-pas .corps{margin-top:16px;font-size:12px;line-height:1.55;text-align:center}'
+    + '.sc-pas .milieu{margin:auto 0}';
+
+  function pastel(d, c) {
+    var A = c.a, P = c.p || '#5B6CFF', n = d.slides.length + 2;
+    var FOND = mix(P, '#ffffff', 0.9), ENC = mix(sombre(P, 0.6), '#2a2233', 0.55), GUIL = mix(P, '#ffffff', 0.8);
+    var ACC = lum(A) > 0.55 ? mix(A, '#000000', 0.35) : A;
+    var taches = '<div style="position:absolute;left:-70px;bottom:-90px;width:260px;height:190px;border-radius:50%;background:' + mix(A, '#ffffff', 0.55) + ';filter:blur(34px);opacity:.75"></div>'
+      + '<div style="position:absolute;left:-50px;bottom:-10px;width:150px;height:110px;border-radius:50%;background:' + mix(mix(A, P, 0.5), '#ffffff', 0.5) + ';filter:blur(30px);opacity:.7"></div>';
+    var guillemet = "<div style=\"position:absolute;right:26px;top:96px;font-family:'DM Serif Display',serif;font-size:190px;line-height:1;color:" + GUIL + '">&#8221;</div>';
+    var fleche = '<svg style="position:absolute;right:30px;bottom:30px" width="56" height="12" viewBox="0 0 56 12" fill="none" stroke="' + ENC + '" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1 6h53M48 1l6 5-6 5"/></svg>';
+    function numero(i) {
+      return '<div><p class="num" style="color:' + ENC + ';padding-left:10px">' + String(i + 1).padStart(2, '0') + '</p>'
+        + '<svg width="56" height="8" viewBox="0 0 56 8" style="display:block;margin-top:6px"><path d="M2 5 C 16 2, 36 2, 54 4 C 38 6, 20 6, 3 7 Z" fill="' + ACC + '"/></svg></div>';
+    }
+    /** Titre en trois temps : début, partie à l'accent, fin (comme « Tu penses que / ton problème, / c'est le design. »). */
+    function titre(t, base) {
+      var m = String(t || '').split(' ');
+      if (m.length < 7) {
+        // titre court : il passe à la ligne naturellement, ses derniers mots prennent l'accent
+        var k = Math.max(1, Math.ceil(m.length / 3));
+        return '<h2 ' + T + ' style="font-size:' + fitFs(t, base) + 'px;color:' + ENC + '">' + esc(m.slice(0, m.length - k).join(' ')) + (m.length > k ? ' ' : '')
+          + '<span style="color:' + ACC + '">' + esc(m.slice(m.length - k).join(' ')) + '</span></h2>';
+      }
+      var a = Math.max(1, Math.round(m.length / 3)), b = Math.max(a + 1, Math.round(m.length * 2 / 3));
+      return '<h2 ' + T + ' style="font-size:' + fitFs(t, base) + 'px;color:' + ENC + '">' + esc(m.slice(0, a).join(' '))
+        + '<br><span style="color:' + ACC + '">' + esc(m.slice(a, b).join(' ')) + '</span><br>' + esc(m.slice(b).join(' ')) + '</h2>';
+    }
+    var fondCss = 'background:' + FOND + ';';
+    var out = [];
+    out.push(slide('sc-pas', CSS_PASTEL, fondCss, taches + guillemet + numero(0) + '<div class="milieu">' + titre(d.hook, 34) + '</div>' + fleche));
+    d.slides.forEach(function (s, i) {
+      out.push(slide('sc-pas', CSS_PASTEL, fondCss, taches + numero(i + 1) + '<div class="milieu">' + titre(s.titre, 31)
+        + (s.texte ? '<p ' + P + ' class="corps" style="color:' + ENC + ';opacity:.85">' + esc(s.texte) + '</p>' : '')
+        + (s.tip ? '<p ' + P + ' class="corps" style="margin-top:12px;color:' + ACC + ';font-weight:600">' + esc(s.tip) + '</p>' : '')
+        + '</div>' + fleche));
+    });
+    var pied = [d.nom, d.secteur].filter(Boolean).map(esc).join(' &nbsp;·&nbsp; ');
+    out.push(slide('sc-pas', CSS_PASTEL, fondCss, taches + numero(n - 1) + '<div class="milieu">' + titre(d.cta.titre, 30)
+      + (d.cta.texte ? '<p ' + P + ' class="corps" style="color:' + ENC + ';opacity:.85">' + esc(d.cta.texte) + '</p>' : '') + '</div>'
+      + '<p style="text-align:center;font-size:7.5px;letter-spacing:2.2px;text-transform:uppercase;color:' + ENC + ';opacity:.8">' + pied + '</p>'));
+    return out;
+  }
+
   // ------------------------------------------------------------------ catalogue
   var STYLES = {
     kraft: { label: 'Kraft', photos: false, polices: ['Archivo Black', 'Inter'], fn: kraft },
@@ -319,6 +414,8 @@
     poudre: { label: 'Poudré', photos: true, polices: ['Italiana', 'Montserrat:wght@400;600;700'], fn: poudre },
     maison: { label: 'Maison', photos: true, polices: ['Cormorant Garamond:ital,wght@0,500;1,500', 'Montserrat:wght@400;600'], fn: maison },
     cafe: { label: 'Café', photos: true, polices: ['Poppins:wght@400;500;700;800', 'Caveat:wght@700'], fn: cafe },
+    halo: { label: 'Halo', photos: false, polices: ['Big Shoulders Display:wght@800;900', 'Barlow:wght@400;500;700'], fn: halo },
+    pastel: { label: 'Pastel', photos: false, polices: ['DM Serif Display', 'Inter'], fn: pastel },
   };
 
   /** Lien Google Fonts des polices d'un style. */
