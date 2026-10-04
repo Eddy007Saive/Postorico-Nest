@@ -71,7 +71,12 @@ export const ID_MODELE = /^perso-[0-9a-f]{10}$/;
 export class ModeleInvalide extends Error {}
 
 export interface ElementPropre {
-  type: 'texte' | 'image';
+  type: 'texte' | 'image' | 'forme';
+  forme?: string;
+  stroke?: string | null;
+  strokeWidth?: number;
+  rayon?: number;
+  contourMarque?: string | null;
   x: number;
   y: number;
   width: number;
@@ -217,6 +222,18 @@ export async function nettoyerPage(
         accentCouleur: couleur(e.accentCouleur, '#3AFFA3'),
         accentMarque: marque(e.accentMarque),
       });
+    } else if (e.type === 'forme' && FORMES.has(chaine(e.forme))) {
+      out.elements.push({
+        ...base,
+        type: 'forme',
+        forme: chaine(e.forme),
+        fill: e.fill ? couleur(e.fill, '') || undefined : undefined,
+        stroke: e.stroke ? couleur(e.stroke, '') || null : null,
+        strokeWidth: nombre(e.strokeWidth, 0, 200),
+        rayon: nombre(e.rayon, 0, 2 * HAUTEUR),
+        couleurMarque: marque(e.couleurMarque),
+        contourMarque: marque(e.contourMarque),
+      });
     } else if (e.type === 'image') {
       const src = await urlImage(
         e.src,
@@ -313,6 +330,45 @@ function policeDe(e: ElementPropre, f: [string | null, string | null]): string |
   return null;
 }
 
+// Formes dessinées dans l'éditeur (même tracé que designCarrousel.js et le Python)
+const FORMES = new Set(['rect', 'ellipse', 'triangle', 'etoile', 'ligne', 'fleche']);
+
+function pointsEtoile(w: number, h: number): string {
+  const pts: string[] = [];
+  for (let i = 0; i < 10; i += 1) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    const r = i % 2 ? 0.45 : 1;
+    pts.push(`${n(w / 2 + (w / 2) * r * Math.cos(a))},${n(h / 2 + (h / 2) * r * Math.sin(a))}`);
+  }
+  return pts.join(' ');
+}
+
+/** Forme en SVG, tracée dans sa boîte comme dans l'éditeur (coordonnées 1080×1350). */
+function svgForme(e: ElementPropre, commun: string): string {
+  const { width: w, height: h } = e;
+  const f = e.forme || 'rect';
+  const ouverte = f === 'ligne' || f === 'fleche';
+  const sw = e.strokeWidth || 0;
+  let corps: string;
+  if (f === 'rect') corps = `<rect x="0" y="0" width="${n(w)}" height="${n(h)}" rx="${n(Math.min(e.rayon || 0, w / 2, h / 2))}"`;
+  else if (f === 'ellipse') corps = `<ellipse cx="${n(w / 2)}" cy="${n(h / 2)}" rx="${n(w / 2)}" ry="${n(h / 2)}"`;
+  else if (f === 'triangle') corps = `<polygon points="${n(w / 2)},0 ${n(w)},${n(h)} 0,${n(h)}"`;
+  else if (f === 'etoile') corps = `<polygon points="${pointsEtoile(w, h)}"`;
+  else {
+    let d = `M0 ${n(h / 2)} L${n(w)} ${n(h / 2)}`;
+    if (f === 'fleche') {
+      const t = Math.min(h / 2, Math.max(sw * 2.5, 16));
+      d += ` M${n(w - t)} ${n(h / 2 - t)} L${n(w)} ${n(h / 2)} L${n(w - t)} ${n(h / 2 + t)}`;
+    }
+    corps = `<path d="${d}"`;
+  }
+  const fond = ouverte || !e.fill ? 'none' : teinte(e.fill, e.couleurMarque);
+  const trait = e.stroke && sw > 0
+    ? `stroke:${teinte(e.stroke, e.contourMarque)};stroke-width:${n(sw)};stroke-linecap:round;stroke-linejoin:round`
+    : 'stroke:none';
+  return `<svg viewBox="0 0 ${n(w)} ${n(h)}" preserveAspectRatio="none" style="${commun}height:${px(h)};overflow:visible">${corps} style="fill:${fond};${trait}"/></svg>`;
+}
+
 function bloc(p: PagePropre, groupes: [string | null, string | null] = [null, null]): string {
   const m: string[] = [
     `<div class="slide" data-role="${p.role}" style="position:relative;width:360px;height:450px;overflow:hidden;background:${teinte(fondCss(p), p.degrade ? null : p.fondMarque)}">`,
@@ -325,6 +381,10 @@ function bloc(p: PagePropre, groupes: [string | null, string | null] = [null, nu
     const commun =
       `position:absolute;left:${px(e.x)};top:${px(e.y)};width:${px(e.width)};` +
       `opacity:${n(e.opacity)};transform:rotate(${n(e.rotation)}deg);transform-origin:0 0;`;
+    if (e.type === 'forme') {
+      m.push(svgForme(e, commun));
+      continue;
+    }
     if (e.type === 'image') {
       const o = e.ombre;
       const filtre = o

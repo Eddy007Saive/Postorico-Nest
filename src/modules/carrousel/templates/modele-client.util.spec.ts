@@ -119,4 +119,19 @@ describe('modèles de carrousel créés dans l’éditeur', () => {
     expect(rendu).toContain("[data-police=corps]{font-family:'Lora',sans-serif !important;letter-spacing:normal !important;}");
     expect(applyFont(doc, null, null)).toBe(doc);
   });
+  it('dessine les formes en SVG (même sortie que le Python)', async () => {
+    const p = pages();
+    p[0].elements.push(
+      { type: 'forme', forme: 'rect', x: 0, y: 0, width: 400, height: 200, fill: '#3AFFA3', rayon: 30, couleurMarque: 'accent' },
+      { type: 'forme', forme: 'etoile', x: 0, y: 0, width: 300, height: 300, fill: '#ffffff', stroke: '#000000', strokeWidth: 6 },
+      { type: 'forme', forme: 'fleche', x: 0, y: 0, width: 500, height: 60, stroke: '#ffffff', strokeWidth: 10 },
+      { type: 'forme', forme: '<script>', x: 0, y: 0, width: 10, height: 10 },
+    );
+    const html = htmlDepuisPages(await propres(p), FRONT);
+    expect(html).toContain('<rect x="0" y="0" width="400" height="200" rx="30" style="fill:var(--marque-a,#3AFFA3);stroke:none"/>');
+    expect(html).toContain('stroke:#000000;stroke-width:6');
+    expect(html).toContain('<path d="M0 30 L500 30 M475 5 L500 30 L475 55" style="fill:none;stroke:#ffffff;stroke-width:10');
+    expect(html.match(/<svg /g)).toHaveLength(3);
+    expect(html).not.toContain('<script>');
+  });
 });
