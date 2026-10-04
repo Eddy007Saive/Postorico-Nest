@@ -123,6 +123,8 @@ export function construire(
     ':root{' +
     `--principale:${p};--secondaire:${s};--accent:${A};` +
     `--encre:${inkOn(p)};--sourdine:${mix(inkOn(p), p, 0.45)};` +
+    // couleurs brutes de la marque (modèles créés dans l'éditeur)
+    `--marque-p:${p};--marque-s:${s};--marque-a:${a};` +
     '}';
   return (
     '<!DOCTYPE html><html><head><meta charset="utf-8">' +

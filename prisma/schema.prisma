@@ -237,6 +237,10 @@ model carrousel_templates_custom {
   preview_url String?
   created_at  DateTime @default(now()) @db.Timestamptz(6)
   created_by  String?
+  owner_id    String?
+  design      Json?
+
+  @@index([owner_id], map: "carrousel_templates_custom_owner_idx")
 }
 
 model codes_connexion {
@@ -329,6 +333,8 @@ model contenu {
   valide_par            String?                 @db.Uuid
   /// Formule d'accroche retenue par l'IA (accroche.util FORMULES), pour mesurer ce qui marche.
   formule_accroche      Int?                    @db.SmallInt
+  /// Design du carrousel édité par le client dans l'éditeur intégré (pages, éléments, fonds).
+  carrousel_design      Json?
   analytics_performance analytics_performance[]
   commentaires          commentaires[]
   users                 users?                  @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)

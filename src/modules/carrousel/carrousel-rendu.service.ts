@@ -11,6 +11,8 @@ import { CarrouselCustomService } from './carrousel-custom.service';
 import { RicoPosesService } from './rico-poses.service';
 import { buildHtml, EXCLUSIFS, TEMPLATES } from './templates/build-html';
 import { CarrouselContentShape, parts } from './templates/common.util';
+import { FIT_JS } from './templates/modele-client.util';
+import { CUSTOM_FONTS, fontFaceCss } from './templates/polices.util';
 
 const SLIDE_W = 360;
 const SLIDE_H = 450;
@@ -33,6 +35,19 @@ const atelier = new Semaphore(RENDUS_SIMULTANES, () => new AtelierSatureError())
 /** Exporté : StoryService (module reel) réutilise la MÊME file d'attente (un seul atelier
  * de rendu Playwright partagé entre carrousels et stories, comme côté Python où
  * story_service importe directement carrousel_service._rendre / AtelierSature). */
+/** public_id d'une URL Cloudinary (les fichiers « raw » gardent leur extension). */
+function publicIdCloudinary(
+  url: string | null | undefined,
+  garderExtension = false,
+): string | null {
+  if (!url || !url.includes('cloudinary.com') || !url.includes('/upload/'))
+    return null;
+  let parts = url.split('/upload/')[1].split('/');
+  if (parts.length && /^v\d+$/.test(parts[0])) parts = parts.slice(1);
+  const chemin = parts.join('/');
+  return garderExtension ? chemin : chemin.replace(/\.[^/.]+$/, '');
+}
+
 /** Upload un buffer à Cloudinary via upload_stream (flux binaire direct), au lieu d'une
  * data URI base64 : évite le +33% de payload et le coût CPU de l'encodage — sensible sur
  * un carrousel qui enchaîne 5 à 8 uploads d'affilée. Le SDK Node n'accepte pas un Buffer
@@ -62,35 +77,9 @@ export async function rendre<T>(fn: () => Promise<T>): Promise<T> {
 // Polices d'affichage utilisées par les templates (remplacées par la police choisie)
 const DISPLAY_FONTS = ['Anton', 'Fraunces', 'Sora'];
 
-/** Polices de marque (fichiers, PAS sur Google Fonts) : servies depuis frontend/public/fonts/
- * — mêmes fichiers que l'aperçu navigateur (cf. carrouselPreview.js côté front). Plusieurs
- * graisses -> une seule famille CSS, comme Google Fonts. Port de `_CUSTOM_FONTS`
- * (backend/services/carrousel_service.py). */
-export const CUSTOM_FONTS: Record<string, Array<{ file: string; format: string; weight: string }>> = {
-  'Circular Bold': [{ file: 'CircularBold.ttf', format: 'truetype', weight: '100 900' }],
-  Wotfard: [{ file: 'Wotfard-Regular.woff2', format: 'woff2', weight: '100 500' }],
-  'TT Norms Pro': [
-    { file: 'TTNormsPro-Regular.otf', format: 'opentype', weight: '400' },
-    { file: 'TTNormsPro-Medium.otf', format: 'opentype', weight: '500' },
-    { file: 'TTNormsPro-Bold.otf', format: 'opentype', weight: '700' },
-    { file: 'TTNormsPro-ExtraBold.otf', format: 'opentype', weight: '800 900' },
-  ],
-};
-
-/** @font-face pour les polices de marque parmi `fams` (les Google Fonts sont ignorées ici).
- * `frontendUrl` est l'origine qui sert /fonts/… — port de `_font_face_css`. */
-export function fontFaceCss(fams: string[], frontendUrl: string): string {
-  const blocks: string[] = [];
-  for (const fam of fams) {
-    for (const face of CUSTOM_FONTS[fam] ?? []) {
-      const url = `${frontendUrl}/fonts/${face.file}`;
-      blocks.push(
-        `@font-face{font-family:'${fam}';src:url('${url}') format('${face.format}');font-weight:${face.weight};font-display:swap;}`,
-      );
-    }
-  }
-  return blocks.length ? `<style>${blocks.join('')}</style>` : '';
-}
+// Polices de marque : dans templates/polices.util.ts (aussi utilisé par les modèles clients,
+// sans dépendre de ce service). Réexportées ici pour les importeurs existants.
+export { CUSTOM_FONTS, fontFaceCss };
 
 /** Décode "Famille" ou "Famille|bi" (b = gras, i = italique) -> famille + style. Même
  * convention que parseFontSpec() côté front (carrouselPreview.js) : pas de colonne dédiée,
@@ -132,6 +121,12 @@ export function applyFont(htmlStr: string, font?: string | null, fontCorps?: str
     const override = styleOverride(corps.gras, corps.italique);
     out = out.split('font-family:Inter').join(`font-family:'${corps.famille}';${override}`);
   }
+  // Modèles créés dans l'éditeur : leurs textes portent data-police="titre" ou "corps".
+  const regles = ([['titre', aff], ['corps', corps]] as const)
+    .filter(([, f]) => f.famille)
+    .map(([cible, f]) => `[data-police=${cible}]{font-family:'${f.famille}',sans-serif !important;letter-spacing:normal !important;${styleOverride(f.gras, f.italique)}}`)
+    .join('');
+  if (regles && out.includes('data-police=')) out = out.replace('<head>', `<head><style>${regles}</style>`);
   return out;
 }
 
@@ -212,7 +207,9 @@ export class CarrouselRenduService {
     const accordes = await this.exclusifsDuCompte(telegramId);
     const importesTous = await this.carrouselCustomService.ids();
     const importes = [...importesTous].filter((t) => accordes.has(t));
-    return [...TEMPLATES.filter((t) => !EXCLUSIFS.has(t) || accordes.has(t)), ...importes];
+    // + les modèles que le client a créés lui-même dans l'éditeur
+    const perso = [...(await this.carrouselCustomService.idsDuCompte(telegramId))];
+    return [...TEMPLATES.filter((t) => !EXCLUSIFS.has(t) || accordes.has(t)), ...importes, ...perso];
   }
 
   /** Renvoie le template s'il est autorisé pour ce compte, sinon retombe sur « creme ». */
@@ -223,6 +220,8 @@ export class CarrouselRenduService {
       const ids = await this.carrouselCustomService.ids();
       const accordes = await this.exclusifsDuCompte(telegramId);
       if (ids.has(t) && accordes.has(t)) return t;
+      // Modèle créé par le client dans l'éditeur : réservé à son auteur.
+      if ((await this.carrouselCustomService.idsDuCompte(telegramId)).has(t)) return t;
       return 'creme';
     }
     if (EXCLUSIFS.has(t)) {
@@ -273,6 +272,7 @@ export class CarrouselRenduService {
         .catch(() => undefined);
       await page.waitForTimeout(300); // laisse les polices se peindre
       await page.evaluate(AUTO_SHRINK_SCRIPT).catch(() => undefined);
+      await page.evaluate(FIT_JS).catch(() => undefined); // textes des modèles créés dans l'éditeur
       await page.waitForTimeout(60);
 
       // Les screenshots (locaux, Playwright) restent séquentiels — une seule page à la fois.
@@ -411,5 +411,118 @@ export class CarrouselRenduService {
         this.logger.warn(`journal du rendu carrousel ${base}: ${e instanceof Error ? e.message : e}`);
       }
     }
+  }
+
+  /**
+   * Éditeur de design : le client a retouché ou dessiné ses slides ; les images exportées par
+   * le navigateur remplacent les anciennes sur Cloudinary (anciens fichiers supprimés), le PDF
+   * LinkedIn est reconstruit et le design est gardé pour rouvrir plus tard. Port de
+   * `enregistrer_design` (carrousel_service.py).
+   */
+  async enregistrerDesign(
+    telegramId: string,
+    contenuId: string,
+    design: unknown,
+    images: unknown,
+  ): Promise<
+    | { error: string }
+    | { ok: true; slides_images: string[]; carrousel_pdf: string | null }
+  > {
+    const row = await this.prisma.contenu.findFirst({
+      where: { id: contenuId, telegram_id: telegramId },
+      select: {
+        statut: true,
+        publish_status: true,
+        slides_images: true,
+        carrousel_pdf: true,
+      },
+    });
+    if (!row) return { error: 'introuvable' };
+    if (
+      ['Planifie', 'Publie'].includes(String(row.statut)) ||
+      ['programmé', 'envoi', 'publié'].includes(String(row.publish_status))
+    ) {
+      return { error: 'deja_programme' };
+    }
+    if (!Array.isArray(images) || !images.length || images.length > 10)
+      return { error: 'images' };
+    const fichiers: { octets: Buffer; jpeg: boolean }[] = [];
+    for (const img of images) {
+      const m = /^data:image\/(png|jpe?g);base64,(.+)$/s.exec(String(img));
+      if (!m) return { error: 'images' };
+      const octets = Buffer.from(m[2], 'base64');
+      if (octets.length > 6 * 1024 * 1024) return { error: 'trop_lourd' };
+      fichiers.push({ octets, jpeg: m[1] !== 'png' });
+    }
+    const dossier = `carrousels/${telegramId}`;
+    const urls: string[] = [];
+    for (let i = 0; i < fichiers.length; i += 1) {
+      const up = await uploadBuffer(fichiers[i].octets, {
+        resource_type: 'image',
+        folder: dossier,
+        public_id: `${contenuId}_e${i + 1}`,
+        overwrite: true,
+        invalidate: true,
+      });
+      urls.push(up.secure_url);
+    }
+    let pdfUrl: string | null = null;
+    try {
+      const pdfDoc = await PDFDocument.create();
+      for (const f of fichiers) {
+        const img = f.jpeg
+          ? await pdfDoc.embedJpg(f.octets)
+          : await pdfDoc.embedPng(f.octets);
+        const page = pdfDoc.addPage([img.width, img.height]);
+        page.drawImage(img, {
+          x: 0,
+          y: 0,
+          width: img.width,
+          height: img.height,
+        });
+      }
+      const up = await uploadBuffer(Buffer.from(await pdfDoc.save()), {
+        resource_type: 'raw',
+        folder: dossier,
+        public_id: `${contenuId}_edit_doc.pdf`,
+        overwrite: true,
+        invalidate: true,
+      });
+      pdfUrl = up.secure_url;
+    } catch (e) {
+      this.logger.error(
+        `design carrousel pdf ${contenuId}: ${e instanceof Error ? e.message : e}`,
+      );
+    }
+    // Anciens fichiers (rendu d'origine, slides en trop) : supprimés, pour ne pas accumuler.
+    const gardes = new Set(urls.map((u) => publicIdCloudinary(u)));
+    for (const u of (row.slides_images as string[] | null) || []) {
+      const pid = publicIdCloudinary(u);
+      if (pid && !gardes.has(pid)) {
+        await cloudinary.uploader
+          .destroy(pid, { resource_type: 'image', invalidate: true })
+          .catch((e: unknown) => {
+            this.logger.warn(
+              `design carrousel suppression ${pid}: ${e instanceof Error ? e.message : String(e)}`,
+            );
+          });
+      }
+    }
+    const ancienPdf = publicIdCloudinary(row.carrousel_pdf, true);
+    if (ancienPdf && pdfUrl && ancienPdf !== publicIdCloudinary(pdfUrl, true)) {
+      await cloudinary.uploader
+        .destroy(ancienPdf, { resource_type: 'raw', invalidate: true })
+        .catch(() => undefined);
+    }
+    await this.prisma.contenu.update({
+      where: { id: contenuId },
+      data: {
+        slides_images: urls,
+        lien_visuel: urls[0],
+        carrousel_design: design as never,
+        ...(pdfUrl ? { carrousel_pdf: pdfUrl } : {}),
+      } as never,
+    });
+    return { ok: true, slides_images: urls, carrousel_pdf: pdfUrl };
   }
 }

@@ -1,13 +1,19 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
+  Delete,
   Get,
   HttpException,
   HttpStatus,
   InternalServerErrorException,
   Logger,
+  NotFoundException,
+  Param,
+  PayloadTooLargeException,
   Post,
+  Put,
   Req,
   UnprocessableEntityException,
   UseGuards,
@@ -27,6 +33,7 @@ import { UsageService } from '../usage/usage.service';
 import { CarrouselCustomService } from './carrousel-custom.service';
 import { AtelierSatureError, CarrouselRenduService } from './carrousel-rendu.service';
 import { CarrouselTexteService } from './carrousel-texte.service';
+import { ModeleInvalide } from './templates/modele-client.util';
 import { CarrouselDto } from './dto/carrousel.dto';
 import { RecolorDto } from './dto/recolor.dto';
 import { normaliserCarrouselData } from './carrousel-data.util';
@@ -80,8 +87,92 @@ export class CarrouselController {
     const tous = await this.carrouselCustomService.lister();
     const importes = tous
       .filter((t) => autorises.includes(t.id))
-      .map((t) => ({ id: t.id, label: t.label, preview_url: t.preview_url }));
+      .map((t) => ({ id: t.id, label: t.label, preview_url: t.preview_url })) as Array<Record<string, unknown>>;
+    // Modèles créés par le client : leur gabarit sert à l'aperçu en direct dans Contenus.
+    for (const t of await this.carrouselCustomService.listerDuCompte(req.user.telegram_id)) {
+      importes.push({ id: t.id, label: t.label, preview_url: t.preview_url, perso: true, html: t.html });
+    }
     return { templates: autorises, importes };
+  }
+
+  /** Modèles de carrousel créés par ce client dans l'éditeur. */
+  @Get('carrousel/modeles')
+  async listerModeles(@Req() req: AuthedRequest) {
+    const modeles = await this.carrouselCustomService.listerDuCompte(req.user.telegram_id);
+    return { modeles: modeles.map((t) => ({ id: t.id, label: t.label, preview_url: t.preview_url })) };
+  }
+
+  /** « Enregistrer comme modèle » : trois slides (couverture, étape, finale) dont les textes
+   * portent un rôle. Le gabarit HTML est construit ici, jamais reçu du navigateur. */
+  @Post('carrousel/modeles')
+  async creerModele(@Body() body: Record<string, unknown>, @Req() req: AuthedRequest) {
+    try {
+      return await this.carrouselCustomService.creerModele(req.user.telegram_id, body?.nom, body?.pages);
+    } catch (e) {
+      if (e instanceof ModeleInvalide) throw new BadRequestException(e.message);
+      throw e;
+    }
+  }
+
+  /** Un modèle du client avec son design, pour le rouvrir dans l'éditeur. */
+  @Get('carrousel/modeles/:id')
+  async lireModele(@Param('id') id: string, @Req() req: AuthedRequest) {
+    const row = await this.carrouselCustomService.chargerModele(req.user.telegram_id, id);
+    if (!row) throw new NotFoundException('Modèle introuvable');
+    return row;
+  }
+
+  @Put('carrousel/modeles/:id')
+  async modifierModele(@Param('id') id: string, @Body() body: Record<string, unknown>, @Req() req: AuthedRequest) {
+    let res;
+    try {
+      res = await this.carrouselCustomService.modifierModele(req.user.telegram_id, id, body?.nom, body?.pages);
+    } catch (e) {
+      if (e instanceof ModeleInvalide) throw new BadRequestException(e.message);
+      throw e;
+    }
+    if (!res) throw new NotFoundException('Modèle introuvable');
+    return res;
+  }
+
+  @Delete('carrousel/modeles/:id')
+  async supprimerModele(@Param('id') id: string, @Req() req: AuthedRequest) {
+    if (!(await this.carrouselCustomService.supprimerModele(req.user.telegram_id, id))) {
+      throw new NotFoundException('Modèle introuvable');
+    }
+    return { success: true };
+  }
+
+  /** Éditeur de carrousel : slides exportées par le navigateur + design. Gratuit (aucune IA). */
+  @Post('carrousel/:id/design')
+  async enregistrerDesign(
+    @Param('id') id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() req: AuthedRequest,
+  ) {
+    const res = await this.carrouselRenduService.enregistrerDesign(
+      req.user.telegram_id,
+      id,
+      body?.design ?? {},
+      body?.images ?? [],
+    );
+    if ('error' in res) {
+      if (res.error === 'introuvable')
+        throw new NotFoundException('Carrousel introuvable');
+      if (res.error === 'deja_programme') {
+        throw new ConflictException(
+          'Ce carrousel est déjà programmé ou publié : annule la programmation avant de modifier le design.',
+        );
+      }
+      if (res.error === 'trop_lourd')
+        throw new PayloadTooLargeException(
+          'Une slide est trop lourde (6 Mo maximum).',
+        );
+      throw new BadRequestException(
+        'Slides invalides (1 à 10 images attendues).',
+      );
+    }
+    return res;
   }
 
   /** Génère un carrousel : slides (Claude) + rendu images (Playwright) -> Cloudinary -> Contenus. */

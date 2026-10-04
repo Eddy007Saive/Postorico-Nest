@@ -1,5 +1,6 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { LoggerSilencieux, niveauxLog } from './common/logger-silencieux';
 
@@ -8,12 +9,14 @@ async function bootstrap() {
   // (Late/Zernio, futur Stripe) où la signature HMAC doit porter sur les octets bruts.
   // Logger qui tait les ~330 lignes « Mapped {route} » / « dependencies initialized » du
   // démarrage : au-delà du plafond de logs de Railway, qui jetait les lignes suivantes.
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
     logger: new LoggerSilencieux('Nest', { logLevels: niveauxLog() }),
   });
   // Même préfixe que le backend Python (APIRouter(prefix="/api")) : le frontend construit
   // toujours ses appels en REACT_APP_BACKEND_URL + /api (lib/api.js), quel que soit le backend.
+  // Éditeur de carrousel : jusqu'à 10 slides exportées en JPEG (data URL) dans une requête
+  app.useBodyParser('json', { limit: '40mb' });
   app.setGlobalPrefix('api');
   // whitelist: rejette les champs non déclarés dans le DTO — équivalent de Pydantic qui
   // ignore silencieusement les extra sauf configuration contraire ; ici on préfère strict.
