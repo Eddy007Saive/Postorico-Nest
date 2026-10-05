@@ -29,17 +29,21 @@ export interface JwtPayload {
   fp: string;
   role?: 'admin';
   exp?: number;
+  iat?: number;
+  // Mode Vision (admin connecté en tant que client) / bascule de compte.
+  vision?: boolean;
   // Présent seulement après une bascule vers un sous-compte (voir AccountsService.switch).
   master_id?: string | null;
 }
 
 @Injectable()
 export class AuthService {
-  // Cache d'empreinte de mot de passe (invalidation de session) — port direct de
-  // _fp_cache dans auth_service.py. TTL court : un changement de mdp déconnecte
-  // les autres appareils en <= FP_TTL secondes, sans lire la base à chaque requête.
+  // Cache de l'état de session (invalidation) — port direct de _fp_cache dans
+  // auth_service.py : empreinte du mot de passe actuel + date de la dernière déconnexion
+  // (users.sessions_invalidees_le). TTL court : une révocation posée sur une autre instance
+  // prend effet en <= FP_TTL secondes, sans lire la base à chaque requête.
   private readonly FP_TTL_MS = 30_000;
-  private fpCache = new Map<string, { fp: string; expiresAt: number }>();
+  private fpCache = new Map<string, { fp: string; invalideesLe: number | null; expiresAt: number }>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -341,20 +345,43 @@ export class AuthService {
   }
 
   /** True si l'empreinte portée par le jeton correspond au mot de passe actuel du compte. */
-  async sessionValid(telegramId: string, fp: string): Promise<boolean> {
-    const cached = this.fpCache.get(telegramId);
+  /** True si le jeton est toujours valable pour ce compte : empreinte du mot de passe à
+   * jour (si le jeton en porte une) et émis (`iat`, en secondes) après la dernière
+   * déconnexion. Port direct de auth_service.py::session_valid. */
+  async sessionValid(telegramId: string, fp: string | null | undefined, iat?: number): Promise<boolean> {
     const now = Date.now();
-    if (cached && cached.expiresAt > now) {
-      return cached.fp === fp;
+    let etat = this.fpCache.get(telegramId);
+    if (!etat || etat.expiresAt <= now) {
+      const user = await this.prisma.users.findUnique({
+        where: { telegram_id: telegramId },
+        select: { password_hash: true, sessions_invalidees_le: true },
+      });
+      // Compte introuvable : refusé si le jeton prétend une empreinte, toléré sinon
+      // (comportement d'avant la révocation, pour les jetons techniques sans fp).
+      if (!user) return !fp;
+      etat = {
+        fp: this.pwdFingerprint(user.password_hash),
+        invalideesLe: user.sessions_invalidees_le ? user.sessions_invalidees_le.getTime() / 1000 : null,
+        expiresAt: now + this.FP_TTL_MS,
+      };
+      this.fpCache.set(telegramId, etat);
     }
-    const user = await this.prisma.users.findUnique({
+    if (fp && etat.fp !== fp) return false;
+    // Sans iat (jeton qu'on ne peut pas dater), refusé dès qu'une déconnexion a été posée.
+    if (etat.invalideesLe !== null && (iat === undefined || iat < etat.invalideesLe)) return false;
+    return true;
+  }
+
+  /** Révoque TOUS les jetons du compte émis jusqu'ici (déconnexion de tous les appareils).
+   * Arrondi à la seconde inférieure : `iat` est en secondes entières, un jeton émis dans la
+   * même seconde que la déconnexion (reconnexion immédiate) reste ainsi valable. */
+  async deconnecter(telegramId: string): Promise<void> {
+    const maintenant = new Date(Math.floor(Date.now() / 1000) * 1000);
+    await this.prisma.users.update({
       where: { telegram_id: telegramId },
-      select: { password_hash: true },
+      data: { sessions_invalidees_le: maintenant },
     });
-    if (!user) return false;
-    const currentFp = this.pwdFingerprint(user.password_hash);
-    this.fpCache.set(telegramId, { fp: currentFp, expiresAt: now + this.FP_TTL_MS });
-    return currentFp === fp;
+    this.fpCache.delete(telegramId);
   }
 
   invalidateFp(telegramId: string): void {

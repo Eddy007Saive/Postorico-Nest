@@ -10,6 +10,7 @@ import {
   Req,
   ServiceUnavailableException,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
@@ -18,7 +19,8 @@ import { RateLimitService } from '../../common/utils/rate-limit.service';
 import { AffiliationService } from '../affiliation/affiliation.service';
 import { MailService } from '../mail/mail.service';
 import { SocialService } from '../social/social.service';
-import { AuthService, GoogleAuthError } from './auth.service';
+import { AuthService, GoogleAuthError, JwtPayload } from './auth.service';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AdminLoginDto } from './dto/admin-login.dto';
 import { CodeRenvoyerDto } from './dto/code-renvoyer.dto';
 import { CodeVerifierDto } from './dto/code-verifier.dto';
@@ -181,6 +183,23 @@ export class AuthController {
     }
     // On ne révèle jamais si l'email existe (anti-énumération) — même réponse dans tous les cas.
     return { success: true, message: "Si un compte est associé à cet email, un lien vient d'être envoyé." };
+  }
+
+  /** Déconnexion côté serveur : révoque tous les jetons du compte émis jusqu'ici, donc un
+   * jeton copié ne sert plus (sinon il resterait valable jusqu'à son expiration, 7 jours).
+   * Déconnecte TOUS les appareils du compte. Port direct de routes/auth.py::logout.
+   * Un jeton de bascule (sous-marque) révoque aussi le compte d'origine. Un jeton Vision
+   * (admin connecté en tant que client) ne révoque rien : déconnecter l'admin ne doit pas
+   * déconnecter le client. */
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  async logout(@Req() req: Request & { user: JwtPayload }) {
+    const p = req.user;
+    if (p.vision) return { success: true };
+    for (const tg of new Set([p.telegram_id, p.origine].filter((v): v is string => !!v))) {
+      await this.authService.deconnecter(tg);
+    }
+    return { success: true };
   }
 
   @Post('reset-password')

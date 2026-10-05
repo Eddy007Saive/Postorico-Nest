@@ -11,8 +11,8 @@ import { AuthService, JwtPayload } from '../auth.service';
 
 /**
  * Port direct de backend/dependencies.py::verify_token.
- * Vérifie le jeton, puis l'empreinte du mot de passe (`fp`) : si le mot de passe a changé
- * depuis l'émission du jeton, la session est invalidée même si le jeton n'a pas expiré.
+ * Vérifie le jeton, puis qu'il n'a pas été révoqué : mot de passe changé depuis son
+ * émission (empreinte `fp`), ou déconnexion posée après (`iat` < sessions_invalidees_le).
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -44,11 +44,12 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Invalid or expired token');
     }
 
-    // Jetons émis avant l'empreinte n'en ont pas -> tolérés jusqu'à expiration.
-    if (payload.fp && payload.telegram_id) {
-      const valid = await this.authService.sessionValid(payload.telegram_id, payload.fp);
+    // Invalidation : mot de passe modifié (empreinte `fp`) ou déconnexion posée après
+    // l'émission du jeton (`iat` < users.sessions_invalidees_le).
+    if (payload.telegram_id) {
+      const valid = await this.authService.sessionValid(payload.telegram_id, payload.fp, payload.iat);
       if (!valid) {
-        throw new UnauthorizedException('Session expirée (mot de passe modifié)');
+        throw new UnauthorizedException('Session expirée');
       }
     }
 

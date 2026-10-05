@@ -72,4 +72,32 @@ describe('AuthService (logique pure)', () => {
       expect(claims.fp).toBe(pwdFingerprint('hash-du-client'));
     });
   });
+
+  describe('révocation à la déconnexion (sessions_invalidees_le)', () => {
+    // Déconnexion posée à t = 1000 s.
+    function serviceAvec(invalideesLe: Date | null, passwordHash = 'h'): AuthService {
+      const prisma = {
+        users: { findUnique: jest.fn().mockResolvedValue({ password_hash: passwordHash, sessions_invalidees_le: invalideesLe }) },
+      } as never;
+      return new AuthService(prisma, { sign: jest.fn() } as unknown as JwtService, { get: jest.fn() } as unknown as ConfigService);
+    }
+    const fp = pwdFingerprint('h');
+
+    it.each([
+      [999, false],
+      [1000, true],
+      [1001, true],
+      [undefined, false],
+    ])('jeton émis à iat=%s -> %s', async (iat, attendu) => {
+      await expect(serviceAvec(new Date(1_000_000)).sessionValid('u1', fp, iat)).resolves.toBe(attendu);
+    });
+
+    it('sans déconnexion, un jeton sans iat reste valable', async () => {
+      await expect(serviceAvec(null).sessionValid('u1', fp, undefined)).resolves.toBe(true);
+    });
+
+    it('le mot de passe changé invalide toujours le jeton', async () => {
+      await expect(serviceAvec(null, 'autre-hash').sessionValid('u1', fp, 2000)).resolves.toBe(false);
+    });
+  });
 });

@@ -734,6 +734,7 @@ model users {
   style_vestimentaire   String?
   sexe                  Sexe?                   @default(homme)
   password_hash         String?
+  sessions_invalidees_le DateTime?             @db.Timestamptz(6)
   late_profile_id       String?
   timezone              String?                 @default("Europe/Paris")
   telegram_id           String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
