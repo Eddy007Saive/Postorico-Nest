@@ -1,3 +1,5 @@
+import { APP_FILTER } from '@nestjs/core';
+import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -43,6 +45,8 @@ import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
+    // Sentry : remonte les erreurs inattendues (5xx) ; inactif sans SENTRY_DSN (voir instrument.ts)
+    SentryModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
       load: [appConfig],
@@ -87,6 +91,6 @@ import { UsersModule } from './modules/users/users.module';
     SiteModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_FILTER, useClass: SentryGlobalFilter }],
 })
 export class AppModule {}
