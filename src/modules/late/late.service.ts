@@ -336,7 +336,8 @@ export class LateService implements OnApplicationBootstrap {
     }
 
     const post = resp.post;
-    const lateId = post?.id;
+    // Zernio renvoie l'identifiant sous « _id » (le SDK Python le convertit en « id », pas ce client).
+    const lateId = post?.id || post?._id;
     const status = post?.status || 'scheduled';
     if (!lateId) this.logger.error(`Late publish: id introuvable dans la réponse SDK: ${JSON.stringify(resp)}`);
     return { ok: true, late_post_id: lateId, status };
