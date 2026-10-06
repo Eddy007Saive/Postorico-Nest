@@ -935,6 +935,51 @@ export class ReelService {
     return { id: reelId, video_status: 'en_traitement' };
   }
 
+  /** Voix off déjà choisie pour ce reel (null si aucune). */
+  async voixDuReel(telegramId: string, reelId: string): Promise<string | null> {
+    const cur = await this.prisma.contenu.findFirst({ where: { id: reelId, telegram_id: telegramId }, select: { reel_data: true } });
+    return (cur?.reel_data as { voix?: string | null } | null)?.voix ?? null;
+  }
+
+  /** Refait seulement la voix off d'un reel Séquence : même scénario, mêmes images, mêmes
+   * textes, sans nouvel appel au scénariste. Seuls la synthèse et le montage final sont
+   * relancés (la voix est mixée dans le MP4) ; la vidéo actuelle reste en place jusqu'au
+   * succès. Sert quand la voix a échoué au rendu, ou pour changer de voix. */
+  async refaireVoix(telegramId: string, reelId: string, voix?: string | null): Promise<Record<string, unknown> | { error: string }> {
+    const cur = await this.prisma.contenu.findFirst({ where: { id: reelId, telegram_id: telegramId } });
+    if (!cur) return { error: 'Reel introuvable.' };
+    if (cur.type !== normTypeContenu('Reel') || !cur.reel_data) return { error: "Ce contenu n'est pas un reel modifiable." };
+    if (!['A_valider', 'Refuse'].includes(String(cur.statut))) return { error: 'Ce reel a déjà été validé : il ne peut plus être modifié.' };
+    if (cur.video_status === 'en_traitement') return { error: 'Un rendu de ce reel est déjà en cours.' };
+
+    const oldSc = cur.reel_data as unknown as ReelScenario & { voix_erreur?: string; voix_erreur_le?: string };
+    const choix = voix || oldSc.voix || null;
+    if (!choix || choix === 'none') return { error: 'Choisis une voix.' };
+    // Sans phrases parlées, la voix lirait les 2 à 6 mots-clés affichés : on renvoie vers
+    // « Modifier », qui réécrit le scénario avec un texte de voix.
+    if (!(oldSc.segments || []).some((sg) => String(sg.voix_texte || '').trim())) {
+      return { error: "Ce reel n'a pas de texte de voix off : utilise « Modifier » en choisissant une voix." };
+    }
+    const { voix_erreur: _err, voix_erreur_le: _le, ...sansErreur } = oldSc;
+    const scenario: ReelScenario = { ...sansErreur, voix: choix };
+    const st = scenario.style && STYLES_SEQUENCE.includes(scenario.style) ? scenario.style : 'signature';
+    const u = await this.marqueService.chargerMarque(telegramId);
+    const props = await this.propsSequence(u, scenario, telegramId);
+    const restaurer = { video_url: cur.video_url, video_preview_url: cur.video_preview_url, reel_data: oldSc };
+    try {
+      await this.mettreEnFile(reelId, telegramId, props, 'ReelSequence', `sequence/${st}`, {
+        restaurer,
+        voix: choix,
+        // video_url gardée : le reel reste visible pendant le nouveau montage.
+        extra: { reel_data: scenario },
+      });
+    } catch (e) {
+      this.logger.error(`reel voix mise en file: ${e instanceof Error ? e.message : e}`);
+      return { error: 'Impossible de lancer le rendu, réessaie.' };
+    }
+    return { id: reelId, video_status: 'en_traitement' };
+  }
+
   /** Post -> script (Claude) -> contenu jumeau 'Reel' en rendu en cours -> file de rendu. */
   async genererReel(
     telegramId: string,

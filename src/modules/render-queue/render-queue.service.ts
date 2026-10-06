@@ -220,6 +220,22 @@ export class RenderQueueService implements OnApplicationBootstrap {
     return null;
   }
 
+  /** Garde la cause d'un échec de voix off sur le reel (reel_data.voix_erreur) : le job est
+   * effacé à la fin du rendu, et sans cela l'erreur ne vivait que dans les logs. Une voix
+   * réussie efface l'erreur précédente. */
+  private async noterVoix(rowId: string, erreur: string | null): Promise<void> {
+    try {
+      const cur = await this.prisma.contenu.findUnique({ where: { id: rowId }, select: { reel_data: true } });
+      const sc = cur?.reel_data;
+      if (!sc || typeof sc !== 'object' || Array.isArray(sc)) return;
+      const { voix_erreur: _ancienne, voix_erreur_le: _le, ...reste } = sc as Record<string, unknown>;
+      const maj = erreur ? { ...reste, voix_erreur: erreur, voix_erreur_le: new Date().toISOString() } : reste;
+      await this.prisma.contenu.update({ where: { id: rowId }, data: { reel_data: maj as never } });
+    } catch (e) {
+      this.logger.warn(`render worker: note voix ${rowId}: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
   private async existe(rowId: string): Promise<boolean> {
     try {
       return Boolean(await this.prisma.contenu.findUnique({ where: { id: rowId }, select: { id: true } }));
@@ -335,6 +351,7 @@ export class RenderQueueService implements OnApplicationBootstrap {
           render_started_at: null,
         },
       });
+      if (jobCourant.voix) await this.noterVoix(rid, jobCourant.voix_echec || null);
       this.logger.log(`render worker: ${composition} ${rid} rendu`);
     } catch (e) {
       tentatives += 1;

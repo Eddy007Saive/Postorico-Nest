@@ -35,6 +35,7 @@ import { ReelGenererDto } from './dto/reel-generer.dto';
 import { ReelImageGenDto } from './dto/reel-image-gen.dto';
 import { ReelImagePromptDto } from './dto/reel-image-prompt.dto';
 import { ReelRegenererDto } from './dto/reel-regenerer.dto';
+import { ReelVoixDto } from './dto/reel-voix.dto';
 import { ReelVisuelsProposerDto } from './dto/reel-visuels-proposer.dto';
 import { VoixDefautDto } from './dto/voix-defaut.dto';
 import { MiniatureService } from './miniature.service';
@@ -251,6 +252,37 @@ export class ReelController {
     }
     await this.quotaService.confirm(q);
     await this.confirmerVoix(qv);
+    return res;
+  }
+
+  /** Refait seulement la voix off : même scénario, pas de quota reel, seulement le quota voix
+   * (remboursé par le worker si la synthèse échoue de nouveau). */
+  @Post('voix')
+  async refaireVoix(@Body() body: ReelVoixDto, @Req() req: AuthedRequest) {
+    const telegramId = requireTelegramId(req);
+    await this.quotaService.exigerAbonnement(telegramId);
+    const voix = body.voix || (await this.reelService.voixDuReel(telegramId, body.reel_id));
+    if (!voix || voix === 'none') throw new BadRequestException('Choisis une voix.');
+    try {
+      await this.voixService.validerChoix(telegramId, voix);
+    } catch (e) {
+      throw new BadRequestException(e instanceof Error ? e.message : String(e));
+    }
+    const qv = await this.quotaService.consume(telegramId, 'voix');
+    if (!qv.ok) throw quotaHttpException(qv);
+    let res: Record<string, unknown> | { error: string };
+    try {
+      res = await this.reelService.refaireVoix(telegramId, body.reel_id, voix);
+    } catch (e) {
+      await this.quotaService.refund(qv);
+      this.logger.error(`refaire voix reel: ${e instanceof Error ? e.message : e}`);
+      throw new InternalServerErrorException('Échec du relancement de la voix');
+    }
+    if ('error' in res) {
+      await this.quotaService.refund(qv);
+      throw new BadRequestException(res.error);
+    }
+    await this.quotaService.confirm(qv);
     return res;
   }
 
