@@ -414,13 +414,26 @@ export class ReelService {
 
   /** Casting de visuels pour un reel : d'abord la banque du client (par pertinence), puis des
    * prompts d'image prêts à générer pour les plans non couverts. */
-  async proposerVisuels(telegramId: string, texte: string, brief?: string | null, maximum = 3): Promise<Record<string, unknown> | { error: string }> {
+  async proposerVisuels(
+    telegramId: string,
+    texte: string,
+    brief?: string | null,
+    maximum = 3,
+    opts: { exclure?: string[]; nouvelles?: boolean } = {},
+  ): Promise<Record<string, unknown> | { error: string }> {
     texte = (texte || '').trim();
     if (!texte) return { error: "Ce reel n'a pas de texte." };
     maximum = Math.max(1, Math.min(Number(maximum) || 3, 3));
-    const pool = await this.poolBanque(telegramId, new Set(), 30);
+    // Les visuels déjà placés dans le reel ne sont jamais reproposés : sinon l'IA les choisissait,
+    // l'interface les écartait comme doublons, et plus rien n'était ni ajouté ni à générer.
+    // « Nouvelles images » : la banque est ignorée, seules des idées à générer reviennent.
+    const pool = opts.nouvelles ? [] : await this.poolBanque(telegramId, new Set(opts.exclure || []), 30);
     const parId = new Map(pool.map((p) => [p.id, p]));
-    const liste = pool.length ? pool.map((p) => `- ${p.id} : ${estClip(p.url) ? '[VIDEO CLIP] ' : ''}${p.desc}`).join('\n') : '(empty bank)';
+    const liste = opts.nouvelles
+      ? `(not used: the client wants ${maximum} NEW images; return exactly ${maximum} scene ideas, all different)`
+      : pool.length
+        ? pool.map((p) => `- ${p.id} : ${estClip(p.url) ? '[VIDEO CLIP] ' : ''}${p.desc}`).join('\n')
+        : '(empty bank)';
     const u = await this.marqueService.chargerMarque(telegramId);
     const langue = LANGUES[String(u.langue || 'fr').toLowerCase()] || 'French';
     const consigne = brief && brief.trim() ? `\n\nClient's instructions: ${brief.trim().slice(0, 800)}` : '';
@@ -451,7 +464,7 @@ export class ReelService {
     return {
       banque: choisis.map((p) => ({ ...(p.asset as Record<string, unknown>) })),
       a_generer: manquants.map((idee) => ({ idee })),
-      banque_vide: !pool.length,
+      banque_vide: !pool.length && !opts.nouvelles,
     };
   }
 

@@ -337,7 +337,10 @@ export class ReelController {
       throw new HttpException('Tu as beaucoup sollicité l’IA. Réessaie dans quelques minutes.', HttpStatus.TOO_MANY_REQUESTS);
     }
     this.rateLimitService.fail(cle, 20, 3600, 600);
-    const res = await this.reelService.proposerVisuels(telegramId, body.texte, body.brief, body.maximum);
+    const res = await this.reelService.proposerVisuels(telegramId, body.texte, body.brief, body.maximum, {
+      exclure: body.exclure,
+      nouvelles: body.nouvelles,
+    });
     if ('error' in res) throw new BadRequestException(res.error);
     return res;
   }
