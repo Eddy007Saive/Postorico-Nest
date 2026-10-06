@@ -692,7 +692,7 @@ export class LateService implements OnApplicationBootstrap {
           if (status.includes('publish')) {
             upd = { publish_status: 'publié', statut: 'Publie' };
           } else if (status.includes('schedul') || status.includes('pending') || status.includes('queue')) {
-            upd = { publish_status: 'programmé', statut: 'Planifie' };
+            upd = { publish_status: 'programmé', statut: 'Planifie', publish_error: null };
           } else if (status.includes('fail')) {
             upd = { publish_status: 'échec', publish_error: 'Échec côté Zernio (réconciliation)' };
           } else {
@@ -794,7 +794,7 @@ export class LateService implements OnApplicationBootstrap {
       notif = ['Échec de publication ❌', `« ${titreC} » n'a pas pu être publié sur ${reseau} : ${reason}`];
     } else if (event.includes('scheduled')) {
       // SEUL endroit qui pose statut=Planifie : la planification est confirmée PAR Zernio.
-      upd = { publish_status: 'programmé', statut: 'Planifie' };
+      upd = { publish_status: 'programmé', statut: 'Planifie', publish_error: null };
       notif = ['Publication programmée ⏱', `« ${titreC} » est programmé sur ${reseau}.`];
     } else if (event.includes('cancelled')) {
       upd = { publish_status: 'annulé' };
