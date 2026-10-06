@@ -1,4 +1,3 @@
-import * as Sentry from '@sentry/nestjs';
 import {
   CanActivate,
   ExecutionContext,
@@ -54,8 +53,6 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     (request as Request & { user: JwtPayload }).user = payload;
-    // Les erreurs de la requête sont rattachées au compte (id interne seulement, jamais l'email).
-    if (payload.telegram_id) Sentry.setUser({ id: payload.telegram_id });
     return true;
   }
 

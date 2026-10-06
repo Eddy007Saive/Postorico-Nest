@@ -1,5 +1,3 @@
-// Sentry d'abord : il doit instrumenter les modules avant leur chargement.
-import './instrument';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
