@@ -84,6 +84,17 @@ body{font-family:-apple-system,Segoe UI,sans-serif;background:#020617;color:#e8e
     const statutPub = contenu.publish_status;
     if (statutPub === 'publié') throw new HttpException('Ce contenu est déjà publié.', HttpStatus.CONFLICT);
 
+    // Déjà programmé chez Zernio à cette même date (cas de la validation : le serveur vient de
+    // programmer le contenu, puis l'interface appelle cette route) : rien à refaire. Recréer le
+    // post échouait en « doublon » chez Zernio et passait le contenu en échec à tort.
+    if (
+      contenu.late_post_id &&
+      (statutPub === 'programmé' || statutPub === 'envoi') &&
+      (await this.lateService.dejaProgrammeA(contenu.late_post_id, contenu.date_publication))
+    ) {
+      return { publish_status: statutPub, late_post_id: contenu.late_post_id, deja: true };
+    }
+
     // Re-programmation (ex. changement de date) : on annule l'ancien post Late puis on recrée.
     if (contenu.late_post_id && (statutPub === 'programmé' || statutPub === 'envoi')) {
       try {

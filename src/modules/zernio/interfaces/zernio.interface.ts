@@ -22,6 +22,7 @@ export interface ZernioCreatePostPayload {
 export interface ZernioPost {
   id?: string;
   status?: string;
+  scheduledFor?: string;
   platforms?: Array<{
     platform?: string;
     publishedUrl?: string;

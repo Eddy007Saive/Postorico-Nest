@@ -572,6 +572,26 @@ export class LateService implements OnApplicationBootstrap {
     return n;
   }
 
+  /** Vrai si ce post Zernio est encore programmé (ou en cours) à cette date, à la minute près.
+   * Sert à ne pas recréer un post déjà en place : la validation programme déjà le contenu côté
+   * serveur, et un second envoi du même texte est refusé par Zernio comme doublon (le contenu
+   * passait alors en « échec » alors que le post restait bien programmé). En cas de doute
+   * (erreur de lecture, date absente), renvoie false : le comportement d'avant s'applique. */
+  async dejaProgrammeA(latePostId: string, date: Date | string | null | undefined): Promise<boolean> {
+    if (!date || !this.zernio.isConfigured) return false;
+    try {
+      const p = await this.zernio.getPost(latePostId);
+      const status = (p.post?.status || '').toLowerCase();
+      if (!['schedul', 'pending', 'queue', 'publishing'].some((s) => status.includes(s))) return false;
+      const prevu = Date.parse(p.post?.scheduledFor || '');
+      const voulu = new Date(date).getTime();
+      return Number.isFinite(prevu) && Number.isFinite(voulu) && Math.abs(prevu - voulu) < 60_000;
+    } catch (e) {
+      this.logger.warn(`dejaProgrammeA ${latePostId}: ${e instanceof Error ? e.message : e}`);
+      return false;
+    }
+  }
+
   /** Supprime un post dans Zernio — annulation d'envoi ou suppression. */
   async cancelPost(latePostId: string): Promise<{ ok: boolean; error?: string }> {
     if (!this.zernio.isConfigured) return { ok: false, error: 'Clé Late non configurée' };
