@@ -606,6 +606,35 @@ model resiliations {
   @@index([raison, created_at(sort: Desc)], map: "resiliations_raison_idx")
 }
 
+/// Rico Coach, brique 1 : statistiques agrégées par client, mois (1er du mois), réseau et
+/// format ('tous' = toutes publications du réseau, avec les abonnés). Historique conservé,
+/// contrairement à analytics_cache. Migration _design/migrations/stats_mensuelles.sql (2026-10-07).
+model stats_mensuelles {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  telegram_id     String   @db.Uuid
+  mois            DateTime @db.Date
+  reseau          String
+  format          String   @default("tous")
+  posts           Int      @default(0)
+  impressions     BigInt   @default(0)
+  portee          BigInt   @default(0)
+  vues            BigInt   @default(0)
+  likes           Int      @default(0)
+  commentaires    Int      @default(0)
+  partages        Int      @default(0)
+  enregistrements Int      @default(0)
+  clics           Int      @default(0)
+  taux_engagement Decimal? @db.Decimal(6, 2)
+  abonnes         Int?
+  abonnes_gagnes  Int?
+  details         Json     @default("{}")
+  source          String   @default("zernio")
+  calcule_le      DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([telegram_id, mois, reseau, format], map: "stats_mensuelles_unique")
+  @@index([telegram_id, mois(sort: Desc)], map: "stats_mensuelles_compte_mois")
+}
+
 model studio {
   id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   contenu_id       String?        @db.Uuid
