@@ -8,6 +8,7 @@ import { AccountsModule } from './modules/accounts/accounts.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { AffiliationModule } from './modules/affiliation/affiliation.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { WorkflowsModule } from './modules/workflows/workflows.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { BrouillonsModule } from './modules/brouillons/brouillons.module';
@@ -85,6 +86,7 @@ import { UsersModule } from './modules/users/users.module';
     NewsletterModule,
     OnboardingModule,
     SiteModule,
+    WorkflowsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

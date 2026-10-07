@@ -272,6 +272,51 @@ export class ZernioClientService {
     return this.request('GET', '/v1/accounts/follower-stats', { params: { profileId: params.profileId, fromDate: params.fromDate, toDate: params.toDate } });
   }
 
+  // ---------------------------------------------------------------------------
+  // Workflows (automatisations des messages privés et commentaires) — accès Inbox requis
+  // côté Zernio (403 sinon). Graphe = nodes[] + edges[] (voir docs.zernio.com/workflows).
+  // ---------------------------------------------------------------------------
+
+  async listWorkflows(profileId: string): Promise<{ workflows?: Record<string, unknown>[] }> {
+    return this.request('GET', '/v1/workflows', { params: { profileId, limit: 100 } });
+  }
+
+  async getWorkflow(workflowId: string): Promise<{ workflow?: Record<string, unknown> }> {
+    return this.request('GET', `/v1/workflows/${encodeURIComponent(workflowId)}`);
+  }
+
+  async createWorkflow(body: Record<string, unknown>): Promise<{ workflow?: Record<string, unknown> }> {
+    return this.request('POST', '/v1/workflows', { body });
+  }
+
+  async updateWorkflow(workflowId: string, body: Record<string, unknown>): Promise<{ workflow?: Record<string, unknown> }> {
+    return this.request('PATCH', `/v1/workflows/${encodeURIComponent(workflowId)}`, { body });
+  }
+
+  async deleteWorkflow(workflowId: string): Promise<Record<string, unknown>> {
+    return this.request('DELETE', `/v1/workflows/${encodeURIComponent(workflowId)}`);
+  }
+
+  async activateWorkflow(workflowId: string): Promise<{ workflow?: Record<string, unknown> }> {
+    return this.request('POST', `/v1/workflows/${encodeURIComponent(workflowId)}/activate`);
+  }
+
+  async pauseWorkflow(workflowId: string): Promise<{ workflow?: Record<string, unknown> }> {
+    return this.request('POST', `/v1/workflows/${encodeURIComponent(workflowId)}/pause`);
+  }
+
+  /** Posts d'un compte. `source: 'external'` = posts publiés hors Zernio, synchronisés
+   * depuis la plateforme (~12 mois) ; `'zernio'` (défaut) = posts publiés via Zernio. */
+  async listPosts(params: { accountId: string; source?: 'zernio' | 'external'; status?: string; limit?: number }): Promise<{ posts?: Record<string, unknown>[] }> {
+    return this.request('GET', '/v1/posts', {
+      params: { accountId: params.accountId, source: params.source, status: params.status, limit: params.limit ?? 30, sortBy: 'newest' },
+    });
+  }
+
+  async listWorkflowExecutions(workflowId: string, limit = 20): Promise<Record<string, unknown>> {
+    return this.request('GET', `/v1/workflows/${encodeURIComponent(workflowId)}/executions`, { params: { limit } });
+  }
+
   /** Engagement moyen selon le nombre de posts par semaine, par réseau. */
   async getPostingFrequency(profileId: string): Promise<{ frequency?: Array<Record<string, unknown>> }> {
     return this.request('GET', '/v1/analytics/posting-frequency', { params: { profileId } });
