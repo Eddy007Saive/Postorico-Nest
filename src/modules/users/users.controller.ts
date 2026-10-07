@@ -1,5 +1,4 @@
 import {
-  BadGatewayException,
   BadRequestException,
   Body,
   Controller,
@@ -14,6 +13,7 @@ import {
   Put,
   Query,
   Req,
+  ServiceUnavailableException,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -34,7 +34,6 @@ import { ScheduleUpdateDto } from './dto/schedule-update.dto';
 import { SocialConnectDto } from './dto/social-connect.dto';
 import { UserUpdateDto } from './dto/user-update.dto';
 import { ScheduleService } from './schedule.service';
-import { SiteIllisible, SiteService } from '../site/site.service';
 import { ImageInvalideError, RoleInvalideError, UsersService } from './users.service';
 
 type AuthedRequest = Request & { user: JwtPayload };
@@ -61,7 +60,6 @@ export class UsersController {
     private readonly authService: AuthService,
     private readonly quotaService: QuotaService,
     private readonly impayeService: ImpayeService,
-    private readonly siteService: SiteService,
   ) {}
 
   @Get('me')
@@ -126,19 +124,12 @@ export class UsersController {
     }
   }
 
-  /** Reprend le logo repéré sur le site du client et le pousse sur Cloudinary. On ne garde
-   * jamais l'adresse du site telle quelle : elle peut disparaître ou bloquer les appels d'un
-   * autre domaine, et le logo sert dans chaque carrousel. Même chemin qu'un envoi manuel. */
+  /** TODO (site_service pas porté) : reprendrait le logo repéré sur le site du client
+   * (Playwright) et le pousserait sur Cloudinary. Domaine séparé (analyse de site web),
+   * pas encore porté — voir aussi `/me/analyser-site`. */
   @Post('me/logo-depuis-site')
-  async logoDepuisSite(@Body() body: { url?: string }, @Req() req: AuthedRequest) {
-    try {
-      const { donnees, type } = await this.siteService.telechargerLogo(body?.url || '');
-      return { logo_url: await this.usersService.uploadLogo(req.user.telegram_id, donnees, type) };
-    } catch (e) {
-      if (e instanceof SiteIllisible) throw new BadRequestException(e.message);
-      this.logger.error(`logo depuis site: ${e instanceof Error ? e.message : e}`);
-      throw new BadGatewayException('Impossible de récupérer ce logo.');
-    }
+  logoDepuisSite() {
+    throw new ServiceUnavailableException("Récupération du logo depuis le site indisponible pour le moment (fonctionnalité en cours de portage).");
   }
 
   /** Upload le logo de marque (image) -> Cloudinary -> marques.logo_url. */
@@ -296,17 +287,11 @@ export class UsersController {
     }
   }
 
-  /** Pré-remplit la fiche de marque à partir du site web du client. Rien n'est enregistré :
-   * une marque déduite d'un site reste une hypothèse, relue avant d'être appliquée. */
+  /** TODO (site_service pas porté) : pré-remplirait la fiche de marque à partir du site web
+   * du client (Playwright). Domaine séparé, pas encore porté. */
   @Post('me/analyser-site')
-  async analyserSite(@Body() body: { url?: string; langue?: string }) {
-    try {
-      return await this.siteService.analyser(body?.url || '', body?.langue || 'fr');
-    } catch (e) {
-      if (e instanceof SiteIllisible) throw new BadRequestException(e.message);
-      this.logger.error(`analyse de site: ${e instanceof Error ? e.message : e}`);
-      throw new BadGatewayException('Analyse du site impossible pour le moment.');
-    }
+  analyserSite() {
+    throw new ServiceUnavailableException("Analyse du site indisponible pour le moment (fonctionnalité en cours de portage).");
   }
 
   /** Reconnexion guidée après une suspension pour impayé — les réseaux que le compte

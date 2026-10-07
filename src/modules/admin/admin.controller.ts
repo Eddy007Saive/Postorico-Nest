@@ -1,5 +1,4 @@
 import {
-  BadGatewayException,
   BadRequestException,
   Body,
   Controller,
@@ -16,6 +15,7 @@ import {
   Post,
   Query,
   Req,
+  ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
@@ -23,7 +23,6 @@ import { EXCLUSIFS, TEMPLATES } from '../carrousel/templates/build-html';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { AuthService, JwtPayload } from '../auth/auth.service';
 import { PromoService } from '../promo/promo.service';
-import { SiteIllisible, SiteService } from '../site/site.service';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { BillingService } from '../billing/billing.service';
 import { CarrouselCustomService, PLACEHOLDERS } from '../carrousel/carrousel-custom.service';
@@ -65,7 +64,6 @@ export class AdminController {
     private readonly analyticsService: AnalyticsService,
     private readonly promoService: PromoService,
     private readonly prisma: PrismaService,
-    private readonly siteService: SiteService,
   ) {}
 
   @Get('users')
@@ -375,17 +373,9 @@ export class AdminController {
 
   /** TODO (site_service pas porté) : lirait le site d'un prospect/client et proposerait sa
    * fiche de marque. Domaine séparé (analyse de site web), pas encore porté. */
-  /** Lit le site d'un prospect ou d'un client et propose sa fiche de marque. Rien n'est
-   * écrit : c'est `appliquer-marque` qui pose la fiche relue sur un compte. */
   @Post('analyser-site')
-  async analyserSiteAdmin(@Body() body: { url?: string; langue?: string }) {
-    try {
-      return await this.siteService.analyser(body?.url || '', body?.langue || 'fr');
-    } catch (e) {
-      if (e instanceof SiteIllisible) throw new BadRequestException(e.message);
-      this.logger.error(`analyse de site (admin): ${e instanceof Error ? e.message : e}`);
-      throw new BadGatewayException('Analyse du site impossible pour le moment.');
-    }
+  analyserSiteAdmin() {
+    throw new ServiceUnavailableException('Analyse du site indisponible pour le moment (fonctionnalité en cours de portage).');
   }
 
   /** Pose sur le compte du client la fiche déduite de son site. Le logo suit un autre
@@ -397,13 +387,7 @@ export class AdminController {
 
     let logo: string | null = null;
     if (body.logo_url) {
-      // Le logo est recopié sur notre Cloudinary : on ne pointe jamais vers le site du client.
-      try {
-        const { donnees, type } = await this.siteService.telechargerLogo(body.logo_url);
-        logo = await this.usersService.uploadLogo(id, donnees, type);
-      } catch (e) {
-        this.logger.warn(`logo depuis site (admin) pour ${id}: ${e instanceof Error ? e.message : e}`);
-      }
+      this.logger.warn(`appliquer-marque: reprise du logo depuis le site non portée (site_service TODO) pour ${id}`);
     }
     this.logger.log(`AUDIT fiche de marque posée sur ${id} par admin ${req.user.telegram_id} — ${Object.keys(ecrits).length} champ(s)`);
     return { champs: Object.keys(ecrits), logo_url: logo };

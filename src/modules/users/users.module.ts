@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { SiteModule } from '../site/site.module';
 import { PrismaModule } from '../../config/prisma.module';
 import { AuthModule } from '../auth/auth.module';
 import { CarrouselModule } from '../carrousel/carrousel.module';
@@ -14,7 +13,6 @@ import { UsersService } from './users.service';
 
 @Module({
   imports: [
-    SiteModule,
     PrismaModule,
     AuthModule,
     MarqueModule,
