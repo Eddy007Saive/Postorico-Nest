@@ -322,6 +322,13 @@ export class StatsCollecteService implements OnApplicationBootstrap {
     const u = await this.prisma.users.findUnique({ where: { telegram_id: telegramId }, select: { late_profile_id: true } });
     const profileId = u?.late_profile_id;
     if (!profileId) return { ok: true, telegram_id: telegramId, ignore: 'aucun_profil_zernio' };
+    // Profil Zernio partagé par plusieurs comptes : les posts passeraient d'un compte à
+    // l'autre à chaque collecte (zernio_id est unique). On ne collecte pas, on le signale.
+    const partage = await this.prisma.users.count({ where: { late_profile_id: profileId, telegram_id: { not: telegramId } } });
+    if (partage > 0) {
+      this.logger.warn(`collecte ${telegramId} : profil Zernio ${profileId} partagé avec ${partage} autre(s) compte(s), ignoré`);
+      return { ok: true, telegram_id: telegramId, ignore: 'profil_zernio_partage' };
+    }
 
     const moisCourant = moisParis(maintenant);
     const premierMois = decalerMois(moisCourant, -(nbMois - 1));
@@ -422,7 +429,7 @@ export class StatsCollecteService implements OnApplicationBootstrap {
     };
     if (!ecrire) return { ...base, apercu: { posts, mois } };
 
-    // 3. Écriture (upserts uniquement), par paquets de 10 en parallèle
+    // 3. Écriture (upserts uniquement), par paquets de 5 en parallèle (au-delà, le pool de connexions sature)
     const ecritures: Array<() => Promise<unknown>> = [
       ...posts.map((p) => () => {
         const data = { ...p, contenu_id: contenuDe(p), telegram_id: telegramId, details: p.details as never, updated_at: new Date() };
@@ -438,7 +445,7 @@ export class StatsCollecteService implements OnApplicationBootstrap {
         });
       }),
     ];
-    for (let i = 0; i < ecritures.length; i += 10) await Promise.all(ecritures.slice(i, i + 10).map((f) => f()));
+    for (let i = 0; i < ecritures.length; i += 5) await Promise.all(ecritures.slice(i, i + 5).map((f) => f()));
     this.logger.log(`stats mensuelles ${telegramId} : ${posts.length} posts, ${mois.length} lignes (${premierMois} → ${toDate})`);
     return base;
   }

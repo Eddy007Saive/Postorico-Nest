@@ -113,7 +113,7 @@ describe('stats-collecte : fonctions de calcul', () => {
 describe('StatsCollecteService.collecterClient', () => {
   function make() {
     const prisma = {
-      users: { findUnique: jest.fn().mockResolvedValue({ late_profile_id: 'prof1' }) },
+      users: { findUnique: jest.fn().mockResolvedValue({ late_profile_id: 'prof1' }), count: jest.fn().mockResolvedValue(0) },
       contenu: { findMany: jest.fn().mockResolvedValue([{ id: 'c-ig', late_post_id: 'lp1', reseau_cible: 'Instagram' }]) },
       analytics_performance: { upsert: jest.fn().mockResolvedValue({}) },
       stats_mensuelles: { upsert: jest.fn().mockResolvedValue({}) },
@@ -155,6 +155,14 @@ describe('StatsCollecteService.collecterClient', () => {
     prisma.users.findUnique.mockResolvedValue({ late_profile_id: null });
     expect(await service.collecterClient('u1')).toEqual({ ok: true, telegram_id: 'u1', ignore: 'aucun_profil_zernio' });
     expect(zernio.getAnalyticsPage).not.toHaveBeenCalled();
+  });
+
+  it('profil Zernio partagé avec un autre compte : ignoré, rien écrit', async () => {
+    const { service, prisma, zernio } = make();
+    prisma.users.count.mockResolvedValue(1);
+    expect(await service.collecterClient('u1', { maintenant })).toEqual({ ok: true, telegram_id: 'u1', ignore: 'profil_zernio_partage' });
+    expect(zernio.getAnalyticsPage).not.toHaveBeenCalled();
+    expect(prisma.analytics_performance.upsert).not.toHaveBeenCalled();
   });
 
   it("nbMois est borné à 12 (Zernio refuse plus d'un an)", async () => {
