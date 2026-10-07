@@ -225,6 +225,40 @@ export class ZernioClientService {
     return this.request('GET', '/v1/analytics/best-time', { params: { profileId } });
   }
 
+  // --- Rico Coach : collecte de l'historique (fenêtre max. 1 an par appel côté Zernio) ---
+
+  /** Une page de posts avec leurs stats (une entrée par post ET par réseau). */
+  async getAnalyticsPage(params: { profileId: string; fromDate: string; toDate: string; page: number; limit?: number }): Promise<{
+    posts?: Record<string, unknown>[];
+    pagination?: { page?: number; pages?: number; total?: number };
+  }> {
+    return this.request('GET', '/v1/analytics', {
+      params: { profileId: params.profileId, fromDate: params.fromDate, toDate: params.toDate, page: params.page, limit: params.limit ?? 100 },
+    });
+  }
+
+  /** Abonnés par compte : un point par mois (valeur au 1er du mois) + valeur actuelle. */
+  async getFollowerStatsMensuel(params: { profileId: string; fromDate: string; toDate: string }): Promise<{
+    accounts?: Array<{ _id: string; platform?: string; currentFollowers?: number | null }>;
+    stats?: Record<string, Array<{ date: string; followers: number }>>;
+  }> {
+    return this.request('GET', '/v1/accounts/follower-stats', { params: { ...params, granularity: 'monthly' } });
+  }
+
+  /** Fiche Google : métriques quotidiennes (vues, appels, itinéraires, clics site…). */
+  async getGoogleBusinessPerformance(params: { accountId: string; startDate: string; endDate: string }): Promise<{
+    metrics?: Record<string, { total?: number; values?: Array<{ date: string; value: number }> }>;
+  }> {
+    return this.request('GET', '/v1/analytics/googlebusiness/performance', { params });
+  }
+
+  /** Fiche Google : mots-clés de recherche d'un mois (sous un seuil, Google les masque). */
+  async getGoogleBusinessKeywords(params: { accountId: string; startMonth: string; endMonth: string }): Promise<{
+    keywords?: Array<{ keyword: string; impressions: number }>;
+  }> {
+    return this.request('GET', '/v1/analytics/googlebusiness/search-keywords', { params });
+  }
+
   /** Totaux de la période + ceux de la période précédente (`compare=previous_period`),
    * abonnés gagnés par compte, série quotidienne. */
   async getDashboard(params: { profileId: string; platform?: string; fromDate: string; toDate: string }): Promise<Record<string, unknown>> {

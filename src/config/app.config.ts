@@ -68,6 +68,8 @@ export default registerAs('app', () => {
   posthogApiKey: process.env.POSTHOG_API_KEY || '',
   // Secours quotidien : le rafraîchissement normal vient du webhook analytics.synced de Zernio
   analyticsCronHeures: parseInt(process.env.ANALYTICS_CRON_HOURS || '24', 10),
+  // Rico Coach : collecte des stats mensuelles (mois en cours + précédent). 0 = désactivée.
+  statsCollecteHeures: parseInt(process.env.STATS_COLLECTE_HOURS || '0', 10),
   // Rendu Remotion (reels, stories animées) — voir modules/remotion/remotion.service.ts.
   // REMOTION_RENDER_URL configuré : appelle le service Node persistant (backend/remotion/server,
   // bundle une seule fois) au lieu de `npx remotion render` en subprocess (2-3x plus rapide).

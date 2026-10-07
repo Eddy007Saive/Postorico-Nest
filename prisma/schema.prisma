@@ -123,6 +123,7 @@ model analytics_cache {
 model analytics_performance {
   id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   contenu_id         String?   @db.Uuid
+  zernio_id          String?   @unique(map: "analytics_performance_zernio_id")
   late_post_id       String?
   plateforme_post_id String?
   compte_id          String?
@@ -149,7 +150,7 @@ model analytics_performance {
   contenu            contenu?  @relation(fields: [contenu_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   users              users?    @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
 
-  @@unique([late_post_id, reseau], map: "analytics_performance_post_reseau")
+  @@index([late_post_id], map: "analytics_performance_late_post")
   @@index([telegram_id, publie_le(sort: Desc)], map: "analytics_performance_compte_date")
 }
 
