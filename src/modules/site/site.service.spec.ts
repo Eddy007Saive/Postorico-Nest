@@ -1,5 +1,5 @@
 import { lookup as dnsLookup } from 'dns/promises';
-import { normaliserUrl, SiteIllisible } from './site.service';
+import { normaliserUrl, SiteIllisible, SiteService } from './site.service';
 
 jest.mock('dns/promises');
 
@@ -58,5 +58,28 @@ describe('normaliserUrl (anti-SSRF)', () => {
     await expect(normaliserUrl('https://nexiste-pas.exemple')).rejects.toThrow(
       /n'existe pas/,
     );
+  });
+});
+
+describe('SiteService.telechargerLogo (logo reçu en data:)', () => {
+  const service = new SiteService({} as never, {} as never);
+  const PNG_1PX = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+  it('accepte une image PNG encodée', async () => {
+    const { donnees, type } = await service.telechargerLogo(`data:image/png;base64,${PNG_1PX}`);
+    expect(type).toBe('image/png');
+    expect(donnees.length).toBeGreaterThan(0);
+  });
+
+  it("refuse ce qui n'est pas une image", async () => {
+    await expect(service.telechargerLogo('data:text/html;base64,PGgxPg==')).rejects.toThrow(SiteIllisible);
+  });
+
+  it('refuse un contenu non base64', async () => {
+    await expect(service.telechargerLogo('data:image/png;base64,<script>')).rejects.toThrow(SiteIllisible);
+  });
+
+  it('refuse une adresse vide', async () => {
+    await expect(service.telechargerLogo('')).rejects.toThrow(SiteIllisible);
   });
 });

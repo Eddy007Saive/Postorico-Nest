@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { SiteModule } from '../site/site.module';
 import { PrismaModule } from '../../config/prisma.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
 import { AuthModule } from '../auth/auth.module';
@@ -15,6 +16,7 @@ import { AdminService } from './admin.service';
 
 @Module({
   imports: [
+    SiteModule,
     PrismaModule,
     AuthModule,
     BillingModule,
