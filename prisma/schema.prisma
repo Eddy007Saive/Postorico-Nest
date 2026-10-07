@@ -117,23 +117,41 @@ model analytics_cache {
   users       users     @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
 }
 
+/// Rico Coach : stats PAR POST et par réseau, collectées depuis Zernio (/v1/analytics) ;
+/// totaux du mois dans stats_mensuelles. Migration _design/migrations/analytics_performance_par_post.sql.
+/// taux_engagement est encore une colonne générée en base tant que l'étape 2 de la migration
+/// n'est pas appliquée : ne pas l'écrire avant.
 model analytics_performance {
-  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  contenu_id        String?   @db.Uuid
-  vues              Decimal?  @default(0) @db.Decimal
-  likes             Decimal?  @default(0) @db.Decimal
-  commentaires      Int?      @default(0)
-  partages          Decimal?  @default(0) @db.Decimal
-  post_performant   Boolean?  @default(false)
-  date_publication  String?
-  semaine           String?
-  taux_engagement   Decimal?  @default(dbgenerated("\nCASE\n    WHEN (vues > (0)::numeric) THEN round(((((likes + (commentaires)::numeric) + partages) / vues) * (100)::numeric), 2)\n    ELSE (0)::numeric\nEND")) @db.Decimal
-  performance_score Decimal?  @default(dbgenerated("\nCASE\n    WHEN (vues > (0)::numeric) THEN round((((((((likes + (commentaires)::numeric) + partages) / vues) * (100)::numeric) * 0.4) + ((((commentaires)::numeric / vues) * (100)::numeric) * 0.3)) + (((partages / vues) * (100)::numeric) * 0.2)), 1)\n    ELSE (0)::numeric\nEND")) @db.Decimal
-  created_at        DateTime? @default(now()) @db.Timestamptz(6)
-  updated_at        DateTime? @default(now()) @db.Timestamptz(6)
-  telegram_id       String?   @db.Uuid
-  contenu           contenu?  @relation(fields: [contenu_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  users             users?    @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contenu_id         String?   @db.Uuid
+  late_post_id       String?
+  plateforme_post_id String?
+  compte_id          String?
+  reseau             String?
+  format             String?
+  publie_le          DateTime? @db.Timestamptz(6)
+  impressions        Int       @default(0)
+  portee             Int       @default(0)
+  vues               Decimal?  @default(0) @db.Decimal
+  likes              Decimal?  @default(0) @db.Decimal
+  commentaires       Int?      @default(0)
+  partages           Decimal?  @default(0) @db.Decimal
+  enregistrements    Int       @default(0)
+  clics              Int       @default(0)
+  taux_engagement    Decimal?  @db.Decimal(6, 2)
+  post_performant    Boolean?  @default(false)
+  url                String?
+  externe            Boolean   @default(false)
+  details            Json      @default("{}")
+  maj_zernio         DateTime? @db.Timestamptz(6)
+  created_at         DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime? @default(now()) @db.Timestamptz(6)
+  telegram_id        String?   @db.Uuid
+  contenu            contenu?  @relation(fields: [contenu_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users              users?    @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([late_post_id, reseau], map: "analytics_performance_post_reseau")
+  @@index([telegram_id, publie_le(sort: Desc)], map: "analytics_performance_compte_date")
 }
 
 model appareils_confiance {
@@ -616,9 +634,9 @@ model stats_mensuelles {
   reseau          String
   format          String   @default("tous")
   posts           Int      @default(0)
-  impressions     BigInt   @default(0)
-  portee          BigInt   @default(0)
-  vues            BigInt   @default(0)
+  impressions     Int      @default(0)
+  portee          Int      @default(0)
+  vues            Int      @default(0)
   likes           Int      @default(0)
   commentaires    Int      @default(0)
   partages        Int      @default(0)
