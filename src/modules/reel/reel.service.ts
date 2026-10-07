@@ -609,6 +609,9 @@ export class ReelService {
         accent: u.couleur_accent || '#3AFFA3',
         fond: '#0a0a12',
         logo: u.logo_url || null,
+        // Polices de la charte (Paramètres > Style) : la composition les charge, Sora / Inter sinon.
+        police: (u.typo_primaire as string) || null,
+        policeTexte: (u.typo_secondaire as string) || null,
       },
       hook: script.hook,
       points: script.points,
