@@ -19,6 +19,80 @@ export interface AnalyticsResult {
   daily?: unknown[];
   platformBreakdown?: unknown[];
   bestSlots?: unknown[];
+  /** Totaux Zernio de la période et de la période précédente (même durée, juste avant). */
+  comparaison?: { totals: Record<string, number>; previousTotals: Record<string, number> } | null;
+  /** Abonnés : total actuel, gagnés sur la période, gagnés sur la période précédente. */
+  abonnes?: { current: number; gained: number; previousGained: number | null } | null;
+  /** Historique quotidien des abonnés, un tracé par compte connecté. */
+  abonnesSerie?: AbonnesSerie[];
+  /** Meilleurs créneaux, convertis dans le fuseau du client (Zernio les donne en UTC). */
+  creneaux?: Creneau[];
+  /** Engagement moyen selon la cadence (posts par semaine), par réseau. */
+  frequence?: Frequence[];
+  /** Série quotidienne du tableau de bord Zernio : {date, impressions, reach, engagement, views, followersGained}. */
+  serie?: Array<Record<string, unknown>>;
+}
+
+export interface Creneau { jour: number; heure: number; engagement: number; posts: number }
+export interface AbonnesSerie { platform: string; username: string; current: number; gained: number; points: Array<{ date: string; followers: number }> }
+export interface Frequence { platform: string; postsParSemaine: number; tauxEngagement: number; semaines: number }
+
+/** Zernio numérote les jours 0 = lundi … 6 = dimanche et donne l'heure en UTC. On
+ * convertit chaque créneau dans le fuseau du client : le même lundi 8 h UTC devient
+ * lundi 10 h à Paris en été. La date de référence est un lundi quelconque. */
+export function creneauxLocaux(slots: unknown[], timeZone: string): Creneau[] {
+  const JOURS: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+  let fmt: Intl.DateTimeFormat;
+  try {
+    fmt = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short', hour: 'numeric', hourCycle: 'h23' });
+  } catch {
+    fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Paris', weekday: 'short', hour: 'numeric', hourCycle: 'h23' });
+  }
+  const out: Creneau[] = [];
+  for (const raw of slots || []) {
+    const sl = raw as Record<string, unknown>;
+    const jour = Number(sl.day_of_week);
+    const heure = Number(sl.hour);
+    if (!Number.isFinite(jour) || !Number.isFinite(heure)) continue;
+    const ref = new Date(Date.UTC(2026, 0, 5 + jour, heure)); // 5 janvier 2026 = un lundi
+    const parts = Object.fromEntries(fmt.formatToParts(ref).map((x) => [x.type, x.value]));
+    out.push({
+      jour: JOURS[parts.weekday] ?? jour,
+      heure: Number(parts.hour) % 24,
+      engagement: Math.round(Number(sl.avg_engagement || 0) * 10) / 10,
+      posts: Number(sl.post_count || 0),
+    });
+  }
+  return out.sort((a, b) => b.engagement - a.engagement);
+}
+
+/** Une série par compte : `stats` de Zernio est indexé par id de compte. */
+export function seriesAbonnes(
+  rep: { accounts?: Record<string, unknown>[]; stats?: Record<string, Array<{ date: string; followers: number }>> },
+  platform?: string,
+): AbonnesSerie[] {
+  const stats = rep.stats || {};
+  return (rep.accounts || [])
+    .filter((a) => !platform || String(a.platform || '').toLowerCase() === platform)
+    .map((a) => ({
+      platform: String(a.platform || ''),
+      username: String(a.displayName || a.username || ''),
+      current: Number(a.currentFollowers || 0),
+      gained: Number(a.growth || 0),
+      points: (stats[String(a._id)] || []).map((pt) => ({ date: pt.date, followers: Number(pt.followers || 0) })),
+    }))
+    .filter((sr) => sr.points.length > 0);
+}
+
+export function frequences(rep: { frequency?: Array<Record<string, unknown>> }, platform?: string): Frequence[] {
+  return (rep.frequency || [])
+    .filter((f) => !platform || String(f.platform || '').toLowerCase() === platform)
+    .map((f) => ({
+      platform: String(f.platform || ''),
+      postsParSemaine: Number(f.posts_per_week || 0),
+      tauxEngagement: Math.round(Number(f.avg_engagement_rate || 0) * 10) / 10,
+      semaines: Number(f.weeks_count || 0),
+    }));
 }
 
 @Injectable()
@@ -51,7 +125,7 @@ export class AnalyticsService implements OnApplicationBootstrap {
   /** Performances réelles via l'API analytics de Late (add-on requis -> 402/403). */
   async performance(telegramId: string, days = 30, platform?: string | null): Promise<AnalyticsResult> {
     if (!this.lateApiKey) return { ok: false, error: 'Analytics indisponible (non configuré).' };
-    const u = await this.prisma.users.findUnique({ where: { telegram_id: telegramId }, select: { late_profile_id: true } });
+    const u = await this.prisma.users.findUnique({ where: { telegram_id: telegramId }, select: { late_profile_id: true, timezone: true } });
     const profile = u?.late_profile_id;
     if (!profile) return { ok: true, connected: false };
 
@@ -63,6 +137,9 @@ export class AnalyticsService implements OnApplicationBootstrap {
     let an: { posts?: Array<Record<string, unknown>>; overview?: Record<string, unknown> };
     let daily: { dailyData?: unknown[]; platformBreakdown?: unknown[] } = {};
     let best: { slots?: unknown[] } = {};
+    // Appels complémentaires (comparaison, abonnés, cadence) : chacun peut manquer sans
+    // priver le client du reste — le graphique correspondant ne s'affiche simplement pas.
+    let extra: PromiseSettledResult<unknown>[] = [];
     try {
       an = await this.zernio.getAnalytics({ profileId: profile, platform: plateforme, fromDate: fr, toDate: to, limit: 100 });
       try {
@@ -75,6 +152,11 @@ export class AnalyticsService implements OnApplicationBootstrap {
       } catch {
         best = {};
       }
+      extra = await Promise.allSettled([
+        this.zernio.getDashboard({ profileId: profile, platform: plateforme, fromDate: fr, toDate: to }),
+        this.zernio.getFollowerStats({ profileId: profile, fromDate: fr, toDate: to }),
+        this.zernio.getPostingFrequency(profile),
+      ]);
     } catch (e) {
       if (e instanceof ZernioError && e.statusCode && [402, 403].includes(e.statusCode)) return { ok: true, addon_required: true };
       this.logger.error(`analytics error: ${e instanceof Error ? e.message : e}`);
@@ -101,10 +183,35 @@ export class AnalyticsService implements OnApplicationBootstrap {
     posts.sort((x, y) => ((y.metrics as Record<string, number>).impressions || 0) - ((x.metrics as Record<string, number>).impressions || 0));
     const engagements = agg.likes + agg.comments + agg.shares + agg.saves;
     const engRate = agg.impressions ? Math.round((engagements / agg.impressions) * 1000) / 10 : 0;
+    const [dashR, abonnesR, freqR] = extra;
+    const dash = dashR?.status === 'fulfilled' ? (dashR.value as Record<string, unknown>) : null;
+    const totals = dash?.totals as Record<string, number> | undefined;
+    const previousTotals = dash?.previousTotals as Record<string, number> | undefined;
+    const followers = dash?.followers as { current?: number; gained?: number; byAccount?: Array<Record<string, unknown>> } | undefined;
+    const prevFollowers = dash?.previousFollowers as { gained?: number; byAccount?: Array<Record<string, unknown>> } | undefined;
+    // Filtre réseau : les abonnés du tableau de bord Zernio sont par compte.
+    const parReseau = (fl?: { byAccount?: Array<Record<string, unknown>> }) =>
+      (fl?.byAccount || []).filter((a) => String(a.platform || '').toLowerCase() === plateforme);
+    const abonnes = followers
+      ? plateforme
+        ? {
+            current: parReseau(followers).reduce((t, a) => t + Number(a.current || 0), 0),
+            gained: parReseau(followers).reduce((t, a) => t + Number(a.gained || 0), 0),
+            previousGained: prevFollowers ? parReseau(prevFollowers).reduce((t, a) => t + Number(a.gained || 0), 0) : null,
+          }
+        : { current: Number(followers.current || 0), gained: Number(followers.gained || 0), previousGained: prevFollowers ? Number(prevFollowers.gained || 0) : null }
+      : null;
+
     return {
       ok: true,
       connected: true,
       kpis: { ...agg, engagements, engagementRate: engRate },
+      comparaison: totals && previousTotals ? { totals, previousTotals } : null,
+      serie: (dash?.daily as Array<Record<string, unknown>>) || [],
+      abonnes,
+      abonnesSerie: abonnesR?.status === 'fulfilled' ? seriesAbonnes(abonnesR.value as never, plateforme) : [],
+      creneaux: creneauxLocaux(best.slots || [], u?.timezone || 'Europe/Paris'),
+      frequence: freqR?.status === 'fulfilled' ? frequences(freqR.value as never, plateforme) : [],
       overview: an.overview || {},
       posts,
       daily: daily.dailyData || [],

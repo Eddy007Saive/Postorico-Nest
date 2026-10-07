@@ -224,4 +224,22 @@ export class ZernioClientService {
   async getBestTimeToPost(profileId: string): Promise<{ slots?: unknown[] }> {
     return this.request('GET', '/v1/analytics/best-time', { params: { profileId } });
   }
+
+  /** Totaux de la période + ceux de la période précédente (`compare=previous_period`),
+   * abonnés gagnés par compte, série quotidienne. */
+  async getDashboard(params: { profileId: string; platform?: string; fromDate: string; toDate: string }): Promise<Record<string, unknown>> {
+    return this.request('GET', '/v1/analytics/dashboard', {
+      params: { profileId: params.profileId, platform: params.platform, fromDate: params.fromDate, toDate: params.toDate, compare: 'previous_period' },
+    });
+  }
+
+  /** Historique quotidien des abonnés : `stats` = { accountId: [{date, followers}] }. */
+  async getFollowerStats(params: { profileId: string; fromDate: string; toDate: string }): Promise<{ accounts?: Record<string, unknown>[]; stats?: Record<string, Array<{ date: string; followers: number }>> }> {
+    return this.request('GET', '/v1/accounts/follower-stats', { params: { profileId: params.profileId, fromDate: params.fromDate, toDate: params.toDate } });
+  }
+
+  /** Engagement moyen selon le nombre de posts par semaine, par réseau. */
+  async getPostingFrequency(profileId: string): Promise<{ frequency?: Array<Record<string, unknown>> }> {
+    return this.request('GET', '/v1/analytics/posting-frequency', { params: { profileId } });
+  }
 }

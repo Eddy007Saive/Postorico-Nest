@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { AnalyticsService } from './analytics.service';
+import { AnalyticsService, creneauxLocaux, frequences, seriesAbonnes } from './analytics.service';
 
 // Couvre l'orchestration du cron (refreshAll) sans dépendre d'une vraie base ni de Late :
 // Prisma et le rafraîchissement par utilisateur sont simulés.
@@ -62,5 +62,45 @@ describe('AnalyticsService.refreshAll', () => {
     const res = await service.refreshAll();
     expect(res.ok).toBe(false);
     expect(res.error).toBe('db down');
+  });
+});
+describe('helpers du tableau de performance', () => {
+  it('convertit un créneau UTC dans le fuseau du client et trie par engagement', () => {
+    const c = creneauxLocaux(
+      [
+        { day_of_week: 2, hour: 7, avg_engagement: 3, post_count: 1 },
+        { day_of_week: 0, hour: 8, avg_engagement: 3.5714, post_count: 7 },
+        { day_of_week: 6, hour: 23, avg_engagement: 1, post_count: 2 },
+      ],
+      'Europe/Paris',
+    );
+    // Référence en janvier (heure d'hiver, UTC+1) : lundi 8 h UTC -> lundi 9 h.
+    expect(c[0]).toEqual({ jour: 0, heure: 9, engagement: 3.6, posts: 7 });
+    expect(c[1]).toEqual({ jour: 2, heure: 8, engagement: 3, posts: 1 });
+    // Dimanche 23 h UTC -> lundi 0 h à Paris : le jour change aussi.
+    expect(c[2]).toEqual({ jour: 0, heure: 0, engagement: 1, posts: 2 });
+  });
+
+  it('ignore un fuseau invalide et retombe sur Paris', () => {
+    expect(creneauxLocaux([{ day_of_week: 0, hour: 8, avg_engagement: 1, post_count: 1 }], 'Pas/Un_Fuseau')[0].heure).toBe(9);
+  });
+
+  it('associe la série d\'abonnés à son compte et filtre par réseau', () => {
+    const rep = {
+      accounts: [
+        { _id: 'a1', platform: 'instagram', username: 'insta', currentFollowers: 62, growth: 6 },
+        { _id: 'a2', platform: 'linkedin', displayName: 'Martin', currentFollowers: 1198, growth: 61 },
+      ],
+      stats: { a1: [{ date: '2026-09-07', followers: 56 }], a2: [{ date: '2026-09-07', followers: 1137 }] },
+    };
+    expect(seriesAbonnes(rep)).toHaveLength(2);
+    expect(seriesAbonnes(rep, 'linkedin')).toEqual([
+      { platform: 'linkedin', username: 'Martin', current: 1198, gained: 61, points: [{ date: '2026-09-07', followers: 1137 }] },
+    ]);
+  });
+
+  it('arrondit la cadence et filtre par réseau', () => {
+    const rep = { frequency: [{ platform: 'linkedin', posts_per_week: 1, avg_engagement_rate: 3.388, weeks_count: 4 }, { platform: 'instagram', posts_per_week: 2, avg_engagement_rate: 6.66, weeks_count: 1 }] };
+    expect(frequences(rep, 'linkedin')).toEqual([{ platform: 'linkedin', postsParSemaine: 1, tauxEngagement: 3.4, semaines: 4 }]);
   });
 });
