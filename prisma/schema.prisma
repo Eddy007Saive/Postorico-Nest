@@ -119,8 +119,7 @@ model analytics_cache {
 
 /// Rico Coach : stats PAR POST et par réseau, collectées depuis Zernio (/v1/analytics) ;
 /// totaux du mois dans stats_mensuelles. Migration _design/migrations/analytics_performance_par_post.sql.
-/// taux_engagement est encore une colonne générée en base tant que l'étape 2 de la migration
-/// n'est pas appliquée : ne pas l'écrire avant.
+/// taux_engagement (interactions / impressions, en %) est calculé par le code de collecte.
 model analytics_performance {
   id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   contenu_id         String?   @db.Uuid
