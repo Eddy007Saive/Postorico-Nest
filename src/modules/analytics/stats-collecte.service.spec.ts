@@ -128,8 +128,9 @@ describe('StatsCollecteService.collecterClient', () => {
     };
     const config = { get: jest.fn().mockReturnValue(0) } as unknown as ConfigService;
     const diagnostic = { diagnostiquerClient: jest.fn().mockResolvedValue({ ok: true }) };
-    const service = new StatsCollecteService(prisma as never, zernio as never, config, diagnostic as never);
-    return { service, prisma, zernio, diagnostic };
+    const plan = { planifierSiAbsent: jest.fn().mockResolvedValue(true) };
+    const service = new StatsCollecteService(prisma as never, zernio as never, config, diagnostic as never, plan as never);
+    return { service, prisma, zernio, diagnostic, plan };
   }
   const maintenant = new Date('2026-10-07T12:00:00Z');
 

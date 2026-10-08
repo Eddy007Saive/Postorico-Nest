@@ -16,3 +16,8 @@ export function decalerMois(mois: string, n: number): string {
   const total = y * 12 + (m - 1) + n;
   return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}-01`;
 }
+
+/** Jour du mois (1-31) à l'heure de Paris. */
+export function moisJour(d: Date = new Date()): number {
+  return Number(new Intl.DateTimeFormat('fr-CA', { timeZone: TZ, day: 'numeric' }).format(d));
+}

@@ -624,6 +624,22 @@ model resiliations {
   @@index([raison, created_at(sort: Desc)], map: "resiliations_raison_idx")
 }
 
+/// Rico Coach, brique 3 : plan d'action mensuel (règles sur le diagnostic, formulation IA vérifiée).
+/// Migration _design/migrations/plans_mensuels.sql (2026-10-08).
+model plans_mensuels {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  telegram_id     String   @db.Uuid
+  mois            DateTime @db.Date
+  diagnostic_mois DateTime @db.Date
+  intro           String?
+  recommandations Json     @default("[]")
+  version         Int      @default(1)
+  modele          String?
+  calcule_le      DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([telegram_id, mois], map: "plans_mensuels_unique")
+}
+
 /// Rico Coach, brique 2 : diagnostic mensuel calculé (constats chiffrés, sans IA) d'un client.
 /// Migration _design/migrations/diagnostics_mensuels.sql (2026-10-08).
 model diagnostics_mensuels {

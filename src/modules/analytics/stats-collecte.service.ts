@@ -3,7 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../config/prisma.service';
 import { ZernioClientService, ZernioError } from '../zernio/zernio-client.service';
 import { DiagnosticService } from './diagnostic.service';
-import { decalerMois, moisParis } from './mois.util';
+import { PlanService } from './plan.service';
+import { decalerMois, moisJour, moisParis } from './mois.util';
 
 export { decalerMois, moisParis } from './mois.util';
 
@@ -272,6 +273,7 @@ export class StatsCollecteService implements OnApplicationBootstrap {
     private readonly zernio: ZernioClientService,
     config: ConfigService,
     private readonly diagnostic: DiagnosticService,
+    private readonly plan: PlanService,
   ) {
     this.cronHeures = config.get<number>('app.statsCollecteHeures') || 0;
   }
@@ -297,6 +299,11 @@ export class StatsCollecteService implements OnApplicationBootstrap {
       // Diagnostic du mois précédent, recalculé tant que ses stats bougent encore (brique 2).
       else if (r.ecrit) {
         await this.diagnostic.diagnostiquerClient(u.telegram_id).catch((e) => this.logger.warn(`diagnostic ${u.telegram_id}: ${e instanceof Error ? e.message : e}`));
+        // Plan du mois (brique 3), créé une seule fois à partir du 3 : le diagnostic du mois
+        // précédent a alors eu le temps de se stabiliser.
+        if (Number(moisJour()) >= 3) {
+          await this.plan.planifierSiAbsent(u.telegram_id).catch((e) => this.logger.warn(`plan ${u.telegram_id}: ${e instanceof Error ? e.message : e}`));
+        }
       }
     }
     this.logger.log(`stats mensuelles : ${users.length} clients, ${erreurs} erreurs`);
