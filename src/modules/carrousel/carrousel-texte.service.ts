@@ -8,6 +8,7 @@ import { MemoireService } from '../memoire/memoire.service';
 import { OffersService } from '../offers/offers.service';
 import { LlmUsage } from '../usage/interfaces/llm-usage.interface';
 import { CarrouselContent } from './interfaces/carrousel-content.interface';
+import { appliquerNorme, consigneNorme, nbSlidesNorme, normeCarrousel } from './normes-carrousel.util';
 
 /**
  * Agent CARROUSEL (texte des slides) — port direct de `rediger_carrousel`
@@ -30,11 +31,11 @@ export const ICON_HINTS: Record<string, string> = {
 const ROLE_CARROUSEL =
   'You create CAROUSELS for the personal brand described below, in its voice. ' +
   'Structure: a HOOK (very short scroll-stopping line), STEPS/IDEAS (one strong idea each), ' +
-  "and a final CTA. Each idea has a VERY short title (2-5 words, headline style), 1-2 explanatory " +
-  "sentences, 2-4 keywords (pills), a 'pro_tip' (one concrete piece of advice) and an 'icon' " +
+  "and a final CTA. Each idea has a short headline-style title, a short explanation ('texte'), " +
+  "a few keywords (pills), an optional 'pro_tip' (one concrete piece of advice) and an 'icon' " +
   '(the most relevant illustration keyword from this list: ' +
   Object.keys(ICON_HINTS).join(', ') +
-  '). Short, punchy text, readable on a slide. ' +
+  '). Light text, readable on a slide: the length rules given with the topic are strict. ' +
   "The 'legende' is the POST TEXT (the caption above the carousel): SHORT (2 to 4 lines). " +
   'A scroll-stopping hook + an invitation to swipe/save + ONE single CTA. It does NOT repeat ' +
   "the slides' content; the carousel carries the substance, the caption only hooks. " +
@@ -97,6 +98,7 @@ export class CarrouselTexteService {
     cache = false,
     dimensions?: Record<string, unknown>,
     accroche = true,
+    reseau?: string | null,
   ): Promise<
     | { content: CarrouselContent; usage: LlmUsage; formule_accroche?: number | null; accroche_chiffres_non_sources?: string[] }
     | { error: string }
@@ -105,13 +107,15 @@ export class CarrouselTexteService {
     const u = await this.marqueService.chargerMarque(telegramId);
     if (!String(u.secteur ?? '').trim()) return { error: 'profil_incomplet' };
     const contexte = this.marqueService.contexteMarque(u);
-    const nbIdees = Math.max(1, nbSlides - 2); // hook + idées + cta
+    // Normes de texte et nombre de slides propres au réseau (normes-carrousel.util.ts)
+    const norme = normeCarrousel(reseau);
+    const nbIdees = Math.max(1, nbSlidesNorme(nbSlides, norme) - 2); // hook + idées + cta
     // Mémoire de voix : carrousels validés proches du sujet (repli : posts validés).
     const extra = await this.memoireService.blocPourGenre(telegramId, sujet, dimensions, 'carrousel');
 
     const resp = await this.claude.messagesCreate({
       model: model || 'claude-sonnet-4-6',
-      max_tokens: 1600,
+      max_tokens: 3000,
       system: this.claude.system(ROLE_CARROUSEL, contexte, extra, cache),
       messages: [
         {
@@ -122,7 +126,8 @@ export class CarrouselTexteService {
             (await this.blocOffre(telegramId, dimensions)) +
             '\n' +
             `Give the hook, the legende (short: hook + swipe invitation + 1 CTA, without repeating the slides), ` +
-            `EXACTLY ${nbIdees} ideas (with short titre, texte, pills, pro_tip) and the cta, as JSON.` +
+            `EXACTLY ${nbIdees} ideas (with titre, texte, pills, pro_tip) and the cta, as JSON.` +
+            consigneNorme(norme) +
             (accroche ? blocConsigneCarrousel(sujet, contexte, dimensions) : ''),
         },
       ],
@@ -157,6 +162,7 @@ export class CarrouselTexteService {
     const slides = slidesRaw
       .filter((s) => s.titre || s.texte)
       .map(cleanSlide)
+      .map((sl) => appliquerNorme(sl, norme))
       .slice(0, nbIdees);
 
     let cta = data.cta as Record<string, unknown> | string | undefined;

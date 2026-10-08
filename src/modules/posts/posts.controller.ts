@@ -533,7 +533,7 @@ export class PostsController {
             usage = res.usage;
           }
         } else if (action === 'carrousel') {
-          const res = await this.carrouselTexteService.redigerCarrousel(telegramId, sujet, 5, model, true, dims);
+          const res = await this.carrouselTexteService.redigerCarrousel(telegramId, sujet, 5, model, true, dims, true, reseauLow);
           if ('error' in res) genError = res.error;
           else {
             ccontent = res.content;

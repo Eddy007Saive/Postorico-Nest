@@ -217,6 +217,8 @@ export class CarrouselController {
         MODELE_REDACTION,
         false,
         dto.dimensions,
+        true,
+        reseau,
       );
     } catch (e: unknown) {
       await this.quotaService.refund(q);
