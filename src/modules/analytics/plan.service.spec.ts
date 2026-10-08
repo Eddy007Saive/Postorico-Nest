@@ -147,6 +147,24 @@ describe('PlanService.planifier', () => {
     expect(claude.messagesCreate).not.toHaveBeenCalled();
   });
 
+  it("écran : sans plan, rien d'autre n'est lu", async () => {
+    const { service, prisma } = make(null);
+    prisma.plans_mensuels.findFirst.mockResolvedValue(null);
+    expect(await service.ecran('u1')).toEqual({ plan: null, diagnostic: null, serie: [] });
+  });
+
+  it('écran : la courbe démarre au premier mois actif et finit au mois du diagnostic', async () => {
+    const { service, prisma } = make(null);
+    const plan = { mois: new Date('2026-10-01T00:00:00Z'), diagnostic_mois: new Date('2026-09-01T00:00:00Z') };
+    prisma.plans_mensuels.findFirst.mockResolvedValue(plan);
+    (prisma.diagnostics_mensuels as Record<string, jest.Mock>).findUnique = jest.fn().mockResolvedValue({ constats: { mois: '2026-09-01' }, calcule_le: new Date('2026-10-08T00:00:00Z') });
+    const ligne = (m: string, posts: number, impressions: number, abonnes: number | null) => ({ mois: new Date(`${m}-01T00:00:00Z`), posts, impressions, vues: 0, abonnes });
+    (prisma as Record<string, unknown>).stats_mensuelles = { findMany: jest.fn().mockResolvedValue([ligne('2026-03', 0, 0, null), ligne('2026-04', 4, 301, 1042), ligne('2026-09', 1, 238, 1251)]) };
+    const r = await service.ecran('u1');
+    expect(r.serie.map((x) => x.mois)).toEqual(['2026-04', '2026-09']);
+    expect(r.diagnostic).toMatchObject({ mois: '2026-09-01' });
+  });
+
   it('sans diagnostic ni stats : ignoré', async () => {
     const { service, prisma } = make(null);
     expect(await service.planifier('u1', { mois: '2026-10' })).toEqual({ ok: true, ignore: 'aucune_stat_collectee' });

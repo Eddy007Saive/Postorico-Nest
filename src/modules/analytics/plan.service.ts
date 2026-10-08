@@ -149,7 +149,7 @@ export function reglesPlan(d: Diagnostic): Recommandation[] {
   // Meilleur créneau.
   const c = d.creneaux?.[0];
   if (c) {
-    ajouter({ id: 'creneau', type: 'creneau', priorite: 50, reseau: null, chiffres: { heure: c.heure, taux: c.engagement, posts: c.posts }, action: null,
+    ajouter({ id: 'creneau', type: 'creneau', priorite: 50, reseau: null, chiffres: { jour: JOURS[c.jour], heure: c.heure, taux: c.engagement, posts: c.posts }, action: null,
       texte_standard: `Publie le ${JOURS[c.jour]} vers ${c.heure} h : c'est ton créneau le plus engageant (${fr(c.engagement)} % sur ${c.posts} publications).` });
   }
 
@@ -217,6 +217,35 @@ export class PlanService {
   /** Le plan le plus récent d'un client (pour l'app). */
   async dernier(telegramId: string) {
     return this.prisma.plans_mensuels.findFirst({ where: { telegram_id: telegramId }, orderBy: { mois: 'desc' } });
+  }
+
+  /**
+   * Tout ce que l'écran Rico Coach affiche, en un appel : le dernier plan, le diagnostic qui
+   * l'a produit, et la série des mois complets (tous réseaux) jusqu'au mois du diagnostic.
+   */
+  async ecran(telegramId: string, nbMois = 7) {
+    const plan = await this.dernier(telegramId);
+    if (!plan) return { plan: null, diagnostic: null, serie: [] };
+    const diag = await this.prisma.diagnostics_mensuels.findUnique({
+      where: { telegram_id_mois: { telegram_id: telegramId, mois: plan.diagnostic_mois } },
+      select: { constats: true, calcule_le: true },
+    });
+    const fin = plan.diagnostic_mois.toISOString().slice(0, 10);
+    const debut = decalerMois(fin, -(nbMois - 1));
+    const lignes = await this.prisma.stats_mensuelles.findMany({
+      where: { telegram_id: telegramId, reseau: 'tous', format: 'tous', mois: { gte: new Date(`${debut}T00:00:00Z`), lte: plan.diagnostic_mois } },
+      select: { mois: true, posts: true, impressions: true, vues: true, abonnes: true },
+      orderBy: { mois: 'asc' },
+    });
+    // On démarre la courbe au premier mois avec une activité (pas de longue ligne plate à 0).
+    const premier = lignes.findIndex((l) => l.posts > 0 || l.impressions > 0 || l.abonnes !== null);
+    const serie = (premier < 0 ? [] : lignes.slice(premier)).map((l) => ({
+      mois: l.mois.toISOString().slice(0, 7),
+      posts: l.posts,
+      impressions: l.impressions || l.vues,
+      abonnes: l.abonnes,
+    }));
+    return { plan, diagnostic: diag ? { ...(diag.constats as object), calcule_le: diag.calcule_le } : null, serie };
   }
 
   /** Plan du mois en cours seulement s'il n'existe pas encore (cron quotidien). */

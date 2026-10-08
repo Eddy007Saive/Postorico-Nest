@@ -17,4 +17,10 @@ export class CoachController {
   async dernierPlan(@Req() req: AuthedRequest) {
     return { plan: await this.plan.dernier(req.user.telegram_id) };
   }
+
+  /** Écran Rico Coach : plan + diagnostic qui l'a produit + courbe des mois complets. */
+  @Get()
+  async ecran(@Req() req: AuthedRequest) {
+    return this.plan.ecran(req.user.telegram_id);
+  }
 }
