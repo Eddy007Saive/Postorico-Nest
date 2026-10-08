@@ -65,7 +65,7 @@ describe('diagnostic : constats', () => {
       { platform: 'instagram', postsParSemaine: 6, tauxEngagement: 9, semaines: 1 }, // trop peu de semaines
     ];
     const v = constatVolume([ligne({ mois: '2026-08-01', posts: 26 })], posts, '2026-09-01', 'Europe/Paris', freq);
-    expect(v).toMatchObject({ posts: 3, posts_mois_precedent: 26, par_reseau: { instagram: 2, linkedin: 1 }, semaines_actives: 2, semaines_du_mois: 5, plus_long_silence_jours: 16, regulier: false });
+    expect(v).toMatchObject({ posts: 3, posts_mois_precedent: 26, par_reseau: { instagram: 2, linkedin: 1 }, semaines_actives: 2, semaines_liste: [0, 2], semaines_du_mois: 5, plus_long_silence_jours: 16, regulier: false });
     expect(v.cadences).toEqual([{ reseau: 'instagram', posts_par_semaine_actuel: 0.5, meilleure_cadence: { posts_par_semaine: 3, taux_engagement: 4.5, semaines: 3 } }]);
   });
 

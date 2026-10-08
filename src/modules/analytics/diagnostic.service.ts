@@ -166,7 +166,8 @@ export function constatVolume(stats: LigneStats[], posts: PostAnalyse[], mois: s
   const jours = [...new Set(social.map((p) => Number(jourLocal(p.publie_le, tz).slice(8, 10))))].sort((a, b) => a - b);
   // Semaines du mois = tranches de 7 jours depuis le 1er (la dernière est partielle).
   const nbSemaines = Math.ceil(nbJours / 7);
-  const semainesActives = new Set(jours.map((j) => Math.floor((j - 1) / 7))).size;
+  const semaines = [...new Set(jours.map((j) => Math.floor((j - 1) / 7)))].sort((a, b) => a - b);
+  const semainesActives = semaines.length;
   // Plus long silence : du 1er au premier post, entre deux posts, du dernier post à la fin du mois.
   const bornes = [0, ...jours, nbJours + 1];
   let plusLongSilence = 0;
@@ -189,6 +190,8 @@ export function constatVolume(stats: LigneStats[], posts: PostAnalyse[], mois: s
     par_reseau: Object.fromEntries([...parReseau].sort()),
     posts_par_semaine: Math.round((social.length / (nbJours / 7)) * 10) / 10,
     semaines_actives: semainesActives,
+    /** Index (0 = du 1er au 7) des tranches de 7 jours avec au moins un post. */
+    semaines_liste: semaines,
     semaines_du_mois: nbSemaines,
     plus_long_silence_jours: plusLongSilence,
     regulier: social.length > 0 && semainesActives / nbSemaines >= SEUILS.partSemainesRegulier,
