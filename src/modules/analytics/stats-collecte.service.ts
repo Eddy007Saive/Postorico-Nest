@@ -2,6 +2,10 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../config/prisma.service';
 import { ZernioClientService, ZernioError } from '../zernio/zernio-client.service';
+import { DiagnosticService } from './diagnostic.service';
+import { decalerMois, moisParis } from './mois.util';
+
+export { decalerMois, moisParis } from './mois.util';
 
 /**
  * Rico Coach, brique 1 : collecte de l'historique des statistiques.
@@ -17,7 +21,6 @@ import { ZernioClientService, ZernioError } from '../zernio/zernio-client.servic
  * écraserait ses vrais totaux par des totaux partiels.
  */
 
-const TZ = 'Europe/Paris';
 const TOUS = 'tous';
 const GBP = 'googlebusiness';
 
@@ -83,21 +86,6 @@ export interface ResultatCollecte {
 // ---------------------------------------------------------------------------
 // Fonctions pures (testées dans stats-collecte.service.spec.ts)
 // ---------------------------------------------------------------------------
-
-/** Mois (AAAA-MM-01) d'une date, à l'heure de Paris. */
-export function moisParis(d: Date): string {
-  const parts = new Intl.DateTimeFormat('fr-CA', { timeZone: TZ, year: 'numeric', month: '2-digit' }).formatToParts(d);
-  const y = parts.find((p) => p.type === 'year')?.value;
-  const m = parts.find((p) => p.type === 'month')?.value;
-  return `${y}-${m}-01`;
-}
-
-/** Ajoute n mois à un mois AAAA-MM-01. */
-export function decalerMois(mois: string, n: number): string {
-  const [y, m] = mois.split('-').map(Number);
-  const total = y * 12 + (m - 1) + n;
-  return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}-01`;
-}
 
 /** Format Postorico d'une entrée Zernio. Sur Instagram, toute vidéo est un reel. */
 export function formatDe(reseau: string, mediaType: unknown, mediaProductType: unknown): string {
@@ -283,6 +271,7 @@ export class StatsCollecteService implements OnApplicationBootstrap {
     private readonly prisma: PrismaService,
     private readonly zernio: ZernioClientService,
     config: ConfigService,
+    private readonly diagnostic: DiagnosticService,
   ) {
     this.cronHeures = config.get<number>('app.statsCollecteHeures') || 0;
   }
@@ -305,6 +294,10 @@ export class StatsCollecteService implements OnApplicationBootstrap {
     for (const u of users) {
       const r = await this.collecterClient(u.telegram_id, { nbMois }).catch((e) => ({ ok: false, error: String(e) }) as ResultatCollecte);
       if (!r.ok) erreurs += 1;
+      // Diagnostic du mois précédent, recalculé tant que ses stats bougent encore (brique 2).
+      else if (r.ecrit) {
+        await this.diagnostic.diagnostiquerClient(u.telegram_id).catch((e) => this.logger.warn(`diagnostic ${u.telegram_id}: ${e instanceof Error ? e.message : e}`));
+      }
     }
     this.logger.log(`stats mensuelles : ${users.length} clients, ${erreurs} erreurs`);
     return { ok: true, clients: users.length, erreurs };

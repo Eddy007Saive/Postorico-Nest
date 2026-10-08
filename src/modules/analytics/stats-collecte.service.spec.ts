@@ -127,8 +127,9 @@ describe('StatsCollecteService.collecterClient', () => {
       getGoogleBusinessKeywords: jest.fn(),
     };
     const config = { get: jest.fn().mockReturnValue(0) } as unknown as ConfigService;
-    const service = new StatsCollecteService(prisma as never, zernio as never, config);
-    return { service, prisma, zernio };
+    const diagnostic = { diagnostiquerClient: jest.fn().mockResolvedValue({ ok: true }) };
+    const service = new StatsCollecteService(prisma as never, zernio as never, config, diagnostic as never);
+    return { service, prisma, zernio, diagnostic };
   }
   const maintenant = new Date('2026-10-07T12:00:00Z');
 
@@ -163,6 +164,22 @@ describe('StatsCollecteService.collecterClient', () => {
     expect(await service.collecterClient('u1', { maintenant })).toEqual({ ok: true, telegram_id: 'u1', ignore: 'profil_zernio_partage' });
     expect(zernio.getAnalyticsPage).not.toHaveBeenCalled();
     expect(prisma.analytics_performance.upsert).not.toHaveBeenCalled();
+  });
+
+  it('collecterTous recalcule le diagnostic du mois précédent après une collecte écrite', async () => {
+    const { service, prisma, diagnostic } = make();
+    (prisma.users as Record<string, jest.Mock>).findMany = jest.fn().mockResolvedValue([{ telegram_id: 'u1' }]);
+    const r = await service.collecterTous(2);
+    expect(r).toEqual({ ok: true, clients: 1, erreurs: 0 });
+    expect(diagnostic.diagnostiquerClient).toHaveBeenCalledWith('u1');
+  });
+
+  it("collecterTous : pas de diagnostic pour un client ignoré (sans profil)", async () => {
+    const { service, prisma, diagnostic } = make();
+    (prisma.users as Record<string, jest.Mock>).findMany = jest.fn().mockResolvedValue([{ telegram_id: 'u1' }]);
+    prisma.users.findUnique.mockResolvedValue({ late_profile_id: null });
+    await service.collecterTous(2);
+    expect(diagnostic.diagnostiquerClient).not.toHaveBeenCalled();
   });
 
   it("nbMois est borné à 12 (Zernio refuse plus d'un an)", async () => {

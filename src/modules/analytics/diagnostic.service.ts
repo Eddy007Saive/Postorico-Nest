@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { ZernioClientService } from '../zernio/zernio-client.service';
 import { Creneau, creneauxLocaux, Frequence, frequences } from './analytics.service';
-import { decalerMois, moisParis } from './stats-collecte.service';
+import { decalerMois, moisParis } from './mois.util';
 
 /**
  * Rico Coach, brique 2 : le diagnostic mensuel d'un client.
