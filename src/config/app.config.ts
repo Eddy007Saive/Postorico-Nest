@@ -81,6 +81,8 @@ export default registerAs('app', () => {
   remotionRendusSimultanes: parseInt(process.env.REMOTION_RENDUS_SIMULTANES || '2', 10),
   // Conversions ffmpeg simultanées des vidéos importées (modules/transcodage), avant Cloudinary.
   transcodageSimultanes: parseInt(process.env.TRANSCODAGE_SIMULTANES || '2', 10),
+  // Durée maximale d'une vidéo importée (banque, Studio vidéo), en secondes.
+  videoDureeMaxS: parseInt(process.env.VIDEO_DUREE_MAX_S || '300', 10),
   remotionAttenteMaxS: parseInt(process.env.REMOTION_ATTENTE_MAX_S || '150', 10),
   elevenlabsApiKey: process.env.ELEVENLABS_API_KEY || '',
   // Studio Vidéo (montage IA) : service self-hosted "submagic-poc" (Railway séparé),

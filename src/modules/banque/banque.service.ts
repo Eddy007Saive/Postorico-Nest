@@ -8,7 +8,7 @@ import { envoyerGrosFichier } from '../../common/utils/cloudinary-envoi.util';
 import { PrismaService } from '../../config/prisma.service';
 import { ClaudeService } from '../claude/claude.service';
 import { UsageService } from '../usage/usage.service';
-import { TranscodageService } from '../transcodage/transcodage.service';
+import { TranscodageService, VideoTropLongue } from '../transcodage/transcodage.service';
 
 /**
  * Banque de visuels de la marque (table `brand_assets`) — port direct de
@@ -145,7 +145,13 @@ export class BanqueService {
     // Clip vidéo : passage par ffmpeg avant Cloudinary (H.264 720p, bien plus léger). En cas
     // d'échec de la conversion, l'original part tel quel : l'import n'échoue jamais pour ça.
     if (estVideo) {
-      const t = await this.transcodage.preparer(fileBytes, { coteMax: 1280 });
+      let t: Awaited<ReturnType<TranscodageService['preparer']>>;
+      try {
+        t = await this.transcodage.preparer(fileBytes, { coteMax: 1280, crf: 20 });
+      } catch (e) {
+        if (e instanceof VideoTropLongue) return { error: e.message };
+        throw e;
+      }
       if (t.transcode) {
         fileBytes = t.data;
         mimetype = 'video/mp4';

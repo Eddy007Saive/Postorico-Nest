@@ -1,4 +1,4 @@
-import { argumentsFfmpeg, doitTranscoder, lireSonde, SondeVideo, TranscodageService } from './transcodage.service';
+import { argumentsFfmpeg, doitTranscoder, formatDuree, lireSonde, SondeVideo, TranscodageService, VideoTropLongue } from './transcodage.service';
 
 const sonde = (o: Partial<SondeVideo> = {}): SondeVideo => ({ codec: 'h264', largeur: 720, hauteur: 1280, duree: 12, debitKbps: 3000, conteneur: 'mov,mp4,m4a,3gp,3g2,mj2', ...o });
 
@@ -25,6 +25,18 @@ describe('transcodage : décision', () => {
   it('lit la sonde ffprobe (débit du flux, sinon du conteneur)', () => {
     const json = JSON.stringify({ streams: [{ codec_name: 'hevc', width: 1920, height: 1080, bit_rate: 'N/A' }], format: { duration: '14.5', bit_rate: '16000000', format_name: 'mov,mp4,m4a,3gp,3g2,mj2' } });
     expect(lireSonde(json)).toEqual({ codec: 'hevc', largeur: 1920, hauteur: 1080, duree: 14.5, debitKbps: 16000, conteneur: 'mov,mp4,m4a,3gp,3g2,mj2' });
+  });
+});
+
+describe('durée maximale', () => {
+  it('formatDuree : minutes et secondes lisibles', () => {
+    expect(formatDuree(300)).toBe('5 min');
+    expect(formatDuree(432)).toBe('7 min 12 s');
+    expect(formatDuree(45)).toBe('45 s');
+  });
+
+  it('VideoTropLongue : message prêt à afficher', () => {
+    expect(new VideoTropLongue(432, 300).message).toBe('Vidéo trop longue : 7 min 12 s (5 min maximum).');
   });
 });
 

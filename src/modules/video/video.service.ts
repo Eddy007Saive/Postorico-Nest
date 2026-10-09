@@ -79,7 +79,8 @@ export class VideoService {
     // disque le temps de l'upload plutôt que de lui passer une data URI (qu'il ne sait pas lire).
     // Passage par ffmpeg avant Cloudinary : H.264 1080p max (ce sont des vidéos publiées, on
     // garde la définition), envoi bien plus léger. Échec de conversion = envoi de l'original.
-    data = (await this.transcodage.preparer(data, { coteMax: 1920, crf: 21 })).data;
+    // VideoTropLongue (au-delà de la durée max) remonte au contrôleur, qui répond 400.
+    data = (await this.transcodage.preparer(data, { coteMax: 1920, crf: 19 })).data;
     const tmp = path.join(os.tmpdir(), `video_raw_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp4`);
     await fs.promises.writeFile(tmp, data);
     try {

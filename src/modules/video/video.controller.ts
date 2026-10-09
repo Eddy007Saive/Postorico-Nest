@@ -27,6 +27,7 @@ import { VideoImportDto } from './dto/video-import.dto';
 import { VideoRerenderDto } from './dto/video-rerender.dto';
 import { MontagePocService, PRESETS } from './montage-poc.service';
 import { VideoService } from './video.service';
+import { VideoTropLongue } from '../transcodage/transcodage.service';
 
 type AuthedRequest = Request & { user: JwtPayload };
 
@@ -67,6 +68,7 @@ export class VideoController {
     try {
       return await this.videoService.uploadRaw(telegramId, file.buffer);
     } catch (e) {
+      if (e instanceof VideoTropLongue) throw new BadRequestException(e.message);
       this.logger.error(`raw video upload error: ${e instanceof Error ? e.message : e}`);
       throw new InternalServerErrorException("Échec de l'upload de la vidéo.");
     }

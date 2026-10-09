@@ -41,6 +41,23 @@ export interface ResultatTranscodage {
   duree?: number;
 }
 
+/** Vidéo plus longue que la durée maximale d'import : l'appelant répond 400 avec `message`. */
+export class VideoTropLongue extends Error {
+  constructor(readonly duree: number, readonly max: number) {
+    super(`Vidéo trop longue : ${formatDuree(duree)} (${formatDuree(max)} maximum).`);
+    this.name = 'VideoTropLongue';
+  }
+}
+
+/** 312 -> « 5 min 12 s », 300 -> « 5 min », 45 -> « 45 s ». */
+export function formatDuree(s: number): string {
+  const total = Math.round(s);
+  const m = Math.floor(total / 60);
+  const r = total % 60;
+  if (!m) return `${r} s`;
+  return r ? `${m} min ${r} s` : `${m} min`;
+}
+
 /** Débit au-delà duquel un H.264 « propre » est quand même recompressé (un téléphone filme à 15-20 Mb/s). */
 const DEBIT_MAX_KBPS = 8000;
 
@@ -91,15 +108,21 @@ export class TranscodageService {
   private readonly logger = new Logger(TranscodageService.name);
   private readonly file: Semaphore;
   private ffmpegAbsent = false;
+  /** Durée maximale d'une vidéo importée, en secondes (VIDEO_DUREE_MAX_S, défaut 5 min). */
+  readonly dureeMax: number;
 
   constructor(config: ConfigService) {
     const max = config.get<number>('app.transcodageSimultanes') || 2;
+    this.dureeMax = config.get<number>('app.videoDureeMaxS') || 300;
     this.file = new Semaphore(max, () => new Error('file de conversion pleine'));
   }
 
   /**
    * @param coteMax plus grand côté en sortie (1280 = 720p, 1920 = 1080p)
-   * @param crf qualité x264 (plus bas = meilleure qualité, plus lourd)
+   * @param crf qualité x264 (plus bas = meilleure qualité, plus lourd). Mesuré au VMAF le
+   *            2026-10-09 : 20 en 720p et 19 en 1080p donnent ~94/100 (indiscernable sur
+   *            téléphone) pour des fichiers 7 à 15 fois plus légers que l'original.
+   * @throws VideoTropLongue au-delà de `dureeMax` (seulement si ffprobe a pu mesurer la durée).
    */
   async preparer(data: Buffer, opts: { coteMax: number; crf?: number }): Promise<ResultatTranscodage> {
     const garder = (raison: string, duree?: number): ResultatTranscodage => ({ data, transcode: false, raison, octetsAvant: data.length, octetsApres: data.length, duree });
@@ -128,6 +151,8 @@ export class TranscodageService {
         return garder(`sonde impossible (${e instanceof Error ? e.message.slice(0, 120) : e})`);
       }
 
+      if (sonde.duree > this.dureeMax + 0.5) throw new VideoTropLongue(sonde.duree, this.dureeMax);
+
       const decision = doitTranscoder(sonde, opts.coteMax);
       if (!decision.oui) return garder(decision.raison, sonde.duree);
 
@@ -139,7 +164,7 @@ export class TranscodageService {
       }
       const delai = Math.max(180_000, sonde.duree * 4000);
       const debut = Date.now();
-      await execFileP('ffmpeg', argumentsFfmpeg(entree, sortie, opts.coteMax, opts.crf ?? 23), { timeout: delai, maxBuffer: 4 * 1024 * 1024 });
+      await execFileP('ffmpeg', argumentsFfmpeg(entree, sortie, opts.coteMax, opts.crf ?? 20), { timeout: delai, maxBuffer: 4 * 1024 * 1024 });
       const converti = await fs.promises.readFile(sortie);
       // Une conversion qui grossit le fichier n'apporte rien si l'original était déjà en H.264.
       if (sonde.codec === 'h264' && converti.length >= data.length) return garder('conversion plus lourde', sonde.duree);
@@ -148,6 +173,7 @@ export class TranscodageService {
       );
       return { data: converti, transcode: true, raison: decision.raison, octetsAvant: data.length, octetsApres: converti.length, duree: sonde.duree };
     } catch (e) {
+      if (e instanceof VideoTropLongue) throw e;
       this.logger.warn(`conversion vidéo impossible, envoi de l'original : ${e instanceof Error ? e.message.slice(0, 200) : e}`);
       return garder('erreur ffmpeg');
     } finally {
