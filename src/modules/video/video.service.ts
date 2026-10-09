@@ -4,6 +4,7 @@ import * as path from 'path';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
+import { envoyerGrosFichier } from '../../common/utils/cloudinary-envoi.util';
 import { PrismaService } from '../../config/prisma.service';
 import { normStatutContenu, normTypeContenu } from '../../common/utils/contenu-enum.util';
 import { QuotaService } from '../quota/quota.service';
@@ -77,13 +78,13 @@ export class VideoService {
     const tmp = path.join(os.tmpdir(), `video_raw_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp4`);
     await fs.promises.writeFile(tmp, data);
     try {
-      // Sans callback, le SDK Cloudinary résout toujours une Promise<UploadApiResponse> —
-      // l'union avec UploadStream dans ses types ne s'applique qu'à la variante callback.
-      const up = (await cloudinary.uploader.upload_large(tmp, {
+      // Forme avec callback obligatoire : sans elle, upload_large rend un flux et non une
+      // promesse (voir envoyerGrosFichier).
+      const up = await envoyerGrosFichier(tmp, {
         resource_type: 'video',
         folder: `videos_raw/${telegramId}`,
         overwrite: true,
-      })) as { secure_url: string; public_id?: string; duration?: number; width?: number; height?: number };
+      });
       return { video_url: up.secure_url, public_id: up.public_id, duration: up.duration, width: up.width, height: up.height };
     } finally {
       fs.unlink(tmp, () => undefined);

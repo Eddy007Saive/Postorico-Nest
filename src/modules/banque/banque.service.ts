@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { envoyerGrosFichier } from '../../common/utils/cloudinary-envoi.util';
 import { PrismaService } from '../../config/prisma.service';
 import { ClaudeService } from '../claude/claude.service';
 import { UsageService } from '../usage/usage.service';
@@ -28,6 +32,9 @@ export interface BrandAsset {
   apercu_url: string | null;
   created_at: Date;
 }
+
+/** Au-delà, un clip est envoyé par tranches (l'envoi d'un seul bloc dépasse les 60 s du SDK). */
+const SEUIL_GROS_CLIP = 20 * 1024 * 1024;
 
 @Injectable()
 export class BanqueService {
@@ -100,6 +107,28 @@ export class BanqueService {
     return `${base}/upload/so_2,w_800,q_auto/${fin.replace(/\.[^./]+$/, '')}.jpg`;
   }
 
+  /** Envoi d'un clip de plus de SEUIL_GROS_CLIP.
+   * En un seul bloc (data URI + passage en 720p à l'arrivée), un clip de ~50 Mo dépassait les
+   * 60 s du SDK (« Request Timeout », constaté le 2026-10-08). Ici : envoi par tranches, et
+   * l'URL gardée est celle de l'ORIGINAL, lisible tout de suite — la version 720p n'est que
+   * préparée en arrière-plan (eager_async) : tant qu'elle n'est pas prête, son URL ne répond
+   * pas, ce qui casserait l'aperçu dans l'éditeur juste après l'import. */
+  private async envoyerGrosClip(telegramId: string, data: Buffer): Promise<{ secure_url: string; duration?: number }> {
+    const tmp = path.join(os.tmpdir(), `banque_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp4`);
+    await fs.promises.writeFile(tmp, data);
+    try {
+      const up = await envoyerGrosFichier(tmp, {
+        resource_type: 'video',
+        folder: `banque/${telegramId}`,
+        eager: [{ width: 1280, crop: 'limit', quality: 'auto' }],
+        eager_async: true,
+      });
+      return { secure_url: up.secure_url, duration: up.duration };
+    } finally {
+      fs.unlink(tmp, () => undefined);
+    }
+  }
+
   /** Ajoute un visuel à la banque : Cloudinary -> description vision -> insert.
    * `estVideo=true` : un extrait vidéo, décrit depuis une image extraite du clip. */
   async ajouter(telegramId: string, fileBytes: Buffer, mimetype: string, estVideo = false): Promise<BrandAsset | { error: string }> {
@@ -112,8 +141,13 @@ export class BanqueService {
     }
 
     let up: { secure_url: string; duration?: number } | undefined;
+    // Un gros clip ne passe pas en un seul envoi (délai de 60 s du SDK) : envoi par tranches.
+    const grosClip = estVideo && fileBytes.length > SEUIL_GROS_CLIP;
+    if (grosClip) {
+      up = await this.envoyerGrosClip(telegramId, fileBytes);
+    }
     const dataUri = `data:${mimetype};base64,${fileBytes.toString('base64')}`;
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    for (let attempt = 1; !grosClip && attempt <= 2; attempt++) {
       try {
         up = await cloudinary.uploader.upload(dataUri, {
           folder: `banque/${telegramId}`,
