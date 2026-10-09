@@ -10,6 +10,7 @@ import { normStatutContenu, normTypeContenu } from '../../common/utils/contenu-e
 import { QuotaService } from '../quota/quota.service';
 import { ContenuEvenementService } from '../contenus/contenu-evenement.service';
 import { DONE, FAILED, MontagePocService } from './montage-poc.service';
+import { TranscodageService } from '../transcodage/transcodage.service';
 
 /**
  * Studio Vidéo / Reels — montage via Studio Montage (submagic-poc, self-hosted) — port
@@ -63,6 +64,7 @@ export class VideoService {
     private readonly quotaService: QuotaService,
     private readonly contenuEvenement: ContenuEvenementService,
     config: ConfigService,
+    private readonly transcodage: TranscodageService,
   ) {
     cloudinary.config({
       cloud_name: config.get<string>('app.cloudinaryCloudName'),
@@ -75,6 +77,9 @@ export class VideoService {
   async uploadRaw(telegramId: string, data: Buffer): Promise<{ video_url: string; public_id?: string; duration?: number; width?: number; height?: number }> {
     // upload_large lit un CHEMIN DE FICHIER (envoi par tranches) : on écrit le buffer sur
     // disque le temps de l'upload plutôt que de lui passer une data URI (qu'il ne sait pas lire).
+    // Passage par ffmpeg avant Cloudinary : H.264 1080p max (ce sont des vidéos publiées, on
+    // garde la définition), envoi bien plus léger. Échec de conversion = envoi de l'original.
+    data = (await this.transcodage.preparer(data, { coteMax: 1920, crf: 21 })).data;
     const tmp = path.join(os.tmpdir(), `video_raw_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp4`);
     await fs.promises.writeFile(tmp, data);
     try {

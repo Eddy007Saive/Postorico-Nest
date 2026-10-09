@@ -15,6 +15,10 @@ RUN npm ci
 # (le binaire vient de la dépendance "playwright" du package.json, pas d'une version à part).
 RUN npx playwright install --with-deps chromium
 
+# ffmpeg / ffprobe : conversion des vidéos importées avant Cloudinary (modules/transcodage),
+# proxy de montage, durée des voix off. Sans lui, ces étapes retombent sur leur repli.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+
 # Code source + build (nest build a besoin des devDependencies, donc après le `npm ci`
 # complet ci-dessus — jamais un `npm ci --only=production` avant le build).
 COPY . .

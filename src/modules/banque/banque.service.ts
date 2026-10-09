@@ -8,6 +8,7 @@ import { envoyerGrosFichier } from '../../common/utils/cloudinary-envoi.util';
 import { PrismaService } from '../../config/prisma.service';
 import { ClaudeService } from '../claude/claude.service';
 import { UsageService } from '../usage/usage.service';
+import { TranscodageService } from '../transcodage/transcodage.service';
 
 /**
  * Banque de visuels de la marque (table `brand_assets`) — port direct de
@@ -45,6 +46,7 @@ export class BanqueService {
     private readonly claude: ClaudeService,
     private readonly usageService: UsageService,
     config: ConfigService,
+    private readonly transcodage: TranscodageService,
   ) {
     cloudinary.config({
       cloud_name: config.get<string>('app.cloudinaryCloudName'),
@@ -138,6 +140,16 @@ export class BanqueService {
       }
     } catch (e) {
       this.logger.warn(`banque comptage: ${e instanceof Error ? e.message : e}`);
+    }
+
+    // Clip vidéo : passage par ffmpeg avant Cloudinary (H.264 720p, bien plus léger). En cas
+    // d'échec de la conversion, l'original part tel quel : l'import n'échoue jamais pour ça.
+    if (estVideo) {
+      const t = await this.transcodage.preparer(fileBytes, { coteMax: 1280 });
+      if (t.transcode) {
+        fileBytes = t.data;
+        mimetype = 'video/mp4';
+      }
     }
 
     let up: { secure_url: string; duration?: number } | undefined;

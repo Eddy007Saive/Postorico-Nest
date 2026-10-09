@@ -3,9 +3,10 @@ import { PrismaModule } from '../../config/prisma.module';
 import { ClaudeModule } from '../claude/claude.module';
 import { UsageModule } from '../usage/usage.module';
 import { BanqueService } from './banque.service';
+import { TranscodageModule } from '../transcodage/transcodage.module';
 
 @Module({
-  imports: [PrismaModule, ClaudeModule, UsageModule],
+  imports: [PrismaModule, ClaudeModule, UsageModule, TranscodageModule],
   providers: [BanqueService],
   exports: [BanqueService],
 })

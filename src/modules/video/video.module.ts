@@ -7,9 +7,10 @@ import { QuotaModule } from '../quota/quota.module';
 import { MontagePocService } from './montage-poc.service';
 import { VideoController } from './video.controller';
 import { VideoService } from './video.service';
+import { TranscodageModule } from '../transcodage/transcodage.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, QuotaModule, MusicLibraryModule, ContenuEvenementModule],
+  imports: [PrismaModule, AuthModule, QuotaModule, MusicLibraryModule, ContenuEvenementModule, TranscodageModule],
   controllers: [VideoController],
   providers: [VideoService, MontagePocService],
   exports: [VideoService, MontagePocService],
