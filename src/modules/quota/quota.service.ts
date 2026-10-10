@@ -21,7 +21,6 @@ const LABELS: Record<string, string> = {
   video: 'vidéos',
   story: 'stories',
   reel: 'reels',
-  video_agent: 'montages par l\'agent IA',
 };
 
 const TRIAL_DAYS = 14;
