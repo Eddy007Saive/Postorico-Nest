@@ -83,6 +83,11 @@ export default registerAs('app', () => {
   transcodageSimultanes: parseInt(process.env.TRANSCODAGE_SIMULTANES || '2', 10),
   // Durée maximale d'une vidéo importée (banque, Studio vidéo), en secondes.
   videoDureeMaxS: parseInt(process.env.VIDEO_DUREE_MAX_S || '300', 10),
+  // Montage par l'agent IA du VPS (modules/agent-video). Sans jeton, la fonction est coupée :
+  // la route client répond 503 et la route worker refuse tout.
+  agentVideoWorkerToken: process.env.AGENT_VIDEO_WORKER_TOKEN || '',
+  agentVideoBudgetUsd: parseFloat(process.env.AGENT_VIDEO_BUDGET_USD || '3'),
+  agentVideoDureeMaxS: parseInt(process.env.AGENT_VIDEO_DUREE_MAX_S || '180', 10),
   remotionAttenteMaxS: parseInt(process.env.REMOTION_ATTENTE_MAX_S || '150', 10),
   elevenlabsApiKey: process.env.ELEVENLABS_API_KEY || '',
   // Studio Vidéo (montage IA) : service self-hosted "submagic-poc" (Railway séparé),
