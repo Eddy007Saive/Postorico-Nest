@@ -624,6 +624,28 @@ model resiliations {
   @@index([raison, created_at(sort: Desc)], map: "resiliations_raison_idx")
 }
 
+/// Montages confiés à l'agent IA du VPS (Claude Code) : file, suivi, coût.
+/// Migration _design/migrations/agent_video.sql (2026-10-11).
+model travaux_agent_video {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contenu_id  String    @db.Uuid
+  telegram_id String    @db.Uuid
+  statut      String    @default("en_attente")
+  brief       Json      @default("{}")
+  tentatives  Int       @default(0)
+  pris_le     DateTime? @db.Timestamptz(6)
+  vu_le       DateTime? @db.Timestamptz(6)
+  progression String?
+  erreur      String?
+  cout_usd    Decimal?  @db.Decimal(8, 4)
+  duree_s     Decimal?  @db.Decimal(8, 2)
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  fini_le     DateTime? @db.Timestamptz(6)
+
+  @@index([statut, created_at], map: "travaux_agent_video_file")
+  @@index([contenu_id], map: "travaux_agent_video_contenu")
+}
+
 /// Rico Coach, brique 3 : plan d'action mensuel (règles sur le diagnostic, formulation IA vérifiée).
 /// Migration _design/migrations/plans_mensuels.sql (2026-10-08).
 model plans_mensuels {

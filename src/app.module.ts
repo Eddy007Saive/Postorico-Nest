@@ -7,6 +7,7 @@ import appConfig from './config/app.config';
 import { AccountsModule } from './modules/accounts/accounts.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { AffiliationModule } from './modules/affiliation/affiliation.module';
+import { AgentVideoModule } from './modules/agent-video/agent-video.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { WorkflowsModule } from './modules/workflows/workflows.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -81,6 +82,7 @@ import { UsersModule } from './modules/users/users.module';
     CommentsModule,
     HeygenModule,
     AnalyticsModule,
+    AgentVideoModule,
     AffiliationModule,
     TurnstileModule,
     NewsletterModule,
