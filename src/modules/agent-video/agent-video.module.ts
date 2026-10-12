@@ -2,19 +2,33 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../config/prisma.module';
 import { AuthModule } from '../auth/auth.module';
 import { MarqueModule } from '../marque/marque.module';
-import { MusicLibraryModule } from '../music/music-library.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PlanningModule } from '../planning/planning.module';
 import { QuotaModule } from '../quota/quota.module';
 import { UsageModule } from '../usage/usage.module';
-import { AgentVideoController, AgentVideoWorkerController } from './agent-video.controller';
+import { VideoModule } from '../video/video.module';
+import { ClaudeModule } from '../claude/claude.module';
+import { MusicLibraryModule } from '../music/music-library.module';
+import { VoixModule } from '../voix/voix.module';
+import { AgentVideoController } from './agent-video.controller';
 import { AgentVideoService } from './agent-video.service';
-import { AgentWorkerGuard } from './agent-worker.guard';
 
-/** Montage par l'agent IA du VPS (Claude Code) : file de travaux + routes client et worker. */
+/** Montage par l'agent IA du VPS (Claude Code) : préparation (POC + coupe), envoi au VPS, suivi, récupération. */
 @Module({
-  imports: [PrismaModule, AuthModule, QuotaModule, MarqueModule, MusicLibraryModule, PlanningModule, NotificationsModule, UsageModule],
-  controllers: [AgentVideoController, AgentVideoWorkerController],
-  providers: [AgentVideoService, AgentWorkerGuard],
+  imports: [
+    PrismaModule,
+    AuthModule,
+    QuotaModule,
+    MarqueModule,
+    PlanningModule,
+    NotificationsModule,
+    UsageModule,
+    VideoModule,
+    ClaudeModule,
+    MusicLibraryModule,
+    VoixModule,
+  ],
+  controllers: [AgentVideoController],
+  providers: [AgentVideoService],
 })
 export class AgentVideoModule {}

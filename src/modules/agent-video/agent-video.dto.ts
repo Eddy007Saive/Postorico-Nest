@@ -1,33 +1,61 @@
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 
 export class RushDto {
   @IsString()
   url!: string;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  debut?: number | null;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  fin?: number | null;
 }
 
-/** Demande d'un client : ses rushes + ce qu'il attend du montage. */
-export class AgentVideoCreerDto {
-  @IsArray()
-  @ArrayMinSize(1)
-  @ArrayMaxSize(10)
-  @ValidateNested({ each: true })
-  @Type(() => RushDto)
-  clips!: RushDto[];
+/** Photo de la banque du client, à placer par l'agent. */
+export class ImageDto {
+  @IsString()
+  url!: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(2000)
+  @MaxLength(200)
+  description?: string | null;
+}
+
+/** Demande d'un client : sa ou ses vidéos + ce qu'il attend du montage. */
+export class AgentVideoCreerDto {
+  @IsOptional()
+  @IsIn(['video', 'motion'])
+  mode?: 'video' | 'motion' | null;
+
+  // Obligatoire en mode « video » (contrôlé par le service), absent en mode « motion »
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => RushDto)
+  clips?: RushDto[] | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(3000)
+  script?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  voix?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1500)
   consignes?: string | null;
 
   @IsOptional()
@@ -42,41 +70,45 @@ export class AgentVideoCreerDto {
   @IsInt()
   @Min(5)
   @Max(600)
-  duree_cible_s?: number | null;
+  duree_max_s?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  illustrations?: boolean | null;
+
+  @IsOptional()
+  @IsBoolean()
+  logo?: boolean | null;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => ImageDto)
+  images?: ImageDto[] | null;
 
   @IsOptional()
   @IsString()
+  @MaxLength(80)
   musique?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(5)
+  @Max(100)
+  musique_volume?: number | null;
 }
 
-export class BattementDto {
-  @IsOptional()
+/** Correction demandée par le client sur un montage terminé. */
+export class AgentVideoCorrectionDto {
   @IsString()
-  @MaxLength(300)
-  progression?: string | null;
-}
-
-export class TerminerDto {
-  @IsOptional()
-  @IsNumber()
-  duree_s?: number | null;
+  @MaxLength(1500)
+  consignes!: string;
 
   @IsOptional()
-  @IsNumber()
-  cout_usd?: number | null;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(1000)
-  resume?: string | null;
-}
-
-export class EchecDto {
-  @IsString()
-  @MaxLength(500)
-  erreur!: string;
-
-  @IsOptional()
-  @IsNumber()
-  cout_usd?: number | null;
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => ImageDto)
+  images?: ImageDto[] | null;
 }
