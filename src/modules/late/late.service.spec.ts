@@ -24,12 +24,26 @@ describe('LateService.sweepPlanifies', () => {
     } as never;
     const mailStub = {} as never;
     const socialStub = {
-      listConnectedAccounts: overrides.listConnectedAccounts ?? jest.fn().mockResolvedValue({}),
+      listConnectedAccounts:
+        overrides.listConnectedAccounts ?? jest.fn().mockResolvedValue({}),
     } as never;
-    const configStub = { get: jest.fn().mockReturnValue('') } as unknown as ConfigService;
+    const configStub = {
+      get: jest.fn().mockReturnValue(''),
+    } as unknown as ConfigService;
     const pushStub = { sendToUser: jest.fn().mockResolvedValue(true) } as never;
-    const evenementStub = { log: jest.fn().mockResolvedValue(undefined) } as never;
-    const service = new LateService(prismaStub, zernioStub, mailStub, socialStub, pushStub, evenementStub, { prochainCreneau: jest.fn() } as never, configStub);
+    const evenementStub = {
+      log: jest.fn().mockResolvedValue(undefined),
+    } as never;
+    const service = new LateService(
+      prismaStub,
+      zernioStub,
+      mailStub,
+      socialStub,
+      pushStub,
+      evenementStub,
+      { prochainCreneau: jest.fn() } as never,
+      configStub,
+    );
     return { service, findMany, update };
   }
 
@@ -38,18 +52,29 @@ describe('LateService.sweepPlanifies', () => {
     const { service, findMany } = makeService({
       findManyImpl: async () => {
         call += 1;
-        if (call === 1) return [{ id: 'c1', telegram_id: 'u1' }, { id: 'c2', telegram_id: 'u1' }];
+        if (call === 1)
+          return [
+            { id: 'c1', telegram_id: 'u1' },
+            { id: 'c2', telegram_id: 'u1' },
+          ];
         return []; // passes 2 et 3 : rien
       },
     });
-    jest.spyOn(service, 'programmerContenu').mockResolvedValue({ ok: true, late_post_id: 'zp1' });
+    jest
+      .spyOn(service, 'programmerContenu')
+      .mockResolvedValue({ ok: true, late_post_id: 'zp1' });
 
     const n = await service.sweepPlanifies();
 
     expect(findMany).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
-        where: { statut: 'Planifie', late_post_id: null, publish_status: null, date_publication: { gt: expect.any(Date) } },
+        where: {
+          statut: 'Planifie',
+          late_post_id: null,
+          publish_status: null,
+          date_publication: { gt: expect.any(Date) },
+        },
       }),
     );
     expect(service.programmerContenu).toHaveBeenCalledTimes(2);
@@ -69,10 +94,13 @@ describe('LateService.sweepPlanifies', () => {
 
     await service.sweepPlanifies();
 
-    expect(update).toHaveBeenCalledWith({ where: { id: 'c1' }, data: { publish_status: 'publié', statut: 'Publie' } });
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'c1' },
+      data: { publish_status: 'publié', statut: 'Publie' },
+    });
   });
 
-  it("passe 2 — libère la ligne quand le post a disparu chez Zernio (404)", async () => {
+  it('passe 2 — libère la ligne quand le post a disparu chez Zernio (404)', async () => {
     let call = 0;
     const { service, update } = makeService({
       findManyImpl: async () => {
@@ -80,12 +108,17 @@ describe('LateService.sweepPlanifies', () => {
         if (call === 2) return [{ id: 'c1', late_post_id: 'zp-disparu' }];
         return [];
       },
-      getPost: jest.fn().mockRejectedValue(new ZernioError('Post not found', 404)),
+      getPost: jest
+        .fn()
+        .mockRejectedValue(new ZernioError('Post not found', 404)),
     });
 
     await service.sweepPlanifies();
 
-    expect(update).toHaveBeenCalledWith({ where: { id: 'c1' }, data: { late_post_id: null, publish_status: null } });
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'c1' },
+      data: { late_post_id: null, publish_status: null },
+    });
   });
 
   it('passe 3 — relance un échec récent (<24h, compte actif, pas de retry depuis 2h)', async () => {
@@ -95,11 +128,21 @@ describe('LateService.sweepPlanifies', () => {
       findManyImpl: async () => {
         call += 1;
         if (call === 3) {
-          return [{ id: 'c1', telegram_id: 'u1', reseau_cible: 'LinkedIn', late_post_id: 'zp1', updated_at: vieuxUpdatedAt }];
+          return [
+            {
+              id: 'c1',
+              telegram_id: 'u1',
+              reseau_cible: 'LinkedIn',
+              late_post_id: 'zp1',
+              updated_at: vieuxUpdatedAt,
+            },
+          ];
         }
         return [];
       },
-      listConnectedAccounts: jest.fn().mockResolvedValue({ linkedin: { is_active: true } }),
+      listConnectedAccounts: jest
+        .fn()
+        .mockResolvedValue({ linkedin: { is_active: true } }),
       retryPost: jest.fn().mockResolvedValue({}),
     });
 
@@ -107,11 +150,20 @@ describe('LateService.sweepPlanifies', () => {
 
     expect(findMany).toHaveBeenNthCalledWith(
       3,
-      expect.objectContaining({ where: expect.objectContaining({ publish_status: 'échec', late_post_id: { not: null } }) }),
+      expect.objectContaining({
+        where: expect.objectContaining({
+          publish_status: 'échec',
+          late_post_id: { not: null },
+        }),
+      }),
     );
     expect(update).toHaveBeenCalledWith({
       where: { id: 'c1' },
-      data: { publish_status: 'envoi', publish_error: null, updated_at: expect.any(Date) },
+      data: {
+        publish_status: 'envoi',
+        publish_error: null,
+        updated_at: expect.any(Date),
+      },
     });
     expect(n).toBe(1);
   });
@@ -122,11 +174,21 @@ describe('LateService.sweepPlanifies', () => {
       findManyImpl: async () => {
         call += 1;
         if (call === 3) {
-          return [{ id: 'c1', telegram_id: 'u1', reseau_cible: 'LinkedIn', late_post_id: 'zp1', updated_at: new Date(0) }];
+          return [
+            {
+              id: 'c1',
+              telegram_id: 'u1',
+              reseau_cible: 'LinkedIn',
+              late_post_id: 'zp1',
+              updated_at: new Date(0),
+            },
+          ];
         }
         return [];
       },
-      listConnectedAccounts: jest.fn().mockResolvedValue({ linkedin: { is_active: false } }),
+      listConnectedAccounts: jest
+        .fn()
+        .mockResolvedValue({ linkedin: { is_active: false } }),
     });
 
     const n = await service.sweepPlanifies();
@@ -135,14 +197,22 @@ describe('LateService.sweepPlanifies', () => {
     expect(n).toBe(0);
   });
 
-  it('passe 3 — respecte l\'espacement de 2h entre deux tentatives', async () => {
+  it("passe 3 — respecte l'espacement de 2h entre deux tentatives", async () => {
     let call = 0;
     const recent = new Date(Date.now() - 30 * 60 * 1000); // 30 min : sous le garde-fou 2h
     const { service, update } = makeService({
       findManyImpl: async () => {
         call += 1;
         if (call === 3) {
-          return [{ id: 'c1', telegram_id: 'u1', reseau_cible: 'LinkedIn', late_post_id: 'zp1', updated_at: recent }];
+          return [
+            {
+              id: 'c1',
+              telegram_id: 'u1',
+              reseau_cible: 'LinkedIn',
+              late_post_id: 'zp1',
+              updated_at: recent,
+            },
+          ];
         }
         return [];
       },
@@ -170,7 +240,16 @@ function makeServiceForSignature(webhookSecret: string) {
   const configStub = {
     get: jest.fn().mockReturnValue(webhookSecret),
   } as unknown as ConfigService;
-  return new LateService(prismaStub, zernioStub, mailStub, socialStub, pushStub, { log: jest.fn() } as never, { prochainCreneau: jest.fn() } as never, configStub);
+  return new LateService(
+    prismaStub,
+    zernioStub,
+    mailStub,
+    socialStub,
+    pushStub,
+    { log: jest.fn() } as never,
+    { prochainCreneau: jest.fn() } as never,
+    configStub,
+  );
 }
 
 // Port direct de backend/tests/test_webhooks.py (section Late), corrigé suite au scan
@@ -187,7 +266,9 @@ describe('LateService.verifySignature', () => {
   it('signature base64 valide acceptée', () => {
     const service = makeServiceForSignature(SECRET_LATE);
     const corps = Buffer.from('{"event":"post.published"}');
-    const b64 = createHmac('sha256', SECRET_LATE).update(corps).digest('base64');
+    const b64 = createHmac('sha256', SECRET_LATE)
+      .update(corps)
+      .digest('base64');
     expect(service.verifySignature(corps, b64)).toBe(true);
   });
 
@@ -198,12 +279,19 @@ describe('LateService.verifySignature', () => {
 
   it('sans secret configuré, acceptée (vérification impossible — comportement legacy)', () => {
     const service = makeServiceForSignature('');
-    expect(service.verifySignature(Buffer.from('{}'), "n'importe quoi")).toBe(true);
+    expect(service.verifySignature(Buffer.from('{}'), "n'importe quoi")).toBe(
+      true,
+    );
   });
 
   it('signature invalide (mais présente) est rejetée', () => {
     const service = makeServiceForSignature(SECRET_LATE);
-    expect(service.verifySignature(Buffer.from('{"event":"post.published"}'), 'signature-forgee')).toBe(false);
+    expect(
+      service.verifySignature(
+        Buffer.from('{"event":"post.published"}'),
+        'signature-forgee',
+      ),
+    ).toBe(false);
   });
 });
 
@@ -222,19 +310,39 @@ describe('LateService.handleWebhook — account.disconnected déclenche le push'
       users: { findUnique: jest.fn().mockResolvedValue(null) },
     } as never;
     const zernioStub = {} as never;
-    const mailStub = { sendEmail: jest.fn(), accountDisconnectedHtml: jest.fn() } as never;
+    const mailStub = {
+      sendEmail: jest.fn(),
+      accountDisconnectedHtml: jest.fn(),
+    } as never;
     const socialStub = {} as never;
     const pushStub = { sendToUser: jest.fn().mockResolvedValue(true) };
-    const configStub = { get: jest.fn().mockReturnValue('') } as unknown as ConfigService;
-    const service = new LateService(prismaStub, zernioStub, mailStub, socialStub, pushStub as never, { log: jest.fn().mockResolvedValue(undefined) } as never, { prochainCreneau: jest.fn() } as never, configStub);
+    const configStub = {
+      get: jest.fn().mockReturnValue(''),
+    } as unknown as ConfigService;
+    const service = new LateService(
+      prismaStub,
+      zernioStub,
+      mailStub,
+      socialStub,
+      pushStub as never,
+      { log: jest.fn().mockResolvedValue(undefined) } as never,
+      { prochainCreneau: jest.fn() } as never,
+      configStub,
+    );
 
-    await service.handleWebhook({ event: 'account.disconnected', account: { platform: 'instagram', id: 'acc-1' } });
+    await service.handleWebhook({
+      event: 'account.disconnected',
+      account: { platform: 'instagram', id: 'acc-1' },
+    });
 
     expect(pushStub.sendToUser).toHaveBeenCalledWith(
       'u1',
       expect.stringContaining('déconnecté'),
       expect.any(String),
-      expect.objectContaining({ event: 'account.disconnected', reseau: 'instagram' }),
+      expect.objectContaining({
+        event: 'account.disconnected',
+        reseau: 'instagram',
+      }),
     );
   });
 });
@@ -247,7 +355,12 @@ describe('LateService.handleWebhook — post.published déclenche aussi le push'
   it('envoie le push FCM en plus de la notif in-app quand un post est publié', async () => {
     const prismaStub = {
       contenu: {
-        findFirst: jest.fn().mockResolvedValue({ id: 'c1', telegram_id: 'u1', titre: 'Mon post', reseau_cible: 'linkedin' }),
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'c1',
+          telegram_id: 'u1',
+          titre: 'Mon post',
+          reseau_cible: 'linkedin',
+        }),
         update: jest.fn().mockResolvedValue({}),
       },
       notifications: { create: jest.fn().mockResolvedValue({}) },
@@ -256,10 +369,24 @@ describe('LateService.handleWebhook — post.published déclenche aussi le push'
     const mailStub = {} as never;
     const socialStub = {} as never;
     const pushStub = { sendToUser: jest.fn().mockResolvedValue(true) };
-    const configStub = { get: jest.fn().mockReturnValue('') } as unknown as ConfigService;
-    const service = new LateService(prismaStub, zernioStub, mailStub, socialStub, pushStub as never, { log: jest.fn().mockResolvedValue(undefined) } as never, { prochainCreneau: jest.fn() } as never, configStub);
+    const configStub = {
+      get: jest.fn().mockReturnValue(''),
+    } as unknown as ConfigService;
+    const service = new LateService(
+      prismaStub,
+      zernioStub,
+      mailStub,
+      socialStub,
+      pushStub as never,
+      { log: jest.fn().mockResolvedValue(undefined) } as never,
+      { prochainCreneau: jest.fn() } as never,
+      configStub,
+    );
 
-    await service.handleWebhook({ event: 'post.published', post: { id: 'late-1' } });
+    await service.handleWebhook({
+      event: 'post.published',
+      post: { id: 'late-1' },
+    });
 
     expect(pushStub.sendToUser).toHaveBeenCalledWith(
       'u1',
@@ -267,5 +394,116 @@ describe('LateService.handleWebhook — post.published déclenche aussi le push'
       expect.any(String),
       expect.objectContaining({ event: 'post.published', contenu_id: 'c1' }),
     );
+  });
+});
+describe('LateService.publishContenu — fiche Google', () => {
+  function makeService(createPost: jest.Mock) {
+    const prismaStub = {
+      users: {
+        findUnique: jest.fn().mockResolvedValue({ timezone: 'Europe/Paris' }),
+      },
+    } as never;
+    const zernioStub = { isConfigured: true, createPost } as never;
+    const configStub = {
+      get: jest.fn().mockReturnValue(''),
+    } as unknown as ConfigService;
+    const service = new LateService(
+      prismaStub,
+      zernioStub,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { prochainCreneau: jest.fn() } as never,
+      configStub,
+    );
+    jest
+      .spyOn(
+        service as unknown as { socialCompte: () => Promise<string> },
+        'socialCompte',
+      )
+      .mockResolvedValue('acc_gbp');
+    return service;
+  }
+  const base = {
+    id: 'c1',
+    reseau_cible: 'GoogleBusiness',
+    contenu: 'Soirée de Noël au restaurant',
+    titre: 'Noël',
+  };
+
+  it("envoie le type de post et le bouton d'action à Zernio", async () => {
+    const createPost = jest
+      .fn()
+      .mockResolvedValue({ post: { _id: 'zp1', status: 'scheduled' } });
+    const service = makeService(createPost);
+    const r = await service.publishContenu(
+      'u1',
+      {
+        ...base,
+        google_options: {
+          type: 'EVENT',
+          evenement: { titre: 'Soirée de Noël', debut: '2026-12-24T19:00' },
+          bouton: { type: 'BOOK', url: 'https://resa.fr' },
+        },
+      },
+      true,
+    );
+    expect(r).toMatchObject({ ok: true, late_post_id: 'zp1' });
+    const entree = createPost.mock.calls[0][0].platforms[0];
+    expect(entree).toMatchObject({
+      platform: 'googlebusiness',
+      platformSpecificData: {
+        topicType: 'EVENT',
+        callToAction: { type: 'BOOK', url: 'https://resa.fr' },
+        event: { title: 'Soirée de Noël' },
+      },
+    });
+  });
+
+  it('options invalides : refus clair avant tout envoi', async () => {
+    const createPost = jest.fn();
+    const service = makeService(createPost);
+    const r = await service.publishContenu(
+      'u1',
+      { ...base, google_options: { type: 'EVENT', evenement: {} } },
+      true,
+    );
+    expect(r).toMatchObject({ ok: false });
+    expect(createPost).not.toHaveBeenCalled();
+  });
+
+  it("une seule image : la 1re slide d'un carrousel, jamais la vidéo", async () => {
+    const createPost = jest
+      .fn()
+      .mockResolvedValue({ post: { _id: 'zp2', status: 'scheduled' } });
+    const service = makeService(createPost);
+    await service.publishContenu(
+      'u1',
+      {
+        ...base,
+        type: 'Carrousel',
+        slides_images: ['https://a/1.png', 'https://a/2.png'],
+      },
+      true,
+    );
+    expect(createPost.mock.calls[0][0].mediaItems).toEqual([
+      { url: 'https://a/1.png', type: 'image' },
+    ]);
+  });
+
+  it('refus de Google sans erreur HTTP (statut « failed ») : la publication est bien en échec', async () => {
+    const createPost = jest.fn().mockResolvedValue({
+      post: {
+        _id: 'zp3',
+        status: 'failed',
+        platforms: [
+          { platform: 'googlebusiness', errorMessage: 'Invalid event' },
+        ],
+      },
+    });
+    const service = makeService(createPost);
+    const r = await service.publishContenu('u1', base, true);
+    expect(r).toMatchObject({ ok: false });
   });
 });

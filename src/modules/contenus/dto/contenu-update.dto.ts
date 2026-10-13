@@ -1,4 +1,11 @@
-import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsInt,
+  IsObject,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
 
 /** Port direct de backend/models/contenu.py::ContenuUpdate. */
 export class ContenuUpdateDto {
@@ -31,4 +38,9 @@ export class ContenuUpdateDto {
   @IsOptional()
   @IsString()
   date_publication?: string;
+
+  /** Fiche Google : { type, bouton, evenement, offre } (vérifiées à la publication). */
+  @IsOptional()
+  @IsObject()
+  google_options?: Record<string, unknown>;
 }

@@ -25,7 +25,11 @@ export class ZernioError extends Error {
   readonly statusCode?: number;
   readonly details?: Record<string, unknown>;
 
-  constructor(message: string, statusCode?: number, details?: Record<string, unknown>) {
+  constructor(
+    message: string,
+    statusCode?: number,
+    details?: Record<string, unknown>,
+  ) {
     super(message);
     this.name = 'ZernioError';
     this.statusCode = statusCode;
@@ -46,7 +50,9 @@ export class ZernioClientService {
     return Boolean(this.apiKey);
   }
 
-  private async safeJson(resp: Response): Promise<Record<string, unknown> | null> {
+  private async safeJson(
+    resp: Response,
+  ): Promise<Record<string, unknown> | null> {
     try {
       const text = await resp.text();
       return text ? (JSON.parse(text) as Record<string, unknown>) : null;
@@ -61,18 +67,28 @@ export class ZernioClientService {
     if (resp.status === 401) throw new ZernioError('Invalid API key', 401);
     if (resp.status === 403) {
       const data = await this.safeJson(resp);
-      throw new ZernioError((data?.error as string) || 'Access forbidden - check your plan', 403);
+      throw new ZernioError(
+        (data?.error as string) || 'Access forbidden - check your plan',
+        403,
+      );
     }
     if (resp.status === 404) {
       const data = await this.safeJson(resp);
-      throw new ZernioError((data?.error as string) || 'Resource not found', 404);
+      throw new ZernioError(
+        (data?.error as string) || 'Resource not found',
+        404,
+      );
     }
     if (resp.status === 429) {
       throw new ZernioError('Rate limit exceeded', 429);
     }
     if (resp.status >= 400) {
       const data = await this.safeJson(resp);
-      throw new ZernioError((data?.error as string) || `HTTP ${resp.status}`, resp.status, data ?? undefined);
+      throw new ZernioError(
+        (data?.error as string) || `HTTP ${resp.status}`,
+        resp.status,
+        data ?? undefined,
+      );
     }
     const text = await resp.text();
     return (text ? JSON.parse(text) : {}) as T;
@@ -83,14 +99,17 @@ export class ZernioClientService {
   private async request<T>(
     method: string,
     path: string,
-    options: { body?: unknown; params?: Record<string, string | number | undefined> } = {},
+    options: {
+      body?: unknown;
+      params?: Record<string, string | number | undefined>;
+    } = {},
   ): Promise<T> {
     if (!this.apiKey) throw new ZernioError('API key is required');
     let url = `${BASE_URL}${path}`;
     if (options.params) {
       const entries = Object.entries(options.params)
         .filter(([, v]) => v !== undefined && v !== '')
-        .map(([k, v]) => [k, String(v)]) as [string, string][];
+        .map(([k, v]) => [k, String(v)]);
       const qs = new URLSearchParams(entries).toString();
       if (qs) url += `?${qs}`;
     }
@@ -107,26 +126,39 @@ export class ZernioClientService {
             'Content-Type': 'application/json',
             Accept: 'application/json',
           },
-          body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+          body:
+            options.body !== undefined
+              ? JSON.stringify(options.body)
+              : undefined,
           signal: controller.signal,
         });
         return await this.handleResponse<T>(resp);
       } catch (e) {
         if (e instanceof ZernioError) throw e;
         lastError = e;
-        this.logger.warn(`Zernio ${method} ${path} (essai ${attempt + 1}/${MAX_RETRIES}): ${e instanceof Error ? e.message : e}`);
+        this.logger.warn(
+          `Zernio ${method} ${path} (essai ${attempt + 1}/${MAX_RETRIES}): ${e instanceof Error ? e.message : e}`,
+        );
         if (attempt < MAX_RETRIES - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
+          await new Promise((resolve) =>
+            setTimeout(resolve, 500 * 2 ** attempt),
+          );
         }
       } finally {
         clearTimeout(timer);
       }
     }
-    throw lastError instanceof Error ? new ZernioError(lastError.message) : new ZernioError('Request failed after retries');
+    throw lastError instanceof Error
+      ? new ZernioError(lastError.message)
+      : new ZernioError('Request failed after retries');
   }
 
-  async createPost(payload: ZernioCreatePostPayload): Promise<ZernioCreatePostResponse> {
-    return this.request('POST', '/v1/posts', { body: payload as unknown as Record<string, unknown> });
+  async createPost(
+    payload: ZernioCreatePostPayload,
+  ): Promise<ZernioCreatePostResponse> {
+    return this.request('POST', '/v1/posts', {
+      body: payload as unknown as Record<string, unknown>,
+    });
   }
 
   async getPost(postId: string): Promise<ZernioGetPostResponse> {
@@ -142,7 +174,9 @@ export class ZernioClientService {
   }
 
   async listAccounts(profileId?: string): Promise<ZernioAccountsListResponse> {
-    return this.request('GET', '/v1/accounts', { params: profileId ? { profileId } : undefined });
+    return this.request('GET', '/v1/accounts', {
+      params: profileId ? { profileId } : undefined,
+    });
   }
 
   /** Supprime un compte social connecté (déconnexion) — libère un slot Late. */
@@ -160,8 +194,14 @@ export class ZernioClientService {
 
   /** URL OAuth pour connecter un réseau à un profil (le client la suit, Late gère le flow,
    * puis redirige vers `redirectUrl`). */
-  async getConnectUrl(platform: string, profileId: string, redirectUrl: string): Promise<ZernioConnectUrlResponse> {
-    return this.request('GET', `/v1/connect/${platform}`, { params: { profileId, redirectUrl } });
+  async getConnectUrl(
+    platform: string,
+    profileId: string,
+    redirectUrl: string,
+  ): Promise<ZernioConnectUrlResponse> {
+    return this.request('GET', `/v1/connect/${platform}`, {
+      params: { profileId, redirectUrl },
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -170,40 +210,105 @@ export class ZernioClientService {
   // ---------------------------------------------------------------------------
 
   /** Liste les posts commentés (fil d'entrée de l'inbox). */
-  async listInboxComments(params: { profileId?: string; platform?: string; limit?: number; cursor?: string; accountId?: string }): Promise<{ data?: unknown[] }> {
+  async listInboxComments(params: {
+    profileId?: string;
+    platform?: string;
+    limit?: number;
+    cursor?: string;
+    accountId?: string;
+  }): Promise<{ data?: unknown[] }> {
     return this.request('GET', '/v1/inbox/comments', {
-      params: { profileId: params.profileId, platform: params.platform, sortBy: 'date', sortOrder: 'desc', limit: params.limit ?? 50, cursor: params.cursor, accountId: params.accountId },
+      params: {
+        profileId: params.profileId,
+        platform: params.platform,
+        sortBy: 'date',
+        sortOrder: 'desc',
+        limit: params.limit ?? 50,
+        cursor: params.cursor,
+        accountId: params.accountId,
+      },
     });
   }
 
   /** Fil des commentaires d'UN post. */
-  async getInboxPostComments(postId: string, accountId: string, opts: { limit?: number; cursor?: string } = {}): Promise<{ comments?: unknown[] }> {
-    return this.request('GET', `/v1/inbox/comments/${postId}`, { params: { accountId, limit: opts.limit ?? 25, cursor: opts.cursor } });
+  async getInboxPostComments(
+    postId: string,
+    accountId: string,
+    opts: { limit?: number; cursor?: string } = {},
+  ): Promise<{ comments?: unknown[] }> {
+    return this.request('GET', `/v1/inbox/comments/${postId}`, {
+      params: { accountId, limit: opts.limit ?? 25, cursor: opts.cursor },
+    });
   }
 
   /** Répond à un post/commentaire de l'inbox. */
-  async replyToInboxPost(postId: string, accountId: string, message: string, commentId?: string): Promise<Record<string, unknown>> {
-    return this.request('POST', `/v1/inbox/comments/${postId}`, { body: { accountId, message, commentId } });
+  async replyToInboxPost(
+    postId: string,
+    accountId: string,
+    message: string,
+    commentId?: string,
+  ): Promise<Record<string, unknown>> {
+    return this.request('POST', `/v1/inbox/comments/${postId}`, {
+      body: { accountId, message, commentId },
+    });
   }
 
-  async deleteInboxComment(postId: string, accountId: string, commentId: string): Promise<Record<string, unknown>> {
-    return this.request('DELETE', `/v1/inbox/comments/${postId}`, { params: { accountId, commentId } });
+  async deleteInboxComment(
+    postId: string,
+    accountId: string,
+    commentId: string,
+  ): Promise<Record<string, unknown>> {
+    return this.request('DELETE', `/v1/inbox/comments/${postId}`, {
+      params: { accountId, commentId },
+    });
   }
 
-  async hideInboxComment(postId: string, commentId: string, accountId: string): Promise<Record<string, unknown>> {
-    return this.request('POST', `/v1/inbox/comments/${postId}/${commentId}/hide`, { body: { accountId } });
+  async hideInboxComment(
+    postId: string,
+    commentId: string,
+    accountId: string,
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      'POST',
+      `/v1/inbox/comments/${postId}/${commentId}/hide`,
+      { body: { accountId } },
+    );
   }
 
-  async unhideInboxComment(postId: string, commentId: string, accountId: string): Promise<Record<string, unknown>> {
-    return this.request('DELETE', `/v1/inbox/comments/${postId}/${commentId}/hide`, { params: { accountId } });
+  async unhideInboxComment(
+    postId: string,
+    commentId: string,
+    accountId: string,
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      'DELETE',
+      `/v1/inbox/comments/${postId}/${commentId}/hide`,
+      { params: { accountId } },
+    );
   }
 
-  async likeInboxComment(postId: string, commentId: string, accountId: string): Promise<Record<string, unknown>> {
-    return this.request('POST', `/v1/inbox/comments/${postId}/${commentId}/like`, { body: { accountId } });
+  async likeInboxComment(
+    postId: string,
+    commentId: string,
+    accountId: string,
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      'POST',
+      `/v1/inbox/comments/${postId}/${commentId}/like`,
+      { body: { accountId } },
+    );
   }
 
-  async unlikeInboxComment(postId: string, commentId: string, accountId: string): Promise<Record<string, unknown>> {
-    return this.request('DELETE', `/v1/inbox/comments/${postId}/${commentId}/like`, { params: { accountId } });
+  async unlikeInboxComment(
+    postId: string,
+    commentId: string,
+    accountId: string,
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      'DELETE',
+      `/v1/inbox/comments/${postId}/${commentId}/like`,
+      { params: { accountId } },
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -211,65 +316,290 @@ export class ZernioClientService {
   // côté Late : un compte sans cet add-on reçoit un 402/403).
   // ---------------------------------------------------------------------------
 
-  async getAnalytics(params: { profileId: string; platform?: string; fromDate: string; toDate: string; limit?: number }): Promise<{ posts?: Record<string, unknown>[]; overview?: Record<string, unknown> }> {
+  async getAnalytics(params: {
+    profileId: string;
+    platform?: string;
+    fromDate: string;
+    toDate: string;
+    limit?: number;
+  }): Promise<{
+    posts?: Record<string, unknown>[];
+    overview?: Record<string, unknown>;
+  }> {
     return this.request('GET', '/v1/analytics', {
-      params: { profileId: params.profileId, platform: params.platform, fromDate: params.fromDate, toDate: params.toDate, limit: params.limit ?? 100 },
+      params: {
+        profileId: params.profileId,
+        platform: params.platform,
+        fromDate: params.fromDate,
+        toDate: params.toDate,
+        limit: params.limit ?? 100,
+      },
     });
   }
 
-  async getDailyMetrics(params: { profileId: string; platform?: string; fromDate: string; toDate: string }): Promise<{ dailyData?: unknown[]; platformBreakdown?: unknown[] }> {
-    return this.request('GET', '/v1/analytics/daily-metrics', { params: { profileId: params.profileId, platform: params.platform, fromDate: params.fromDate, toDate: params.toDate } });
+  async getDailyMetrics(params: {
+    profileId: string;
+    platform?: string;
+    fromDate: string;
+    toDate: string;
+  }): Promise<{ dailyData?: unknown[]; platformBreakdown?: unknown[] }> {
+    return this.request('GET', '/v1/analytics/daily-metrics', {
+      params: {
+        profileId: params.profileId,
+        platform: params.platform,
+        fromDate: params.fromDate,
+        toDate: params.toDate,
+      },
+    });
   }
 
   async getBestTimeToPost(profileId: string): Promise<{ slots?: unknown[] }> {
-    return this.request('GET', '/v1/analytics/best-time', { params: { profileId } });
+    return this.request('GET', '/v1/analytics/best-time', {
+      params: { profileId },
+    });
   }
 
   // --- Rico Coach : collecte de l'historique (fenêtre max. 1 an par appel côté Zernio) ---
 
   /** Une page de posts avec leurs stats (une entrée par post ET par réseau). */
-  async getAnalyticsPage(params: { profileId: string; fromDate: string; toDate: string; page: number; limit?: number }): Promise<{
+  async getAnalyticsPage(params: {
+    profileId: string;
+    fromDate: string;
+    toDate: string;
+    page: number;
+    limit?: number;
+  }): Promise<{
     posts?: Record<string, unknown>[];
     pagination?: { page?: number; pages?: number; total?: number };
   }> {
     return this.request('GET', '/v1/analytics', {
-      params: { profileId: params.profileId, fromDate: params.fromDate, toDate: params.toDate, page: params.page, limit: params.limit ?? 100 },
+      params: {
+        profileId: params.profileId,
+        fromDate: params.fromDate,
+        toDate: params.toDate,
+        page: params.page,
+        limit: params.limit ?? 100,
+      },
     });
   }
 
   /** Abonnés par compte : un point par mois (valeur au 1er du mois) + valeur actuelle. */
-  async getFollowerStatsMensuel(params: { profileId: string; fromDate: string; toDate: string }): Promise<{
-    accounts?: Array<{ _id: string; platform?: string; currentFollowers?: number | null }>;
+  async getFollowerStatsMensuel(params: {
+    profileId: string;
+    fromDate: string;
+    toDate: string;
+  }): Promise<{
+    accounts?: Array<{
+      _id: string;
+      platform?: string;
+      currentFollowers?: number | null;
+    }>;
     stats?: Record<string, Array<{ date: string; followers: number }>>;
   }> {
-    return this.request('GET', '/v1/accounts/follower-stats', { params: { ...params, granularity: 'monthly' } });
+    return this.request('GET', '/v1/accounts/follower-stats', {
+      params: { ...params, granularity: 'monthly' },
+    });
   }
 
   /** Fiche Google : métriques quotidiennes (vues, appels, itinéraires, clics site…). */
-  async getGoogleBusinessPerformance(params: { accountId: string; startDate: string; endDate: string }): Promise<{
-    metrics?: Record<string, { total?: number; values?: Array<{ date: string; value: number }> }>;
+  async getGoogleBusinessPerformance(params: {
+    accountId: string;
+    startDate: string;
+    endDate: string;
+  }): Promise<{
+    metrics?: Record<
+      string,
+      { total?: number; values?: Array<{ date: string; value: number }> }
+    >;
   }> {
-    return this.request('GET', '/v1/analytics/googlebusiness/performance', { params });
+    return this.request('GET', '/v1/analytics/googlebusiness/performance', {
+      params,
+    });
+  }
+
+  // ---- Fiche Google : gestion de la fiche (doc https://docs.zernio.com/platforms/google-business)
+  // Toutes ces routes agissent sur l'établissement sélectionné du compte, sauf `locationId`.
+
+  /** Avis (50 par page) + note moyenne et nombre total. Fiche non vérifiée : liste vide. */
+  async listGmbReviews(
+    accountId: string,
+    params: { pageToken?: string; pageSize?: number; locationId?: string } = {},
+  ): Promise<{
+    reviews?: Array<Record<string, unknown>>;
+    averageRating?: number;
+    totalReviewCount?: number;
+    nextPageToken?: string;
+  }> {
+    return this.request('GET', `/v1/accounts/${accountId}/gmb-reviews`, {
+      params: { pageSize: 50, ...params },
+    });
+  }
+
+  /** Répond à un avis (une seule réponse : elle remplace la précédente, même tapée sur Google). */
+  async replyGmbReview(
+    accountId: string,
+    reviewId: string,
+    comment: string,
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      'POST',
+      `/v1/accounts/${accountId}/gmb-reviews/${encodeURIComponent(reviewId)}/reply`,
+      { body: { comment } },
+    );
+  }
+
+  async deleteGmbReviewReply(
+    accountId: string,
+    reviewId: string,
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      'DELETE',
+      `/v1/accounts/${accountId}/gmb-reviews/${encodeURIComponent(reviewId)}/reply`,
+    );
+  }
+
+  /** Photos de la fiche (couverture, logo, galerie…), distinctes des posts. */
+  async listGmbMedia(
+    accountId: string,
+  ): Promise<{ mediaItems?: Array<Record<string, unknown>> }> {
+    return this.request('GET', `/v1/accounts/${accountId}/gmb-media`);
+  }
+
+  async createGmbMedia(
+    accountId: string,
+    body: { sourceUrl: string; category: string; description?: string },
+  ): Promise<Record<string, unknown>> {
+    return this.request('POST', `/v1/accounts/${accountId}/gmb-media`, {
+      body,
+    });
+  }
+
+  async deleteGmbMedia(
+    accountId: string,
+    mediaId: string,
+  ): Promise<Record<string, unknown>> {
+    return this.request('DELETE', `/v1/accounts/${accountId}/gmb-media`, {
+      params: { mediaId },
+    });
+  }
+
+  /** Infos de la fiche (format de l'API Google Business Information, relayé par Zernio). */
+  async getGmbLocationDetails(
+    accountId: string,
+    readMask: string,
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      'GET',
+      `/v1/accounts/${accountId}/gmb-location-details`,
+      { params: { readMask } },
+    );
+  }
+
+  async updateGmbLocationDetails(
+    accountId: string,
+    body: Record<string, unknown> & { updateMask: string },
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      'PUT',
+      `/v1/accounts/${accountId}/gmb-location-details`,
+      { body },
+    );
+  }
+
+  /** Liens d'action de la fiche (prise de rendez-vous, commande, réservation…). */
+  async listGmbPlaceActions(
+    accountId: string,
+  ): Promise<{ placeActionLinks?: Array<Record<string, unknown>> }> {
+    return this.request('GET', `/v1/accounts/${accountId}/gmb-place-actions`);
+  }
+
+  async createGmbPlaceAction(
+    accountId: string,
+    body: { uri: string; placeActionType: string },
+  ): Promise<Record<string, unknown>> {
+    return this.request('POST', `/v1/accounts/${accountId}/gmb-place-actions`, {
+      body,
+    });
+  }
+
+  async deleteGmbPlaceAction(
+    accountId: string,
+    name: string,
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      'DELETE',
+      `/v1/accounts/${accountId}/gmb-place-actions`,
+      { params: { name } },
+    );
+  }
+
+  /** Établissements du compte Google et celui qui est sélectionné. */
+  async listGmbLocations(accountId: string): Promise<{
+    locations?: Array<Record<string, unknown>>;
+    selectedLocationId?: string;
+  }> {
+    return this.request('GET', `/v1/accounts/${accountId}/gmb-locations`, {
+      params: { limit: 100 },
+    });
+  }
+
+  async selectGmbLocation(
+    accountId: string,
+    selectedLocationId: string,
+  ): Promise<Record<string, unknown>> {
+    return this.request('PUT', `/v1/accounts/${accountId}/gmb-locations`, {
+      body: { selectedLocationId },
+    });
   }
 
   /** Fiche Google : mots-clés de recherche d'un mois (sous un seuil, Google les masque). */
-  async getGoogleBusinessKeywords(params: { accountId: string; startMonth: string; endMonth: string }): Promise<{
+  async getGoogleBusinessKeywords(params: {
+    accountId: string;
+    startMonth: string;
+    endMonth: string;
+  }): Promise<{
     keywords?: Array<{ keyword: string; impressions: number }>;
   }> {
-    return this.request('GET', '/v1/analytics/googlebusiness/search-keywords', { params });
+    return this.request('GET', '/v1/analytics/googlebusiness/search-keywords', {
+      params,
+    });
   }
 
   /** Totaux de la période + ceux de la période précédente (`compare=previous_period`),
    * abonnés gagnés par compte, série quotidienne. */
-  async getDashboard(params: { profileId: string; platform?: string; fromDate: string; toDate: string }): Promise<Record<string, unknown>> {
+  async getDashboard(params: {
+    profileId: string;
+    platform?: string;
+    fromDate: string;
+    toDate: string;
+  }): Promise<Record<string, unknown>> {
     return this.request('GET', '/v1/analytics/dashboard', {
-      params: { profileId: params.profileId, platform: params.platform, fromDate: params.fromDate, toDate: params.toDate, compare: 'previous_period' },
+      params: {
+        profileId: params.profileId,
+        platform: params.platform,
+        fromDate: params.fromDate,
+        toDate: params.toDate,
+        compare: 'previous_period',
+      },
     });
   }
 
   /** Historique quotidien des abonnés : `stats` = { accountId: [{date, followers}] }. */
-  async getFollowerStats(params: { profileId: string; fromDate: string; toDate: string }): Promise<{ accounts?: Record<string, unknown>[]; stats?: Record<string, Array<{ date: string; followers: number }>> }> {
-    return this.request('GET', '/v1/accounts/follower-stats', { params: { profileId: params.profileId, fromDate: params.fromDate, toDate: params.toDate } });
+  async getFollowerStats(params: {
+    profileId: string;
+    fromDate: string;
+    toDate: string;
+  }): Promise<{
+    accounts?: Record<string, unknown>[];
+    stats?: Record<string, Array<{ date: string; followers: number }>>;
+  }> {
+    return this.request('GET', '/v1/accounts/follower-stats', {
+      params: {
+        profileId: params.profileId,
+        fromDate: params.fromDate,
+        toDate: params.toDate,
+      },
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -277,48 +607,101 @@ export class ZernioClientService {
   // côté Zernio (403 sinon). Graphe = nodes[] + edges[] (voir docs.zernio.com/workflows).
   // ---------------------------------------------------------------------------
 
-  async listWorkflows(profileId: string): Promise<{ workflows?: Record<string, unknown>[] }> {
-    return this.request('GET', '/v1/workflows', { params: { profileId, limit: 100 } });
+  async listWorkflows(
+    profileId: string,
+  ): Promise<{ workflows?: Record<string, unknown>[] }> {
+    return this.request('GET', '/v1/workflows', {
+      params: { profileId, limit: 100 },
+    });
   }
 
-  async getWorkflow(workflowId: string): Promise<{ workflow?: Record<string, unknown> }> {
-    return this.request('GET', `/v1/workflows/${encodeURIComponent(workflowId)}`);
+  async getWorkflow(
+    workflowId: string,
+  ): Promise<{ workflow?: Record<string, unknown> }> {
+    return this.request(
+      'GET',
+      `/v1/workflows/${encodeURIComponent(workflowId)}`,
+    );
   }
 
-  async createWorkflow(body: Record<string, unknown>): Promise<{ workflow?: Record<string, unknown> }> {
+  async createWorkflow(
+    body: Record<string, unknown>,
+  ): Promise<{ workflow?: Record<string, unknown> }> {
     return this.request('POST', '/v1/workflows', { body });
   }
 
-  async updateWorkflow(workflowId: string, body: Record<string, unknown>): Promise<{ workflow?: Record<string, unknown> }> {
-    return this.request('PATCH', `/v1/workflows/${encodeURIComponent(workflowId)}`, { body });
+  async updateWorkflow(
+    workflowId: string,
+    body: Record<string, unknown>,
+  ): Promise<{ workflow?: Record<string, unknown> }> {
+    return this.request(
+      'PATCH',
+      `/v1/workflows/${encodeURIComponent(workflowId)}`,
+      { body },
+    );
   }
 
   async deleteWorkflow(workflowId: string): Promise<Record<string, unknown>> {
-    return this.request('DELETE', `/v1/workflows/${encodeURIComponent(workflowId)}`);
+    return this.request(
+      'DELETE',
+      `/v1/workflows/${encodeURIComponent(workflowId)}`,
+    );
   }
 
-  async activateWorkflow(workflowId: string): Promise<{ workflow?: Record<string, unknown> }> {
-    return this.request('POST', `/v1/workflows/${encodeURIComponent(workflowId)}/activate`);
+  async activateWorkflow(
+    workflowId: string,
+  ): Promise<{ workflow?: Record<string, unknown> }> {
+    return this.request(
+      'POST',
+      `/v1/workflows/${encodeURIComponent(workflowId)}/activate`,
+    );
   }
 
-  async pauseWorkflow(workflowId: string): Promise<{ workflow?: Record<string, unknown> }> {
-    return this.request('POST', `/v1/workflows/${encodeURIComponent(workflowId)}/pause`);
+  async pauseWorkflow(
+    workflowId: string,
+  ): Promise<{ workflow?: Record<string, unknown> }> {
+    return this.request(
+      'POST',
+      `/v1/workflows/${encodeURIComponent(workflowId)}/pause`,
+    );
   }
 
   /** Posts d'un compte. `source: 'external'` = posts publiés hors Zernio, synchronisés
    * depuis la plateforme (~12 mois) ; `'zernio'` (défaut) = posts publiés via Zernio. */
-  async listPosts(params: { accountId: string; source?: 'zernio' | 'external'; status?: string; limit?: number }): Promise<{ posts?: Record<string, unknown>[] }> {
+  async listPosts(params: {
+    accountId: string;
+    source?: 'zernio' | 'external';
+    status?: string;
+    limit?: number;
+  }): Promise<{ posts?: Record<string, unknown>[] }> {
     return this.request('GET', '/v1/posts', {
-      params: { accountId: params.accountId, source: params.source, status: params.status, limit: params.limit ?? 30, sortBy: 'newest' },
+      params: {
+        accountId: params.accountId,
+        source: params.source,
+        status: params.status,
+        limit: params.limit ?? 30,
+        sortBy: 'newest',
+      },
     });
   }
 
-  async listWorkflowExecutions(workflowId: string, limit = 20): Promise<Record<string, unknown>> {
-    return this.request('GET', `/v1/workflows/${encodeURIComponent(workflowId)}/executions`, { params: { limit } });
+  async listWorkflowExecutions(
+    workflowId: string,
+    limit = 20,
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      'GET',
+      `/v1/workflows/${encodeURIComponent(workflowId)}/executions`,
+      { params: { limit } },
+    );
   }
 
   /** Engagement moyen selon le nombre de posts par semaine, par réseau. */
-  async getPostingFrequency(profileId: string): Promise<{ frequency?: Array<Record<string, unknown>> }> {
-    return this.request('GET', '/v1/analytics/posting-frequency', { params: { profileId } });
+  async getPostingFrequency(
+    profileId: string,
+  ): Promise<{ frequency?: Array<Record<string, unknown>> }> {
+    return this.request('GET', '/v1/analytics/posting-frequency', {
+      params: { profileId },
+    });
   }
 }

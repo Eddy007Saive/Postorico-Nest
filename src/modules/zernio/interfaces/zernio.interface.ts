@@ -30,6 +30,8 @@ export interface ZernioPost {
     platformPostUrl?: string;
     url?: string;
     error?: string;
+    /** Google Business : raison du refus quand post.status === 'failed' (réponse 207). */
+    errorMessage?: string;
   }>;
 }
 
