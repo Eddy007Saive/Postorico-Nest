@@ -102,6 +102,7 @@ export class ZernioClientService {
     options: {
       body?: unknown;
       params?: Record<string, string | number | undefined>;
+      headers?: Record<string, string>;
     } = {},
   ): Promise<T> {
     if (!this.apiKey) throw new ZernioError('API key is required');
@@ -125,6 +126,7 @@ export class ZernioClientService {
             Authorization: `Bearer ${this.apiKey}`,
             'Content-Type': 'application/json',
             Accept: 'application/json',
+            ...(options.headers || {}),
           },
           body:
             options.body !== undefined
@@ -703,5 +705,65 @@ export class ZernioClientService {
     return this.request('GET', '/v1/analytics/posting-frequency', {
       params: { profileId },
     });
+  }
+
+  // ------------------------------------------------------------------ publicités Meta
+  // Doc : https://docs.zernio.com/platforms/meta-ads
+
+  /** Comptes publicitaires accessibles depuis un compte connecté (Facebook ou metaads). */
+  async listAdAccounts(
+    accountId: string,
+  ): Promise<{ accounts?: Array<Record<string, unknown>> }> {
+    return this.request('GET', '/v1/ads/accounts', { params: { accountId } });
+  }
+
+  async listAds(params: {
+    accountId: string;
+    adAccountId?: string;
+    fromDate?: string;
+    toDate?: string;
+    limit?: number;
+  }): Promise<{
+    ads?: Array<Record<string, unknown>>;
+    backfillPending?: boolean;
+  }> {
+    return this.request('GET', '/v1/ads', {
+      params: { ...params, source: 'all', limit: params.limit ?? 100 },
+    });
+  }
+
+  async getAd(adId: string): Promise<Record<string, unknown>> {
+    return this.request('GET', `/v1/ads/${encodeURIComponent(adId)}`);
+  }
+
+  async updateAdStatus(
+    adId: string,
+    status: 'active' | 'paused',
+  ): Promise<Record<string, unknown>> {
+    return this.request('PUT', `/v1/ads/${encodeURIComponent(adId)}/status`, {
+      body: { status },
+    });
+  }
+
+  /** Booste un post publié. Non idempotent côté plateforme : toujours une Idempotency-Key. */
+  async boostPost(
+    body: Record<string, unknown>,
+    idempotencyKey: string,
+  ): Promise<{ ad?: Record<string, unknown>; message?: string }> {
+    return this.request('POST', '/v1/ads/boost', {
+      body,
+      headers: { 'Idempotency-Key': idempotencyKey },
+    });
+  }
+
+  async searchAdTargeting(params: {
+    accountId: string;
+    q: string;
+    dimension?: string;
+    geoType?: string;
+    countryCode?: string;
+    limit?: number;
+  }): Promise<Record<string, unknown>> {
+    return this.request('GET', '/v1/ads/targeting/search', { params });
   }
 }
