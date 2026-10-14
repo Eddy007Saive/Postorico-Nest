@@ -101,9 +101,22 @@ export class AgentVideoCreerDto {
 
 /** Correction demandée par le client sur un montage terminé. */
 export class AgentVideoCorrectionDto {
+  @IsOptional()
   @IsString()
   @MaxLength(1500)
-  consignes!: string;
+  consignes?: string | null;
+
+  /** Nouvelle musique de fond (id de la bibliothèque, ou « none » pour la retirer). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  musique?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(5)
+  @Max(100)
+  musique_volume?: number | null;
 
   @IsOptional()
   @IsArray()

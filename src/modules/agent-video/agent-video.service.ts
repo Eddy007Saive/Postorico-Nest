@@ -1123,7 +1123,12 @@ export class AgentVideoService implements OnApplicationBootstrap {
   async corriger(
     telegramId: string,
     id: string,
-    d: { consignes?: string | null; images?: ImageClient[] | null },
+    d: {
+      consignes?: string | null;
+      images?: ImageClient[] | null;
+      musique?: string | null;
+      musique_volume?: number | null;
+    },
   ): Promise<
     | Awaited<ReturnType<AgentVideoService['etat']>>
     | { error: string; status?: number }
@@ -1146,12 +1151,22 @@ export class AgentVideoService implements OnApplicationBootstrap {
     const consignes = String(d.consignes || '')
       .trim()
       .slice(0, 1500);
-    if (!consignes) return { error: 'Décris la correction que tu veux.' };
+    // Changer (ou retirer) la musique suffit à faire une correction, sans texte
+    const sansMusique = d.musique === 'none';
+    const musiqueUrl =
+      d.musique && !sansMusique
+        ? await this.musiques.urlDe(d.musique, telegramId, true)
+        : null;
+    if (d.musique && !sansMusique && !musiqueUrl)
+      return { error: 'Musique introuvable.' };
+    const changeMusique = sansMusique || Boolean(musiqueUrl);
+    if (!consignes && !changeMusique)
+      return { error: 'Décris la correction que tu veux.' };
     const images = (d.images || []).slice(0, 10);
     if (images.some((im) => !imageAutorisee(im?.url, this.cloud, telegramId)))
       return { error: 'Une des images ne vient pas de ta banque Postorico.' };
     // Même garde-fou que pour la consigne du montage
-    const refus = await this.consigneRefusee(consignes);
+    const refus = consignes ? await this.consigneRefusee(consignes) : null;
     if (refus) {
       this.logger.warn(
         `agent vidéo ${telegramId} : correction refusée (${refus})`,
@@ -1180,7 +1195,17 @@ export class AgentVideoService implements OnApplicationBootstrap {
       {
         method: 'POST',
         body: JSON.stringify({
-          consignes,
+          consignes: consignes || 'Change seulement la musique de fond.',
+          ...(musiqueUrl
+            ? {
+                musique_url: musiqueUrl,
+                musique_volume: Math.max(
+                  5,
+                  Math.min(100, Math.round(Number(d.musique_volume) || 25)),
+                ),
+              }
+            : {}),
+          ...(sansMusique ? { sans_musique: true } : {}),
           images: images.map((im) => ({
             url: im.url,
             description: String(im.description || '').slice(0, 200),

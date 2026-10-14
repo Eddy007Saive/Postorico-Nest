@@ -674,6 +674,31 @@ describe('agent vidéo : corrections', () => {
     expect(quota.refund).toHaveBeenCalled();
   });
 
+  it('changer seulement la musique : correction sans texte, nouvelle piste envoyée au VPS', async () => {
+    const { service, prisma, musiques } = make();
+    musiques.urlDe.mockResolvedValueOnce('https://res.cloudinary.com/demo/video/upload/musique2.mp3');
+    prisma.travaux_agent_video.findFirst.mockResolvedValueOnce(termine()).mockResolvedValueOnce(termine());
+    fetchMock.mockResolvedValueOnce(reponse(202, { version: 2 }));
+    const r = await service.corriger(TID, JID, { musique: 'calme-2', musique_volume: 30 });
+    expect(r).not.toHaveProperty('error');
+    expect(musiques.urlDe).toHaveBeenCalledWith('calme-2', TID, true);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+      consignes: 'Change seulement la musique de fond.',
+      musique_url: 'https://res.cloudinary.com/demo/video/upload/musique2.mp3',
+      musique_volume: 30,
+    });
+  });
+
+  it('« aucune » musique : demande de retrait ; sans texte ni musique : refusé', async () => {
+    const { service, prisma } = make();
+    prisma.travaux_agent_video.findFirst.mockResolvedValueOnce(termine()).mockResolvedValueOnce(termine());
+    fetchMock.mockResolvedValueOnce(reponse(202, { version: 2 }));
+    await service.corriger(TID, JID, { musique: 'none' });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ sans_musique: true });
+    prisma.travaux_agent_video.findFirst.mockResolvedValueOnce(termine());
+    expect(await service.corriger(TID, JID, {})).toHaveProperty('error');
+  });
+
   it('demande de correction piégée : refusée sans rien envoyer', async () => {
     const { service, prisma } = make();
     prisma.travaux_agent_video.findFirst.mockResolvedValueOnce(termine());
