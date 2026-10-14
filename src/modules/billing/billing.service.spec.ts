@@ -95,3 +95,46 @@ describe('BillingService.handleWebhook (signature Stripe)', () => {
     expect(r).toEqual({ ok: false });
   });
 });
+
+describe('BillingService.applySubscription (ancien abonnement après réabonnement)', () => {
+  function avecAbonnement(courant: { status: string; stripe_subscription_id: string }) {
+    const prisma = {
+      users: { findUnique: jest.fn().mockResolvedValue({ telegram_id: 'u1' }) },
+      subscriptions: {
+        findFirst: jest.fn().mockResolvedValue(courant),
+        update: jest.fn(),
+        updateMany: jest.fn(),
+      },
+    };
+    const config = { get: jest.fn().mockReturnValue('') } as unknown as ConfigService;
+    const service = new BillingService(prisma as never, {} as never, { oublier: jest.fn() } as never, {} as never, {} as never, config);
+    const appliquer = (sub: Record<string, unknown>) =>
+      (service as unknown as { applySubscription(s: unknown): Promise<unknown> }).applySubscription({
+        metadata: { telegram_id: 'u1' },
+        customer: 'cus_ancien',
+        items: { data: [] },
+        ...sub,
+      });
+    const upsert = jest
+      .spyOn(service as unknown as { upsertSubscription(...a: unknown[]): Promise<void> }, 'upsertSubscription')
+      .mockResolvedValue(undefined);
+    return { prisma, appliquer, upsert };
+  }
+
+  it("un ancien abonnement impayé n'écrase pas l'abonnement actif", async () => {
+    const { prisma, appliquer, upsert } = avecAbonnement({ status: 'active', stripe_subscription_id: 'sub_nouveau' });
+    expect(await appliquer({ id: 'sub_ancien', status: 'unpaid' })).toBeNull();
+    expect(await appliquer({ id: 'sub_ancien', status: 'canceled' })).toBeNull();
+    expect(upsert).not.toHaveBeenCalled();
+    expect(prisma.subscriptions.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('les événements normaux passent : même abonnement, ou nouvel abonnement actif', async () => {
+    const meme = avecAbonnement({ status: 'active', stripe_subscription_id: 'sub_1' });
+    await meme.appliquer({ id: 'sub_1', status: 'past_due' });
+    expect(meme.upsert).toHaveBeenCalledWith('u1', 'past_due', null, null, 'sub_1');
+    const reabo = avecAbonnement({ status: 'past_due', stripe_subscription_id: 'sub_ancien' });
+    await reabo.appliquer({ id: 'sub_nouveau', status: 'active' });
+    expect(reabo.upsert).toHaveBeenCalledWith('u1', 'active', null, null, 'sub_nouveau');
+  });
+});

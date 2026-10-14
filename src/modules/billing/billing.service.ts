@@ -375,6 +375,23 @@ export class BillingService {
       return null;
     }
 
+    // Un client qui s'est réabonné garde parfois l'ancien abonnement chez Stripe (impayé,
+    // puis annulé) : ses événements ne doivent pas écraser l'abonnement actif en cours.
+    const courant = await this.prisma.subscriptions.findFirst({
+      where: { user_id: uid },
+      orderBy: { created_at: 'desc' },
+      select: { status: true, stripe_subscription_id: true },
+    });
+    if (
+      courant?.stripe_subscription_id &&
+      courant.stripe_subscription_id !== sub.id &&
+      ['active', 'trialing'].includes(courant.status) &&
+      !['active', 'trialing'].includes(status)
+    ) {
+      this.logger.log(`stripe: ${uid} ancien abonnement ${sub.id} (${sub.status}) ignoré, ${courant.stripe_subscription_id} reste actif`);
+      return null;
+    }
+
     let ps = this.ts(s.current_period_start as number | undefined);
     let pe = this.ts(s.current_period_end as number | undefined);
     // API Stripe récente : current_period_start/end vit désormais sur les ITEMS.
