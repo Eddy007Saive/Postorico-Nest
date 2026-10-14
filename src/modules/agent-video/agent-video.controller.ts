@@ -44,6 +44,19 @@ export class AgentVideoController {
     return r;
   }
 
+  @Get('contenu/:contenuId')
+  async etatParContenu(
+    @Param('contenuId', ParseUUIDPipe) contenuId: string,
+    @Req() req: AuthedRequest,
+  ) {
+    const r = await this.service.etatParContenu(
+      req.user.telegram_id,
+      contenuId,
+    );
+    if (!r) throw new NotFoundException('Montage introuvable');
+    return r;
+  }
+
   @Get(':id')
   async etat(
     @Param('id', ParseUUIDPipe) id: string,

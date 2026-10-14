@@ -749,6 +749,16 @@ export class AgentVideoService implements OnApplicationBootstrap {
   }
 
   /** Avancement d'un montage, pour l'écran d'attente du client. */
+  /** Dernier montage par l'agent d'un contenu (pour « Modifier la vidéo » depuis Contenus). */
+  async etatParContenu(telegramId: string, contenuId: string) {
+    const t = await this.prisma.travaux_agent_video.findFirst({
+      where: { contenu_id: contenuId, telegram_id: telegramId },
+      orderBy: { created_at: 'desc' },
+      select: { id: true },
+    });
+    return t ? this.etat(telegramId, t.id) : null;
+  }
+
   async etat(telegramId: string, id: string) {
     const t = await this.prisma.travaux_agent_video.findFirst({
       where: { id, telegram_id: telegramId },
@@ -771,6 +781,7 @@ export class AgentVideoService implements OnApplicationBootstrap {
     return {
       id: t.id,
       contenu_id: t.contenu_id,
+      mode: ((t.brief as Record<string, unknown>)?.mode as string) || 'video',
       statut: t.statut,
       progression: t.progression,
       erreur: t.statut === 'echec' ? t.erreur : null,
