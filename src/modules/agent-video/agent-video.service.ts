@@ -36,6 +36,7 @@ import {
   meilleurFichier,
 } from './illustrations.util';
 import { Mot, motsRecales, segmentsGardes } from './pretraitement.util';
+import { dureeEstimee, texteParle } from './texte-parle.util';
 
 /** Choix des moments à illustrer : petite tâche, modèle rapide (même choix que le POC). */
 const MODELE_ILLUSTRATIONS = 'claude-haiku-4-5';
@@ -281,7 +282,8 @@ export class AgentVideoService implements OnApplicationBootstrap {
       };
     const motion = d.mode === 'motion';
     const clips = motion ? [] : (d.clips || []).slice(0, 10);
-    const script = motion ? String(d.script || '').trim() : '';
+    // Seul le texte réellement dit part à la voix off (pas les titres, minutages ni indications)
+    const script = motion ? texteParle(String(d.script || '')) : '';
     if (motion && script.length < 20)
       return {
         error:
@@ -309,6 +311,11 @@ export class AgentVideoService implements OnApplicationBootstrap {
     const dureeMax = d.duree_max_s
       ? Math.max(5, Math.min(this.dureeMaxS, Math.round(Number(d.duree_max_s))))
       : this.dureeMaxS;
+    // Une voix plus longue que la vidéo oblige l'agent à couper et accélérer : on le dit avant
+    if (motion && dureeEstimee(script) > dureeMax * 1.15)
+      return {
+        error: `Ton texte dure environ ${dureeEstimee(script)} s à l'oral, pour ${dureeMax} s maximum : raccourcis-le ou choisis une durée plus longue.`,
+      };
 
     // Garde-fou n°1 : la consigne ne doit parler que du montage (avant tout quota ou envoi)
     const refus = await this.consigneRefusee(consignes);
@@ -1206,6 +1213,8 @@ export class AgentVideoService implements OnApplicationBootstrap {
               }
             : {}),
           ...(sansMusique ? { sans_musique: true } : {}),
+          // Rien d'autre à changer : le VPS remixe la bande son lui-même, sans relancer l'agent
+          ...(!consignes && !images.length ? { musique_seule: true } : {}),
           images: images.map((im) => ({
             url: im.url,
             description: String(im.description || '').slice(0, 200),

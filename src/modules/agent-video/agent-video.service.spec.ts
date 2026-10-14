@@ -763,6 +763,21 @@ describe('agent vidéo : motion design (sans tournage)', () => {
     expect(quota.consume).not.toHaveBeenCalled();
   });
 
+  it('texte plus long que la durée maximale : refusé avec la durée estimée, avant tout quota', async () => {
+    const { service, quota } = make();
+    const long = Array(200).fill('mot').join(' '); // ≈ 77 s à l'oral
+    const r = await service.creer(TID, { mode: 'motion', script: long, duree_max_s: 60 });
+    expect(r).toMatchObject({ error: expect.stringContaining('77 s') as unknown });
+    expect(quota.consume).not.toHaveBeenCalled();
+  });
+
+  it('titres et minutages du script ne partent pas à la voix off', async () => {
+    const { service, prisma } = make();
+    jest.spyOn(service, 'preparerEtEnvoyer').mockResolvedValue(undefined);
+    await service.creer(TID, { mode: 'motion', script: `### **00:00 - 00:05 : Accroche**\n> « ${SCRIPT} »` });
+    expect(prisma.travaux_agent_video.create.mock.calls[0][0].data.brief.script).toBe(SCRIPT);
+  });
+
   it('préparation : voix ElevenLabs -> Cloudinary -> transcription POC (sans coupe) -> VPS en mode motion', async () => {
     const { service, prisma, montagePoc, voix } = make();
     prisma.travaux_agent_video.findFirst.mockResolvedValueOnce(
