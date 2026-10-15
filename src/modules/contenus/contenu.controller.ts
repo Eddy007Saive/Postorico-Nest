@@ -1,3 +1,4 @@
+import { tf } from '../../common/utils/textes-fixes.util';
 import {
   BadRequestException,
   Body,
@@ -67,8 +68,11 @@ export class ContenuController {
 
   /** Assemble le contenu de la story {accroche, sous, cta, image, rico_pose} à partir du
    * post et des valeurs éditées côté client (retouche). */
-  private storyContenu(cur: { lien_visuel?: string | null; slides_images?: unknown }, body: StoryBody) {
-    const base = this.storyService.partsDepuisContenu(cur as { titre?: string | null; contenu?: string | null; lien_visuel?: string | null });
+  private storyContenu(cur: { lien_visuel?: string | null; slides_images?: unknown }, body: StoryBody, langue: string) {
+    const base = this.storyService.partsDepuisContenu(
+      cur as { titre?: string | null; contenu?: string | null; lien_visuel?: string | null },
+      langue,
+    );
     const slides = (Array.isArray(cur.slides_images) ? cur.slides_images : []) as string[];
     const visuelsConnus = new Set([cur.lien_visuel, ...slides].filter(Boolean));
     const imageChoisie = body.image_source;
@@ -76,7 +80,7 @@ export class ContenuController {
     return {
       accroche: (body.accroche !== undefined && body.accroche !== null ? body.accroche : base.accroche) || '',
       sous: (body.sous !== undefined && body.sous !== null ? body.sous : base.sous) || '',
-      cta: (body.cta || base.cta || 'Réponds en DM 👉').trim(),
+      cta: (body.cta || base.cta || tf(langue, 'reponds')).trim(),
       image: image || null,
       rico_pose: body.rico_pose || null,
       points: Array.isArray(body.points) ? body.points : null,
@@ -218,7 +222,7 @@ export class ContenuController {
     await this.quotaService.exigerAbonnement(telegramId);
     const cur = await this.contenuService.getContenu(id, telegramId);
     if (!cur) throw new NotFoundException('Contenu introuvable');
-    const content = this.storyContenu(cur, body);
+    const content = this.storyContenu(cur, body, await this.storyService.langueDe(telegramId));
     const template = this.storyService.templateEffectif(body.template, content);
     let res: Awaited<ReturnType<StoryService['genererStory']>>;
     try {
@@ -251,7 +255,8 @@ export class ContenuController {
     const anime = Boolean(body.anime);
     let template = this.storyService.templateValide(body.template);
     if (!CANDIDATS_SERIE.has(template)) template = 'epure';
-    const contents = ecrans.map((e) => this.storyContenu(cur, e));
+    const lg = await this.storyService.langueDe(telegramId);
+    const contents = ecrans.map((e) => this.storyContenu(cur, e, lg));
     const res = await this.storyService.creerSerieStories(telegramId, id, contents, template, body.colors, anime);
     if ('error' in res) {
       const code = res.quota ? HttpStatus.PAYMENT_REQUIRED : res.conflict ? HttpStatus.CONFLICT : HttpStatus.INTERNAL_SERVER_ERROR;
@@ -322,7 +327,7 @@ export class ContenuController {
     }
     // On réutilise l'image du dernier aperçu si le client la renvoie ; sinon on rend.
     let imageUrl = body.image;
-    const content = this.storyContenu(cur, body);
+    const content = this.storyContenu(cur, body, await this.storyService.langueDe(telegramId));
     if (!imageUrl) {
       let res: Awaited<ReturnType<StoryService['genererStory']>>;
       try {

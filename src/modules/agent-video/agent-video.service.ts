@@ -1,3 +1,4 @@
+import { langueCode } from '../../common/utils/textes-fixes.util';
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
@@ -173,8 +174,11 @@ export function composerConsignes(
       .join(', ');
     return v ? `${label} : ${v}.` : '';
   };
+  const nomLangue = { fr: 'français', en: 'anglais', es: 'espagnol' }[langueCode(marque.langue)];
   const contexte = [
     `Réseau de publication : ${reseau}.`,
+    // Sans cette ligne, un client espagnol recevait titres, sous-titres et résumé en français.
+    `Langue de tous les textes à l'écran (titres, sous-titres, schémas, appel à l'action) et de ton résumé final : ${nomLangue}.`,
     ligne('Marque', [marque.nom || marque.user_name]),
     ligne('Ton de la marque', [marque.ton || marque.tone]),
     ligne('Couleurs de la charte (principale, secondaire, accent)', [

@@ -1,3 +1,4 @@
+import { tf } from '../../../common/utils/textes-fixes.util';
 import { accDark, darken } from './color.util';
 import { accrocheMint, CarrouselContentShape, dots, esc, fitFs, GRAIN, hexesSvg, mascotteB64, parts, pills } from './common.util';
 
@@ -22,6 +23,7 @@ export function tplPostorico(
   const S = s || '#8A6CFF';
   const Acc = accDark(a || '#3AFFA3');
   const [hook, slides, cta] = parts(content);
+  const lg = (content as CarrouselContentShape | undefined)?.langue;
   const n = 2 + slides.length;
   const initial = (nom || '?')[0].toUpperCase();
   const b64 = mascotteB64();
@@ -89,11 +91,11 @@ export function tplPostorico(
       `<div class="top">${marqueHtml}<span class="idx">1/${n}</span></div>` +
       `<div class="grow"><h1 style="font-size:${fitFs(hook, 34)}px">${accrocheMint(hook, Acc)}</h1>` +
       '<div class="ul"></div></div>' +
-      `<div class="bar"><span class="hd">${esc(secteur)}</span><span class="swipe">Swipe &#8594;</span></div></div>`,
+      `<div class="bar"><span class="hd">${esc(secteur)}</span><span class="swipe">${tf(lg, 'swipe')}</span></div></div>`,
   ];
   slides.forEach((sl, i) => {
     const pl = sl.pills ? `<div class="pills">${pills(sl.pills)}</div>` : '';
-    const tip = sl.pro_tip ? `<div class="tip"><span class="lbl">Pro tip</span><p>${esc(sl.pro_tip)}</p></div>` : '';
+    const tip = sl.pro_tip ? `<div class="tip"><span class="lbl">${tf(lg, 'proTip')}</span><p>${esc(sl.pro_tip)}</p></div>` : '';
     const txt = sl.texte ? `<p class="sub">${esc(sl.texte)}</p>` : '';
     out.push(
       `<div class="slide">${fonds}` +
@@ -108,7 +110,7 @@ export function tplPostorico(
       `<div class="top">${marqueHtml}<span class="idx" style="color:#fff">${n}/${n}</span></div>` +
       `<div class="grow"><h2 style="font-size:${fitFs(cta.titre, 23)}px">${accrocheMint(cta.titre, Acc)}</h2>` +
       (cta.texte ? `<p class="sub">${esc(cta.texte)}</p>` : '') +
-      '<span class="btn">Lien en bio &#8594;</span></div>' +
+      `<span class="btn">${tf(lg, 'lienEnBio')}</span></div>` +
       `<div class="bar"><span class="hd">${esc(secteur)}</span><div class="dots">${dots(n, n - 1)}</div></div></div>`,
   );
   return `<!DOCTYPE html><html><head><meta charset="utf-8">${head}${css}</head><body>${out.join('')}</body></html>`;

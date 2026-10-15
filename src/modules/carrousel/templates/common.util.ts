@@ -1,3 +1,4 @@
+import { tf } from '../../../common/utils/textes-fixes.util';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { darken, inkOn, lighten, toRgb } from './color.util';
@@ -26,6 +27,8 @@ export interface CarrouselContentShape {
   legende?: string;
   slides?: CarrouselSlide[];
   cta?: CarrouselCta | string;
+  /** Langue du compte (posée au rendu) : textes fixes des modèles (« Étape », « Lien en bio »…). */
+  langue?: string;
 }
 
 /** Équivalent de Python html.escape(t, quote=True).replace("\n","<br>"). */
@@ -156,13 +159,13 @@ export function parts(content: unknown): [string, CarrouselSlide[], Required<Car
     return [
       hook,
       sl.slice(1, -1),
-      { titre: cta.titre || 'On en parle ?', texte: (cta as CarrouselCta).texte || '' },
+      { titre: cta.titre || tf(undefined, 'onEnParle'), texte: (cta as CarrouselCta).texte || '' },
     ];
   }
   const c = (content || {}) as CarrouselContentShape;
   let cta = c.cta || {};
   if (typeof cta === 'string') cta = { titre: cta, texte: '' };
-  return [c.hook || '', c.slides || [], { titre: cta.titre || 'On en parle ?', texte: cta.texte || '' }];
+  return [c.hook || '', c.slides || [], { titre: cta.titre || tf(c.langue, 'onEnParle'), texte: cta.texte || '' }];
 }
 
 export { inkOn };

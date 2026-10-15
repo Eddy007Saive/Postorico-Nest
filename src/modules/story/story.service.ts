@@ -1,3 +1,4 @@
+import { Langue, langueCode, tf } from '../../common/utils/textes-fixes.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
@@ -164,8 +165,17 @@ export class StoryService {
     return s.length <= n ? s : s.slice(0, n - 1).replace(/\s+$/, '') + '…';
   }
 
+  /** Langue du compte (users.langue), pour les textes de secours des stories. */
+  async langueDe(telegramId: string): Promise<Langue> {
+    const u = await this.marqueService.chargerMarque(telegramId).catch(() => ({}) as Record<string, unknown>);
+    return langueCode(u.langue);
+  }
+
   /** Dérive {accroche, sous, cta} depuis un post existant. */
-  partsDepuisContenu(contenu: { titre?: string | null; contenu?: string | null; lien_visuel?: string | null }): {
+  partsDepuisContenu(
+    contenu: { titre?: string | null; contenu?: string | null; lien_visuel?: string | null },
+    langue?: string,
+  ): {
     accroche: string;
     sous: string;
     cta: string;
@@ -177,13 +187,14 @@ export class StoryService {
     let sous = titre === '' ? '' : this.phrase(corps);
     if (sous && hook && sous.slice(0, 40).toLowerCase() === hook.slice(0, 40).toLowerCase()) sous = '';
     if (sous && sous.split(/\s+/).filter(Boolean).length < 5) sous = '';
-    return { accroche: hook, sous, cta: 'Réponds en DM 👉', image: contenu.lien_visuel || null };
+    return { accroche: hook, sous, cta: tf(langue, 'reponds'), image: contenu.lien_visuel || null };
   }
 
   /** Écrit le TEXTE de la story (accroche + sous-titre + CTA) à partir du post, dans la
    * voix de marque. Retombe sur la dérivation heuristique si l'IA est indisponible. */
   async texteStoryIa(telegramId: string, contenu: { titre?: string | null; contenu?: string | null; lien_visuel?: string | null }) {
-    const base = this.partsDepuisContenu(contenu);
+    const lg = await this.langueDe(telegramId);
+    const base = this.partsDepuisContenu(contenu, lg);
     const post = `${contenu.titre || ''}\n\n${contenu.contenu || ''}`.trim();
     if (!this.claude.isConfigured || !post) return base;
     try {
@@ -203,7 +214,7 @@ export class StoryService {
         model: 'claude-haiku-4-5',
         max_tokens: 300,
         system,
-        messages: [{ role: 'user', content: `Post :\n\n${post}\n\nÉcris le texte de la story.` }],
+        messages: [{ role: 'user', content: `Post :\n\n${post}\n\nÉcris le texte de la story.${this.marqueService.consigneLangueFinale(u)}` }],
       });
       const brut = this.claude.texte(resp);
       const m = /\{[\s\S]*\}/.exec(brut);
@@ -215,7 +226,7 @@ export class StoryService {
       return {
         accroche: acc || base.accroche,
         sous,
-        cta: cta || base.cta || 'Réponds en DM 👉',
+        cta: cta || base.cta || tf(lg, 'reponds'),
         image: contenu.lien_visuel || null,
       };
     } catch (e) {
@@ -228,7 +239,8 @@ export class StoryService {
   async choisirStoryIa(telegramId: string, contenu: { titre?: string | null; contenu?: string | null; lien_visuel?: string | null }) {
     const aUnVisuel = Boolean(contenu.lien_visuel);
     const defautId = aUnVisuel ? 'photo-flou' : 'epure';
-    const base = this.partsDepuisContenu(contenu);
+    const lg = await this.langueDe(telegramId);
+    const base = this.partsDepuisContenu(contenu, lg);
     const baseOut = { ...base, template: defautId, points: null as unknown };
     const post = `${contenu.titre || ''}\n\n${contenu.contenu || ''}`.trim();
     if (!this.claude.isConfigured || !post) return baseOut;
@@ -271,7 +283,7 @@ export class StoryService {
         model: 'claude-haiku-4-5',
         max_tokens: 500,
         system,
-        messages: [{ role: 'user', content: `Post :\n\n${post}\n\nChoisis le gabarit et écris le texte.` }],
+        messages: [{ role: 'user', content: `Post :\n\n${post}\n\nChoisis le gabarit et écris le texte.${this.marqueService.consigneLangueFinale(u)}` }],
       });
       const brut = this.claude.texte(resp);
       const m = /\{[\s\S]*\}/.exec(brut);
@@ -305,7 +317,7 @@ export class StoryService {
         template: tpl,
         accroche: acc,
         sous: sous || (tpl === defautId ? base.sous : ''),
-        cta: cta || base.cta || 'Réponds en DM 👉',
+        cta: cta || base.cta || tf(lg, 'reponds'),
         points,
         image: contenu.lien_visuel || null,
       };
@@ -322,6 +334,7 @@ export class StoryService {
     cta: { titre?: string; texte?: string },
     imgs: string[],
     lienVisuel?: string | null,
+    langue?: string,
   ): StoryEcran[] {
     const img = (i: number): string | null => (i >= 0 && i < imgs.length ? imgs[i] : lienVisuel || null);
     const ecrans: StoryEcran[] = [
@@ -335,9 +348,9 @@ export class StoryService {
     ecrans.push({
       role: 'cta',
       interaction: null,
-      accroche: this.court(cta.titre || 'On en parle ?', 60),
+      accroche: this.court(cta.titre || tf(langue, 'onEnParle'), 60),
       sous: this.court(cta.texte || '', 90),
-      cta: 'Réponds en DM 👉',
+      cta: tf(langue, 'reponds'),
       image: img(1 + slides.length),
     });
     return ecrans;
@@ -354,7 +367,8 @@ export class StoryService {
     const [hook, slides, cta] = carrouselParts(cur.carrousel_data);
     const imgs = (Array.isArray(cur.slides_images) ? cur.slides_images : []) as string[];
     const lienVisuel = cur.lien_visuel;
-    const repli = this.ecransRepliCarrousel(hook, slides, cta, imgs, lienVisuel);
+    const lg = await this.langueDe(telegramId);
+    const repli = this.ecransRepliCarrousel(hook, slides, cta, imgs, lienVisuel, lg);
     const n = slides.length;
     const img = (idx: unknown): string | null => {
       const i = Number(idx);
@@ -382,7 +396,7 @@ export class StoryService {
           model: 'claude-haiku-4-5',
           max_tokens: 1500,
           system,
-          messages: [{ role: 'user', content: `CONTENU SOURCE :\n\n${lignes.join('\n')}\n\nÉcris la séquence de Stories.` }],
+          messages: [{ role: 'user', content: `CONTENU SOURCE :\n\n${lignes.join('\n')}\n\nÉcris la séquence de Stories.${this.marqueService.consigneLangueFinale(u)}` }],
         });
         const brut = this.claude.texte(resp);
         const m = /\{[\s\S]*\}/.exec(brut);
@@ -413,7 +427,7 @@ export class StoryService {
             acc = this.court(q, 64);
             const options = (inter.options || []).map((o) => String(o).trim()).filter(Boolean);
             if (['poll', 'quiz'].includes(itype) && options.length) sous = options.slice(0, 4).join(' · ');
-            ctae = ctae || 'Réponds en DM 👉';
+            ctae = ctae || tf(lg, 'reponds');
             role = 'interaction';
           }
           if (!ROLES_SERIE.has(role)) role = 'value';
@@ -430,7 +444,7 @@ export class StoryService {
         const limited = out.slice(0, maxEcrans);
         if (limited.length >= 4) {
           limited[0].role = limited[0].role !== 'value' ? limited[0].role : 'hook';
-          if (!limited[limited.length - 1].cta) limited[limited.length - 1].cta = 'Réponds en DM 👉';
+          if (!limited[limited.length - 1].cta) limited[limited.length - 1].cta = tf(lg, 'reponds');
           if (!['cta', 'solution'].includes(limited[limited.length - 1].role)) limited[limited.length - 1].role = 'cta';
           ecrans = limited;
         } else {
@@ -669,7 +683,7 @@ export class StoryService {
   async propsStoryAnimee(telegramId: string, accroche: string, sous?: string | null, cta?: string | null, colors?: { p?: string; s?: string; a?: string } | null, motAccent?: string | null) {
     const u = await this.marqueService.chargerMarque(telegramId);
     const [p, , a] = this.couleursMarque(u, colors);
-    const nom = (u.nom as string) || (u.username as string) || 'Ma marque';
+    const nom = (u.nom as string) || (u.username as string) || tf(u.langue, 'maMarque');
     const logo = (u.logo_url as string) || null;
     return {
       brand: { nom, principale: p, accent: a, fond: '#0b1020', logo },

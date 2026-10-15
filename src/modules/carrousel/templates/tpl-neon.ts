@@ -1,3 +1,4 @@
+import { tf } from '../../../common/utils/textes-fixes.util';
 import { accDark, inkOn, mix } from './color.util';
 import { avSpan, CarrouselContentShape, duotoneSvg, esc, iconB64, parts, twoTone } from './common.util';
 
@@ -24,6 +25,7 @@ export function tplNeon(
     `linear-gradient(${gc} 1px,transparent 1px),linear-gradient(90deg,${gc} 1px,transparent 1px),` +
     `linear-gradient(155deg,${D1},${D2})`;
   const [hook, slides, cta] = parts(content);
+  const lg = (content as CarrouselContentShape | undefined)?.langue;
   const n = 2 + slides.length;
   const initial = (nom || '?')[0].toUpperCase();
   const head =
@@ -76,7 +78,7 @@ export function tplNeon(
   out.push(
     `<div class="slide">${top(n - 1)}<div class="grow" style="display:flex;flex-direction:column;justify-content:center"><h1>${twoTone(cta.titre, acc)}</h1><div class="line"></div>` +
       (cta.texte ? `<p>${esc(cta.texte)}</p>` : '') +
-      '<span class="btn">Lien en bio →</span></div></div>',
+      `<span class="btn">${tf(lg, 'lienEnBio')}</span></div></div>`,
   );
   return `<!DOCTYPE html><html><head><meta charset="utf-8">${head}${css}</head><body>${duo}${out.join('')}</body></html>`;
 }

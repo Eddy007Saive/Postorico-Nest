@@ -1,3 +1,5 @@
+import { CleTexte, guillemets, tf } from '../../../common/utils/textes-fixes.util';
+
 /**
  * Gabarits de post (feed cohérent) — port direct des 13 fonctions `_g_*` +
  * leurs aides (backend/services/gabarit_service.py). HTML brandé FIXE ; seuls le
@@ -15,7 +17,12 @@ export interface Brand {
   bg: string;
   logo?: string | null;
   nom: string;
+  /** Langue du compte (users.langue) : étiquettes par défaut, guillemets, <html lang>. */
+  langue?: string;
 }
+
+/** Étiquette par défaut d'un gabarit, dans la langue du compte. */
+const lib = (b: Brand, cle: CleTexte): string => tf(b.langue, cle);
 
 // Un gabarit reçoit un sac de champs libres (dépend du gabarit) — mêmes clés que côté
 // Python (slots: dict). Pas d'interface stricte unique : chaque builder ne lit que ce qui le concerne.
@@ -181,7 +188,7 @@ function sub(text: unknown, style = ''): string {
 
 // --------------------------------------------------------------------------- builders
 function gStatement(s: Slots, b: Brand): string {
-  const eb = (s.eyebrow as string) || 'Vision';
+  const eb = (s.eyebrow as string) || lib(b, 'gVision');
   const orb = s.bg_image ? '' : `<div class="orb"><b>${G(b)}</b></div>`;
   return (
     `${photo(s)}${brandbar(b, { eyebrow: eb })}${orb}` +
@@ -213,7 +220,7 @@ function gAcquisition(s: Slots, b: Brand): string {
     .map((x) => `<div class="stat"><div class="k">${esc(x.k)}</div><div class="n${x.v ? ' v' : ''}">${esc(x.n)}</div></div>`)
     .join('');
   return (
-    `${brandbar(b, { eyebrow: (s.eyebrow as string) || 'Acquisition' })}` +
+    `${brandbar(b, { eyebrow: (s.eyebrow as string) || lib(b, 'gAcquisition') })}` +
     `<div class="h" style="margin-top:26px;font-size:40px">${titleHtml(s.title_lines)}</div>` +
     `<div class="spacer"></div><div class="stats">${cells}</div>`
   );
@@ -223,9 +230,9 @@ function gCitation(s: Slots, b: Brand): string {
   const au = (s.author as Record<string, unknown>) || {};
   const av = au.photo ? `<img class="av" src="${esc(au.photo)}">` : '<span class="av"></span>';
   return (
-    `${photo(s)}${brandbar(b, { label: (s.label as string) || 'Témoignage' })}` +
+    `${photo(s)}${brandbar(b, { label: (s.label as string) || lib(b, 'gTemoignage') })}` +
     '<div class="spacer"></div>' +
-    `<div class="quote">« ${titleHtml(s.quote_lines)} »</div>` +
+    `<div class="quote">${guillemets(b.langue, titleHtml(s.quote_lines))}</div>` +
     `<div class="who">${av}<div><div class="nm">${esc(au.name)}</div><div class="rl">${esc(au.role)}</div></div></div>`
   );
 }
@@ -242,14 +249,14 @@ function gDashboard(s: Slots, b: Brand): string {
   };
   const cards = ((s.big as Array<Record<string, unknown>>) || []).slice(0, 2).map(card).join('');
   return (
-    `${brandbar(b, { eyebrow: (s.eyebrow as string) || 'Vos données' })}` +
+    `${brandbar(b, { eyebrow: (s.eyebrow as string) || lib(b, 'gDonnees') })}` +
     `<div class="h" style="margin-top:22px;font-size:36px">${titleHtml(s.title_lines)}</div>` +
     `<div class="spacer"></div><div class="big">${cards}</div>`
   );
 }
 
 function gFeatures(s: Slots, b: Brand): string {
-  const eb = (s.eyebrow as string) || "Boosté par l'IA";
+  const eb = (s.eyebrow as string) || lib(b, 'gIa');
   const feats = ((s.features as Array<Record<string, unknown>>) || []).slice(0, 3);
   const rows = feats
     .map(
@@ -266,7 +273,7 @@ function gFeatures(s: Slots, b: Brand): string {
 }
 
 function gPhone(s: Slots, b: Brand): string {
-  const eb = (s.eyebrow as string) || 'Réponse client';
+  const eb = (s.eyebrow as string) || lib(b, 'gReponse');
   const bub = ((s.bubbles as Array<Record<string, unknown>>) || [])
     .map((x) => `<div class="bubble ${x.side === 'out' ? 'out' : 'in'}">${esc(x.t)}</div>`)
     .join('');
@@ -281,14 +288,18 @@ function gPhone(s: Slots, b: Brand): string {
 
 function gServices(s: Slots, b: Brand): string {
   const cells = ((s.services as string[]) || []).slice(0, 4).map((x) => `<div class="s"><span class="d"></span>${esc(x)}</div>`).join('');
-  const fl = (s.flow as string[]) || ['Réservation', 'Action déclenchée'];
+  // Sans étapes fournies, pas de bandeau : mieux qu'un exemple d'un autre métier.
+  const fl = ((s.flow as string[]) || []).filter(Boolean);
+  const flow = fl.length
+    ? `<div class="flow"><div class="step">${esc(fl[0])}</div><span class="arr">→</span>` +
+      `<div class="gmini">${G(b)}</div><span class="arr">→</span>` +
+      `<div class="step">${esc(fl[fl.length - 1])}</div></div>`
+    : '';
   return (
-    `${brandbar(b, { eyebrow: (s.eyebrow as string) || 'Délégation' })}` +
+    `${brandbar(b, { eyebrow: (s.eyebrow as string) || lib(b, 'gDelegation') })}` +
     `<div class="h" style="margin-top:22px;font-size:38px">${titleHtml(s.title_lines)}</div>` +
     `<div class="spacer"></div><div class="svc">${cells}</div>` +
-    `<div class="flow"><div class="step">${esc(fl[0])}</div><span class="arr">→</span>` +
-    `<div class="gmini">${G(b)}</div><span class="arr">→</span>` +
-    `<div class="step">${esc(fl[fl.length - 1])}</div></div>`
+    flow
   );
 }
 
@@ -300,7 +311,7 @@ function gMission(s: Slots, b: Brand): string {
   const photoBlock = photo(s) || GRAD;
   const subBlock = sub(s.subtitle, 'margin:14px 0 18px') || '<div style="height:18px"></div>';
   return (
-    `${photoBlock}${brandbar(b, { label: (s.label as string) || 'Notre mission' })}` +
+    `${photoBlock}${brandbar(b, { label: (s.label as string) || lib(b, 'gMission') })}` +
     '<div class="spacer"></div>' +
     `<div class="h" style="font-size:38px">${titleHtml(s.title_lines)}</div>` +
     `${subBlock}<div class="statrow">${cells}</div>`
@@ -308,7 +319,7 @@ function gMission(s: Slots, b: Brand): string {
 }
 
 function gIntegrations(s: Slots, b: Brand): string {
-  const eb = (s.eyebrow as string) || 'Intégrations natives';
+  const eb = (s.eyebrow as string) || lib(b, 'gIntegrations');
   const lg = ((s.logos as string[]) || []).slice(0, 6).map((x) => `<div class="lg">${esc(x)}</div>`).join('');
   return (
     `${brandbar(b, { eyebrow: eb })}` +
@@ -323,16 +334,16 @@ function gTestimonial(s: Slots, b: Brand): string {
   const n = Number(s.stars) || 5;
   const stars = '★'.repeat(Math.max(1, Math.min(5, n)));
   return (
-    `${photo(s)}${brandbar(b, { label: (s.label as string) || 'Nos clients' })}` +
+    `${photo(s)}${brandbar(b, { label: (s.label as string) || lib(b, 'gClients') })}` +
     `<div class="spacer"></div><div class="stars">${stars}</div>` +
-    `<div class="quote" style="font-size:26px;margin-top:16px">« ${titleHtml(s.quote_lines)} »</div>` +
+    `<div class="quote" style="font-size:26px;margin-top:16px">${guillemets(b.langue, titleHtml(s.quote_lines))}</div>` +
     `<div class="who"><span class="thumb">${icon('home')}</span>` +
     `<div><div class="nm">${esc(au.name)}</div><div class="rl">${esc(au.role)}</div></div></div>`
   );
 }
 
 function gPeople(s: Slots, b: Brand): string {
-  const eb = (s.eyebrow as string) || "L'équipe";
+  const eb = (s.eyebrow as string) || lib(b, 'gEquipe');
   const photoBlock = photo(s) || GRAD;
   return (
     `${photoBlock}${brandbar(b, { eyebrow: eb })}` +
@@ -366,8 +377,9 @@ export const BUILDERS: Record<string, (s: Slots, b: Brand) => string> = {
   closing: gClosing,
 };
 
-// Contenu d'exemple pour les vignettes d'aperçu (placeholder par gabarit) — sert aussi de
-// BASE aux slots composés par l'IA (composer_gabarit reste dessus, structure toujours rendable).
+// Contenu d'exemple des vignettes d'aperçu (placeholder par gabarit). Ne sert PLUS de base aux
+// visuels composés par l'IA : un champ qu'elle laissait vide gardait l'exemple français (et ses
+// chiffres inventés, « CA du mois 128 580 € ») jusque chez un client espagnol.
 export const SAMPLES: Record<string, Slots> = {
   statement: {
     eyebrow: 'Vision',
@@ -466,7 +478,7 @@ export function buildHtml(gabarit: string, slots: Slots, brand: Brand): string {
   const fn = BUILDERS[gabarit] ?? gStatement;
   const inner = fn(slots, brand);
   return (
-    '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">' +
+    `<!DOCTYPE html><html lang="${brand.langue || 'fr'}"><head><meta charset="utf-8">` +
     '<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">' +
     `<style>${css(brand)}</style></head><body><div class="frame">${inner}</div></body></html>`
   );

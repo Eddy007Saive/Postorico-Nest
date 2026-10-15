@@ -1,3 +1,4 @@
+import { tf } from '../../../common/utils/textes-fixes.util';
 import { accDark } from './color.util';
 import { CarrouselContentShape, dots, esc, fitFs, GRAIN, parts, pills } from './common.util';
 
@@ -29,6 +30,7 @@ export function tplRicoStudio(
   const ENCRE = '#12131A';
   const PAPIER = '#F6F3EA';
   const [hook, slides, cta] = parts(content);
+  const lg = (content as CarrouselContentShape | undefined)?.langue;
   const n = 2 + slides.length;
 
   const rico = (classe: string, i: number) => `<img class="masc ${classe}" src="${poseUrls[i]}" alt="">`;
@@ -101,13 +103,13 @@ export function tplRicoStudio(
       `<div class="top">${marqueHtml}<span class="idx">1/${n}</span></div>` +
       `<div class="grow"><span class="kicker">${esc(secteur) || 'Postorico'}</span>` +
       `<h1 style="font-size:${fitFs(hook, 38)}px">${esc(hook)}</h1></div>` +
-      `<div class="bar"><span class="hd">${esc(nom)}</span><span class="swipe">Swipe &#8594;</span></div></div>`,
+      `<div class="bar"><span class="hd">${esc(nom)}</span><span class="swipe">${tf(lg, 'swipe')}</span></div></div>`,
   ];
   slides.forEach((sl, i) => {
     const cote = i % 2 ? 'gauche' : 'droite'; // Rico alterne : le regard circule
     const cls = i % 2 ? 'has-side g' : 'has-side';
     const pl = sl.pills ? `<div class="pills">${pills(sl.pills)}</div>` : '';
-    const tip = sl.pro_tip ? `<div class="tip"><span class="lbl">Le geste</span><p>${esc(sl.pro_tip)}</p></div>` : '';
+    const tip = sl.pro_tip ? `<div class="tip"><span class="lbl">${tf(lg, 'leGeste')}</span><p>${esc(sl.pro_tip)}</p></div>` : '';
     const txt = sl.texte ? `<p class="sub">${esc(sl.texte)}</p>` : '';
     out.push(
       `<div class="slide ${cls}">${fond}<div class="wm">${String(i + 1).padStart(2, '0')}</div>${rico(cote, i + 1)}` +
@@ -122,7 +124,7 @@ export function tplRicoStudio(
       `<div class="top">${marqueHtml}<span class="idx">${n}/${n}</span></div>` +
       `<div class="grow"><h2 style="font-size:${fitFs(cta.titre, 26)}px">${esc(cta.titre)}</h2>` +
       (cta.texte ? `<p class="sub">${esc(cta.texte)}</p>` : '') +
-      '<span class="btn">Lien en bio &#8594;</span></div>' +
+      `<span class="btn">${tf(lg, 'lienEnBio')}</span></div>` +
       `<div class="bar"><span class="hd">${esc(secteur)}</span><div class="dots">${dots(n, n - 1)}</div></div></div>`,
   );
   return `<!DOCTYPE html><html><head><meta charset="utf-8">${head}${css}</head><body>${out.join('')}</body></html>`;

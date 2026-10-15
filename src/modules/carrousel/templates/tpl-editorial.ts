@@ -1,3 +1,4 @@
+import { tf } from '../../../common/utils/textes-fixes.util';
 import { accDark, accLight, inkOn, lighten, near } from './color.util';
 import { avSpan, CarrouselContentShape, esc, parts } from './common.util';
 
@@ -21,6 +22,7 @@ export function tplEditorial(
   const accL = accLight(A);
   const accD = accDark(A);
   const [hook, slides, cta] = parts(content);
+  const lg = (content as CarrouselContentShape | undefined)?.langue;
   const n = 2 + slides.length;
   const head =
     '<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">';
@@ -40,22 +42,22 @@ export function tplEditorial(
 </style>`;
   const av = avSpan(logo, (nom || '?')[0].toUpperCase(), A, inkOn(A));
   const out = [
-    `<div class="slide lt"><div class="kick">Carrousel</div><div class="rule"></div><div class="grow" style="display:flex;align-items:center"><h1>${esc(hook)}</h1></div><div class="rule"></div><div class="foot">${av}<div><b>${esc(nom)}</b> · ${esc(secteur)}</div></div></div>`,
+    `<div class="slide lt"><div class="kick">${tf(lg, 'carrousel')}</div><div class="rule"></div><div class="grow" style="display:flex;align-items:center"><h1>${esc(hook)}</h1></div><div class="rule"></div><div class="foot">${av}<div><b>${esc(nom)}</b> · ${esc(secteur)}</div></div></div>`,
   ];
   slides.forEach((sl, i) => {
     const dk = i % 2 === 0;
     const kind = dk ? 'dk' : 'lt';
     const acc = dk ? accD : accL;
     out.push(
-      `<div class="slide ${kind}"><div style="display:flex;justify-content:space-between"><span class="kick">Idée ${String(i + 1).padStart(2, '0')}</span><span class="kick">${String(i + 2).padStart(2, '0')} / ${String(n).padStart(2, '0')}</span></div><div class="grow"></div><div class="num" style="color:${acc}">${String(i + 1).padStart(2, '0')}</div><h2>${esc(sl.titre)}</h2>` +
+      `<div class="slide ${kind}"><div style="display:flex;justify-content:space-between"><span class="kick">${tf(lg, 'idee')} ${String(i + 1).padStart(2, '0')}</span><span class="kick">${String(i + 2).padStart(2, '0')} / ${String(n).padStart(2, '0')}</span></div><div class="grow"></div><div class="num" style="color:${acc}">${String(i + 1).padStart(2, '0')}</div><h2>${esc(sl.titre)}</h2>` +
         (sl.texte ? `<p>${esc(sl.texte)}</p>` : '') +
         '</div>',
     );
   });
   out.push(
-    `<div class="slide lt"><div class="kick">À toi de jouer</div><div class="rule"></div><div class="grow" style="display:flex;flex-direction:column;justify-content:center"><h2>${esc(cta.titre)}</h2>` +
+    `<div class="slide lt"><div class="kick">${tf(lg, 'aToiDeJouer')}</div><div class="rule"></div><div class="grow" style="display:flex;flex-direction:column;justify-content:center"><h2>${esc(cta.titre)}</h2>` +
       (cta.texte ? `<p>${esc(cta.texte)}</p>` : '') +
-      '<span class="cta-chip">Lien en bio →</span></div><div class="rule"></div><div class="foot">' +
+      `<span class="cta-chip">${tf(lg, 'lienEnBio')}</span></div><div class="rule"></div><div class="foot">` +
       av +
       `<div><b>${esc(nom)}</b> · ${esc(secteur)}</div></div></div>`,
   );

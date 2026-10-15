@@ -1,3 +1,4 @@
+import { langueCode } from '../../common/utils/textes-fixes.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
@@ -365,6 +366,10 @@ export class CarrouselRenduService {
       customHtml = row?.html ?? null;
     }
     const base = (contenuId || 'tmp').replace(/-/g, '').slice(0, 16);
+    // Langue du compte posée sur le contenu : les modèles en tirent leurs textes fixes.
+    const contenuLangue: CarrouselContentShape = Array.isArray(content)
+      ? content
+      : { ...(content || {}), langue: langueCode(u.langue) };
 
     // Ratés intermittents de Playwright (timeout réseau/police) : jusqu'à 2 essais.
     let res: CarrouselRenduResult = { images: [], pdf: null };
@@ -376,7 +381,7 @@ export class CarrouselRenduService {
           res = await rendre(() =>
             this.renderAndUpload(
               telegramId,
-              content,
+              contenuLangue,
               p,
               s,
               a,

@@ -13,6 +13,24 @@
  * "corps" laisse la police choisie dans Carrousels remplacer celle du style.
  */
 (function (racine) {
+  // ------------------------------------------------------------------ textes fixes
+  // Dans la langue du compte (d.langue) : un client espagnol ne doit pas lire « Le geste »
+  // ou « Je te montre en 5 étapes » sur ses slides.
+  var TEXTES = {
+    geste: { fr: 'Le geste :', en: 'Quick win:', es: 'El gesto:' },
+    gesteCourt: { fr: 'LE GESTE', en: 'QUICK WIN', es: 'EL GESTO' },
+    conseils: { fr: ' conseils pour y arriver', en: ' tips to get there', es: ' consejos para lograrlo' },
+    etape: { fr: 'ÉTAPE ', en: 'STEP ', es: 'PASO ' },
+    montre: { fr: 'Je te montre en ', en: "I'll show you in ", es: 'Te lo muestro en ' },
+    etapes: { fr: ' étapes', en: ' steps', es: ' pasos' },
+    conseil: { fr: 'Mon conseil', en: 'My tip', es: 'Mi consejo' },
+    onEnParle: { fr: 'On en parle ?', en: "Let's talk?", es: '¿Hablamos?' },
+    taMarque: { fr: 'Ta marque', en: 'Your brand', es: 'Tu marca' },
+  };
+  function tx(d, k) {
+    var l = String((d && d.langue) || 'fr').slice(0, 2).toLowerCase();
+    return (TEXTES[k][l] || TEXTES[k].fr);
+  }
   // ------------------------------------------------------------------ couleurs
   function rgb(h) {
     var x = String(h || '#000000').replace('#', '');
@@ -119,7 +137,7 @@
     d.slides.forEach(function (s, i) {
       out.push(slide('sc-surl', CSS_SURL, '', haut + titre(s.titre, 50)
         + (s.texte ? '<p ' + P + ' class="corps">' + esc(s.texte) + '</p>' : '')
-        + (s.tip ? '<p ' + P + ' class="conseil"><b>Le geste :</b> ' + esc(s.tip) + '</p>' : '') + bas(i + 1)));
+        + (s.tip ? '<p ' + P + ' class="conseil"><b>' + tx(d, 'geste') + '</b> ' + esc(s.tip) + '</p>' : '') + bas(i + 1)));
     });
     out.push(slide('sc-surl', CSS_SURL, '', haut + titre(d.cta.titre, 50) + (d.cta.texte ? '<p ' + P + ' class="corps">' + esc(d.cta.texte) + '</p>' : '') + bas(n - 1)));
     return out;
@@ -214,7 +232,7 @@
     var out = [];
     out.push(slide('sc-org', css, 'background:' + CREME, deco('left:-30px;bottom:30px', 190, tache2(c2) + '<g transform="translate(40 40)">' + tache1(c1) + '</g>') + deco('left:4px;bottom:118px', 160, branche(ENC))
       + '<div style="position:absolute;right:-50px;top:66px;width:250px;height:360px;border-radius:50%;overflow:hidden">' + photo(d, 0, 'inset:0;width:100%;height:100%;') + '</div>'
-      + '<div style="position:absolute;left:28px;top:44px;width:200px"><h2 ' + T + ' style="font-size:' + fitFs(d.hook, 30) + 'px;color:' + ENC + '">' + esc(d.hook) + '</h2><p ' + P + ' style="margin-top:12px;font-size:12px;color:' + ENC + '">' + d.slides.length + ' conseils pour y arriver</p></div>'
+      + '<div style="position:absolute;left:28px;top:44px;width:200px"><h2 ' + T + ' style="font-size:' + fitFs(d.hook, 30) + 'px;color:' + ENC + '">' + esc(d.hook) + '</h2><p ' + P + ' style="margin-top:12px;font-size:12px;color:' + ENC + '">' + d.slides.length + tx(d, 'conseils') + '</p></div>'
       + '<p style="position:absolute;left:28px;bottom:24px;font-size:9px;font-weight:500;color:' + ENC + '">' + esc(d.nom) + '</p>' + deco('right:-30px;bottom:-40px', 150, tache2(c1))));
     d.slides.forEach(function (s, i) {
       out.push(slide('sc-org', css, 'background:' + CREME, deco('right:-50px;top:-40px', 170, tache1(c2) + '<g transform="translate(60 10) scale(.6)">' + branche(c1) + '</g>') + deco('left:-40px;bottom:-30px', 160, tache2(c1) + '<g transform="translate(40 60) scale(.6)">' + branche(ENC) + '</g>')
@@ -239,14 +257,14 @@
     var out = [];
     out.push(slide('sc-pou', css, '', photo(d, 0, 'inset:0;width:100%;height:100%;')
       + '<div style="position:absolute;left:0;right:0;top:150px;padding:20px 22px;background:' + BANDE + 'e0;text-align:center"><h2 ' + T + ' style="font-size:' + fitFs(d.hook, 26) + 'px;color:' + ENC + '">' + esc(d.hook) + '</h2>'
-      + '<p ' + P + ' style="margin-top:10px;font-weight:700;font-size:10px;color:' + ENC + '">' + d.slides.length + ' conseils pour y arriver</p></div>'
+      + '<p ' + P + ' style="margin-top:10px;font-weight:700;font-size:10px;color:' + ENC + '">' + d.slides.length + tx(d, 'conseils') + '</p></div>'
       + '<p style="position:absolute;left:0;right:0;bottom:30px;text-align:center;font-weight:600;font-size:9px;color:#1d1d1d">' + esc(d.nom) + '</p>'));
     d.slides.forEach(function (s, i) {
       out.push(slide('sc-pou', css, 'background:' + L + ';padding:34px 28px;box-sizing:border-box',
-        '<p style="font-family:Italiana,serif;font-size:13px;letter-spacing:1.5px;color:' + ENC + '">ÉTAPE ' + (i + 1) + ' :</p>'
+        '<p style="font-family:Italiana,serif;font-size:13px;letter-spacing:1.5px;color:' + ENC + '">' + tx(d, 'etape') + (i + 1) + ' :</p>'
         + '<h2 ' + T + ' style="margin-top:8px;font-family:Montserrat,sans-serif;font-weight:700;text-transform:none;letter-spacing:0;font-size:' + fitFs(s.titre, 14) + 'px;line-height:1.35;color:' + ENC + '">' + esc(s.titre) + '</h2>'
         + (s.texte ? '<p ' + P + ' style="margin-top:8px;font-size:10.5px;line-height:1.55;color:' + ENC + ';max-width:280px">' + esc(s.texte) + '</p>' : '')
-        + (s.tip ? '<span style="display:inline-block;margin-top:16px;background:#fff;color:' + ENC + ';font:700 8px Montserrat,sans-serif;letter-spacing:1px;padding:5px 10px;border-radius:3px">LE GESTE</span><p ' + P + ' style="margin-top:10px;font-weight:600;font-size:10.5px;line-height:1.5;color:' + ENC + ';max-width:200px">' + esc(s.tip) + '</p>' : '')
+        + (s.tip ? '<span style="display:inline-block;margin-top:16px;background:#fff;color:' + ENC + ';font:700 8px Montserrat,sans-serif;letter-spacing:1px;padding:5px 10px;border-radius:3px">' + tx(d, 'gesteCourt') + '</span><p ' + P + ' style="margin-top:10px;font-weight:600;font-size:10.5px;line-height:1.5;color:' + ENC + ';max-width:200px">' + esc(s.tip) + '</p>' : '')
         + '<div style="position:absolute;right:-30px;bottom:-30px;width:170px;height:170px;border-radius:50%;overflow:hidden;border:4px solid #fff">' + photo(d, i + 1, 'inset:0;width:100%;height:100%;') + '</div>'));
     });
     out.push(slide('sc-pou', css, '', photo(d, d.slides.length + 1, 'inset:0;width:100%;height:100%;') + '<div style="position:absolute;inset:0;background:linear-gradient(transparent 45%, ' + L + 'f2 78%)"></div>'
@@ -291,7 +309,7 @@
     out.push(slide('sc-caf', css, '', photo(d, 0, 'inset:0;width:100%;height:100%;') + '<div style="position:absolute;inset:0;background:linear-gradient(rgba(0,0,0,.42),rgba(0,0,0,.08) 62%)"></div>'
       + '<div style="position:absolute;left:20px;right:20px;top:46px;text-align:center;color:#fff"><h2 ' + T + ' style="font-weight:800;font-size:' + fitFs(haut, 34) + 'px;line-height:1;text-transform:uppercase">' + esc(haut)
       + (bas ? '<span style="display:block;font-weight:700;text-transform:none;font-size:' + fitFs(bas, 30) / fitFs(haut, 34) + 'em;line-height:1.05;margin-top:2px">' + esc(bas) + '</span>' : '') + '</h2>'
-      + "<span style=\"display:inline-block;margin-top:12px;background:" + BRUN + ";color:#fff;font:700 15px Caveat,cursive;padding:3px 12px;transform:rotate(-2deg)\">Je te montre en " + d.slides.length + ' étapes</span>'
+      + "<span style=\"display:inline-block;margin-top:12px;background:" + BRUN + ";color:#fff;font:700 15px Caveat,cursive;padding:3px 12px;transform:rotate(-2deg)\">" + tx(d, 'montre') + d.slides.length + tx(d, 'etapes') + '</span>'
       + '<div style="margin-top:10px">' + fleche + '</div></div>' + points(0, '#fff')));
     d.slides.forEach(function (s, i) {
       out.push(slide('sc-caf', css, '', photo(d, 0, 'inset:-12px;width:calc(100% + 24px);height:calc(100% + 24px);', 'filter:blur(5px)') + '<div style="position:absolute;inset:0;background:rgba(255,255,255,.64)"></div>'
@@ -299,7 +317,7 @@
         + '<div style="font:700 26px Poppins,sans-serif">' + (i + 1) + '</div>'
         + '<h2 ' + T + ' style="font-weight:800;font-size:' + fitFs(s.titre, 16) + 'px;line-height:1.2;text-transform:uppercase;margin-top:6px">' + esc(s.titre) + '</h2>'
         + (s.texte ? '<p ' + P + ' style="margin-top:10px;font-size:10.5px;line-height:1.55">' + esc(s.texte) + '</p>' : '')
-        + (s.tip ? '<div style="margin-top:16px;background:#fff;border-radius:10px;padding:10px 14px;box-shadow:0 6px 16px rgba(0,0,0,.08)"><p style="font-weight:700;font-size:10px">Mon conseil</p><p ' + P + ' style="margin-top:4px;font-size:10px;line-height:1.5">' + esc(s.tip) + '</p></div>' : '')
+        + (s.tip ? '<div style="margin-top:16px;background:#fff;border-radius:10px;padding:10px 14px;box-shadow:0 6px 16px rgba(0,0,0,.08)"><p style="font-weight:700;font-size:10px">' + tx(d, 'conseil') + '</p><p ' + P + ' style="margin-top:4px;font-size:10px;line-height:1.5">' + esc(s.tip) + '</p></div>' : '')
         + '</div>' + points(i + 1, BRUN)));
     });
     out.push(slide('sc-caf', css, 'background:' + BRUN + ';display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 40px;color:#fff',
@@ -344,7 +362,7 @@
       out.push(slide('sc-halo', CSS_HALO, fond(i + 1), '<div class="haut"><span>' + etiquette + '</span><span>' + esc(d.nom) + '</span></div>'
         + '<div style="margin:auto 0"><h2 ' + T + ' style="font-size:' + fitFs(s.titre, 52) + 'px">' + esc(s.titre) + '</h2>'
         + (s.texte ? '<p ' + P + ' class="corps">' + esc(s.texte) + '</p>' : '')
-        + (s.tip ? '<p ' + P + ' class="conseil"><b style="color:#161616">Le geste :</b> ' + esc(s.tip) + '</p>' : '') + '</div>'
+        + (s.tip ? '<p ' + P + ' class="conseil"><b style="color:#161616">' + tx(d, 'geste') + '</b> ' + esc(s.tip) + '</p>' : '') + '</div>'
         + '<div class="bas"><span>' + (i + 2) + '/' + n + '</span>' + fleche + '</div>'));
     });
     out.push(slide('sc-halo', CSS_HALO, fond(n - 1), '<div class="haut"><span>' + etiquette + '</span><span>' + esc(d.nom) + '</span></div>'
@@ -438,8 +456,8 @@
     var d = {
       hook: c.hook || '',
       slides: (c.slides || []).map(function (x) { return { titre: x.titre || x.t || '', texte: x.texte || x.x || '', tip: x.pro_tip || x.tip || '' }; }),
-      cta: { titre: cta.titre || cta.t || 'On en parle ?', texte: cta.texte || cta.x || '' },
-      nom: c.nom || 'Ta marque', secteur: court(c.secteur, 28), logo: c.logo || null, photos: c.photos || [],
+      cta: { titre: cta.titre || cta.t || tx(c, 'onEnParle'), texte: cta.texte || cta.x || '' },
+      nom: c.nom || tx(c, 'taMarque'), langue: c.langue || 'fr', secteur: court(c.secteur, 28), logo: c.logo || null, photos: c.photos || [],
     };
     var k = couleurs || {};
     return s.fn(d, { p: k.p || '#1652A6', s: k.s || '#8A6CFF', a: k.a || '#F26B3A' });

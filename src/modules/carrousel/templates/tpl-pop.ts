@@ -1,3 +1,4 @@
+import { tf } from '../../../common/utils/textes-fixes.util';
 import { inkOn, near } from './color.util';
 import { avSpan, CarrouselContentShape, esc, fitFs, parts } from './common.util';
 
@@ -21,6 +22,7 @@ export function tplPop(
   const Sink = inkOn(ss);
   const NEAR = near(pp);
   const [hook, slides, cta] = parts(content);
+  const lg = (content as CarrouselContentShape | undefined)?.langue;
   const head =
     '<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">';
   const css = `<style>*{box-sizing:border-box;margin:0} body{margin:0;font-family:Inter,sans-serif}
@@ -41,7 +43,7 @@ export function tplPop(
 </style>`;
   const av = avSpan(logo, (nom || '?')[0].toUpperCase(), Aink, A);
   const out = [
-    `<div class="slide" style="background:${A};color:${Aink}"><div class="top"><span class="badge" style="background:${Aink};color:${A}">Carrousel</span><span class="swipe">SWIPE →</span></div><div class="grow" style="display:flex;align-items:center"><h1 style="font-size:${fitFs(hook, 37)}px">${esc(hook)}</h1></div><div class="foot">${av}<div>${esc(nom)}</div></div></div>`,
+    `<div class="slide" style="background:${A};color:${Aink}"><div class="top"><span class="badge" style="background:${Aink};color:${A}">${tf(lg, 'carrousel')}</span><span class="swipe">${tf(lg, 'swipe').toUpperCase()}</span></div><div class="grow" style="display:flex;align-items:center"><h1 style="font-size:${fitFs(hook, 37)}px">${esc(hook)}</h1></div><div class="foot">${av}<div>${esc(nom)}</div></div></div>`,
   ];
   slides.forEach((sl, i) => {
     const acc = i % 2 === 0;
@@ -56,13 +58,13 @@ export function tplPop(
           .join('')}</div>`
       : '';
     out.push(
-      `<div class="slide" style="background:${bg};color:${ink}"><span class="badge" style="${bstyle};align-self:flex-start">Étape ${String(i + 1).padStart(2, '0')}</span><div class="num" style="margin-top:auto;color:${ink}">${String(i + 1).padStart(2, '0')}</div><h2>${esc(sl.titre)}</h2>${pl}</div>`,
+      `<div class="slide" style="background:${bg};color:${ink}"><span class="badge" style="${bstyle};align-self:flex-start">${tf(lg, 'etape')} ${String(i + 1).padStart(2, '0')}</span><div class="num" style="margin-top:auto;color:${ink}">${String(i + 1).padStart(2, '0')}</div><h2>${esc(sl.titre)}</h2>${pl}</div>`,
     );
   });
   out.push(
-    `<div class="slide" style="background:${ss};color:${Sink}"><span class="badge" style="background:${Sink};color:${ss};align-self:flex-start">À toi</span><div class="grow" style="display:flex;flex-direction:column;justify-content:center"><h2>${esc(cta.titre)}</h2>` +
+    `<div class="slide" style="background:${ss};color:${Sink}"><span class="badge" style="background:${Sink};color:${ss};align-self:flex-start">${tf(lg, 'aToi')}</span><div class="grow" style="display:flex;flex-direction:column;justify-content:center"><h2>${esc(cta.titre)}</h2>` +
       (cta.texte ? `<p>${esc(cta.texte)}</p>` : '') +
-      `<span class="cta-btn" style="background:${Sink};color:${ss}">Lien en bio →</span></div></div>`,
+      `<span class="cta-btn" style="background:${Sink};color:${ss}">${tf(lg, 'lienEnBio')}</span></div></div>`,
   );
   return `<!DOCTYPE html><html><head><meta charset="utf-8">${head}${css}</head><body>${out.join('')}</body></html>`;
 }

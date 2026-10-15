@@ -32,7 +32,7 @@ export function stylePartage(
   photos: string[] = [],
 ): string {
   const [hook, slides, cta] = parts(content);
-  const donnees = { hook, slides, cta, nom: nom || '', secteur: secteur || '', logo: logo || null, photos };
+  const donnees = { hook, slides, cta, nom: nom || '', secteur: secteur || '', logo: logo || null, photos, langue: content?.langue || 'fr' };
   return (
     '<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0}</style></head><body>' +
     `<script>${lireGenerateur()}</script><script>(function(){var S=window.StylesCarrousel;` +

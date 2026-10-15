@@ -1,3 +1,4 @@
+import { langueCode, tf } from '../../common/utils/textes-fixes.util';
 import * as crypto from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -487,7 +488,7 @@ export class ReelService {
         model: 'claude-haiku-4-5',
         max_tokens: 500,
         system: ROLE_AFFICHE + this.marqueService.contexteMarqueCourt(marque, { ctas: true }),
-        messages: [{ role: 'user', content: `Post :\n\n${texte.slice(0, 4000)}\n\nDonne le JSON.` }],
+        messages: [{ role: 'user', content: `Post :\n\n${texte.slice(0, 4000)}\n\nDonne le JSON.${this.marqueService.consigneLangueFinale(marque)}` }],
       });
       this.journalLlm(marque.telegram_id as string, 'reel_script_affiche', resp);
       const data = this.parseJson<{ headline?: string; sub?: string; features?: Array<{ icon?: string; texte?: string; sous?: string }>; stat?: string; cta?: string }>(this.texteReponse(resp));
@@ -502,7 +503,7 @@ export class ReelService {
           sub: String(data.sub || '').slice(0, 160),
           features: feats,
           stat: String(data.stat || '').slice(0, 120),
-          cta: String(data.cta || 'Découvrir').slice(0, 32),
+          cta: String(data.cta || tf(marque.langue, 'decouvrir')).slice(0, 32),
         };
       }
     } catch (e) {
@@ -510,27 +511,29 @@ export class ReelService {
     }
     const phrases = (texte || '').split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
     return {
-      headline: (phrases[0] || 'Un contenu qui travaille pour toi.').slice(0, 90),
+      headline: (phrases[0] || tf(marque.langue, 'contenuQuiTravaille')).slice(0, 90),
       sub: (phrases[1] || '').slice(0, 120),
       features: [
-        { icon: 'bolt', texte: (phrases[2] || 'Simple et rapide').slice(0, 60), sous: '' },
-        { icon: 'star', texte: (phrases[3] || 'A ta marque').slice(0, 60), sous: '' },
-        { icon: 'shield', texte: (phrases[4] || 'Tu gardes le controle').slice(0, 60), sous: '' },
+        { icon: 'bolt', texte: (phrases[2] || tf(marque.langue, 'simpleRapide')).slice(0, 60), sous: '' },
+        { icon: 'star', texte: (phrases[3] || tf(marque.langue, 'aTaMarqueCourt')).slice(0, 60), sous: '' },
+        { icon: 'shield', texte: (phrases[4] || tf(marque.langue, 'tuGardes')).slice(0, 60), sous: '' },
       ],
       stat: '',
-      cta: String(marque.nom || 'Découvrir').slice(0, 32),
+      cta: String(marque.nom || tf(marque.langue, 'decouvrir')).slice(0, 32),
     };
   }
 
   /** Claude condense le post ; repli heuristique si l'appel échoue. */
   private async scriptMotion(texte: string, marque: Record<string, unknown>): Promise<{ plans: PlanMotion[]; cta: string; hook: string }> {
-    const ctx = `\n\nMarque : ${marque.nom || ''}. Secteur : ${marque.secteur || ''}. Appels a l'action de la marque : ${marque.ctas || marque.cta || ''}.`;
+    const ctx =
+      `\n\nMarque : ${marque.nom || ''}. Secteur : ${marque.secteur || ''}. Appels a l'action de la marque : ${marque.ctas || marque.cta || ''}.` +
+      `\nLangue de tous les textes à l'écran : ${this.marqueService.langueSortie(marque)} (même si le post est dans une autre langue).`;
     try {
       const resp = await this.claude.messagesCreate({
         model: MODELE_SCRIPT,
         max_tokens: 2600,
         system: ROLE_MOTION + ctx,
-        messages: [{ role: 'user', content: `Post :\n\n${texte.slice(0, 4000)}\n\nDonne le JSON.` }],
+        messages: [{ role: 'user', content: `Post :\n\n${texte.slice(0, 4000)}\n\nDonne le JSON.${this.marqueService.consigneLangueFinale(marque)}` }],
       });
       this.journalLlm(marque.telegram_id as string, 'reel_script', resp);
       const data = this.parseJson<{ plans?: Array<Record<string, unknown>>; cta?: string }>(this.texteReponse(resp));
@@ -557,7 +560,7 @@ export class ReelService {
       .map((x) => x.trim()).filter(Boolean).slice(0, 20);
     const effets = ['revele', 'surligne', 'revele', 'machine', 'revele'];
     const icones = ['ampoule', 'cible', 'graphique', 'coche', 'fusee'];
-    const plans = (phrases.length ? phrases : ['Un message qui compte.']).map((ph, i) => ({ texte: ph.slice(0, 90), accents: [], effet: effets[i % effets.length], dur: 3.2, icone: icones[i % icones.length] }));
+    const plans = (phrases.length ? phrases : [tf(marque.langue, 'messageQuiCompte')]).map((ph, i) => ({ texte: ph.slice(0, 90), accents: [], effet: effets[i % effets.length], dur: 3.2, icone: icones[i % icones.length] }));
     return { plans, cta: String(marque.nom || '').slice(0, 40), hook: plans[0].texte.slice(0, 80) };
   }
 
@@ -567,7 +570,7 @@ export class ReelService {
         model: 'claude-haiku-4-5',
         max_tokens: long ? 450 : 300,
         system: (long ? ROLE_LONG : ROLE) + this.marqueService.contexteMarqueCourt(marque, { ctas: true }),
-        messages: [{ role: 'user', content: `Post :\n\n${texte.slice(0, 4000)}\n\nDonne le JSON.` }],
+        messages: [{ role: 'user', content: `Post :\n\n${texte.slice(0, 4000)}\n\nDonne le JSON.${this.marqueService.consigneLangueFinale(marque)}` }],
       });
       this.journalLlm(marque.telegram_id as string, 'reel_script', resp);
       const data = this.parseJson<{ hook?: string; points?: string[]; cta?: string; contexte?: string; lecon?: string }>(this.texteReponse(resp));
@@ -575,9 +578,9 @@ export class ReelService {
         const script: { hook: string; points: string[]; cta: string; contexte?: string; lecon?: string } = {
           hook: String(data.hook).slice(0, 120),
           points: data.points.slice(0, 3).map((p) => String(p).slice(0, 80)),
-          cta: String(data.cta || 'Suis-nous').slice(0, 40),
+          cta: String(data.cta || tf(marque.langue, 'suisNous')).slice(0, 40),
         };
-        if (!script.points.length) script.points = ['Simple.', 'Rapide.', 'A ta marque.'];
+        if (!script.points.length) script.points = [tf(marque.langue, 'simple'), tf(marque.langue, 'rapide'), tf(marque.langue, 'aTaMarque')];
         if (long) {
           script.contexte = String(data.contexte || '').slice(0, 220);
           script.lecon = String(data.lecon || '').slice(0, 140);
@@ -589,11 +592,11 @@ export class ReelService {
     }
     const phrases = (texte || '').split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
     const script: { hook: string; points: string[]; cta: string; contexte?: string; lecon?: string } = {
-      hook: (phrases[0] || 'Un contenu qui travaille pour toi.').slice(0, 120),
+      hook: (phrases[0] || tf(marque.langue, 'contenuQuiTravaille')).slice(0, 120),
       points: phrases.slice(1, 4).map((p) => p.slice(0, 80)),
-      cta: String(marque.nom || 'Suis-nous').slice(0, 40),
+      cta: String(marque.nom || tf(marque.langue, 'suisNous')).slice(0, 40),
     };
-    if (!script.points.length) script.points = ['Simple.', 'Rapide.', 'A ta marque.'];
+    if (!script.points.length) script.points = [tf(marque.langue, 'simple'), tf(marque.langue, 'rapide'), tf(marque.langue, 'aTaMarque')];
     if (long) {
       script.contexte = (phrases[1] || '').slice(0, 220);
       script.lecon = (phrases[phrases.length - 1] || '').slice(0, 140);
@@ -604,7 +607,7 @@ export class ReelService {
   private propsMarque(u: Record<string, unknown>, script: { hook: string; points: string[]; cta: string }): { brand: Record<string, unknown>; hook: string; points: string[]; cta: string } {
     return {
       brand: {
-        nom: u.nom || u.user_name || 'Ma marque',
+        nom: u.nom || u.user_name || tf(u.langue, 'maMarque'),
         principale: u.couleur_principale || '#5B6CFF',
         accent: u.couleur_accent || '#3AFFA3',
         fond: '#0a0a12',
@@ -612,6 +615,8 @@ export class ReelService {
         // Polices de la charte (Paramètres > Style) : la composition les charge, Sora / Inter sinon.
         police: (u.typo_primaire as string) || null,
         policeTexte: (u.typo_secondaire as string) || null,
+        // Langue du compte : textes fixes de la composition (badges AVANT/APRÈS…).
+        langue: langueCode(u.langue),
       },
       hook: script.hook,
       points: script.points,
@@ -776,10 +781,10 @@ export class ReelService {
         segs.push({
           type: 'cta',
           dur: 3.2,
-          texte: (segs[segs.length - 1].texte || 'Suis-nous').slice(0, 40),
+          texte: (segs[segs.length - 1].texte || tf(marque.langue, 'suisNous')).slice(0, 40),
           accents: [],
           bar: String(marque.nom || '').slice(0, 40),
-          ...(avecVoix ? { voix_texte: (segs[segs.length - 1].texte || 'Suis-nous').slice(0, 40) } : {}),
+          ...(avecVoix ? { voix_texte: (segs[segs.length - 1].texte || tf(marque.langue, 'suisNous')).slice(0, 40) } : {}),
         });
       }
       if (ordreFixe && pool.length) {
@@ -802,11 +807,11 @@ export class ReelService {
     if (segments === null) {
       // Repli : hook -> visuels -> CTA. Si les visuels sont imposés, TOUS y passent.
       const phrases = (texte || '').split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
-      segments = [{ type: 'typo', dur: 2.6, texte: (phrases[0] || 'Un contenu qui travaille pour toi.').slice(0, 70), accents: [] }];
+      segments = [{ type: 'typo', dur: 2.6, texte: (phrases[0] || tf(marque.langue, 'contenuQuiTravaille')).slice(0, 70), accents: [] }];
       const visuels = imposees ? pool : pool.slice(0, 1);
       const effets = ['zoomIn', 'panRight', 'zoomOut', 'panLeft'];
       visuels.slice(0, 5).forEach((v, i) => {
-        const txt = (phrases[1 + i] || 'Regarde.').slice(0, 60);
+        const txt = (phrases[1 + i] || tf(marque.langue, 'regarde')).slice(0, 60);
         const seg: ReelSegment = { type: 'image', dur: 3.0, texte: txt, accents: [], image_id: v.id, effet: effets[i % 4], tilt: [-3, 2, -2, 3][i % 4] };
         if (estClip(v.url)) this.planVideo(seg, v);
         else seg.image = imgRendu(v.url);
@@ -815,7 +820,7 @@ export class ReelService {
       if (!visuels.length) {
         for (const p of phrases.slice(2, 4)) segments.push({ type: 'typo', dur: 2.8, texte: p.slice(0, 70), accents: [] });
       }
-      segments.push({ type: 'cta', dur: 3.2, texte: 'On en parle ?', accents: [], bar: String(marque.nom || 'Suis-nous').slice(0, 40) });
+      segments.push({ type: 'cta', dur: 3.2, texte: tf(marque.langue, 'onEnParle'), accents: [], bar: String(marque.nom || tf(marque.langue, 'suisNous')).slice(0, 40) });
     }
     return { recette: 'auto', brief, segments: pimenterReveals(segments, (brief || '') + (texte || '').slice(0, 120)) };
   }

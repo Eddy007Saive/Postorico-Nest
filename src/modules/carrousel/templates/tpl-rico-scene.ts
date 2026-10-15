@@ -1,3 +1,4 @@
+import { tf } from '../../../common/utils/textes-fixes.util';
 import { accDark, darken } from './color.util';
 import { accrocheMint, CarrouselContentShape, dots, esc, fitFs, GRAIN, parts, pills } from './common.util';
 
@@ -26,6 +27,7 @@ export function tplRicoScene(
   const S = s || '#8A6CFF';
   const A = accDark(a || '#3AFFA3');
   const [hook, slides, cta] = parts(content);
+  const lg = (content as CarrouselContentShape | undefined)?.langue;
   const n = 2 + slides.length;
 
   const rico = (classe: string, i: number) =>
@@ -102,17 +104,17 @@ export function tplRicoScene(
     `<div class="slide">${fond}${rico('grande', 0)}` +
       `<div class="top">${marqueHtml}<span class="idx">1/${n}</span></div>` +
       `<div class="haut"><h1 style="font-size:${fitFs(hook, 36)}px">${accrocheMint(hook, A)}</h1></div>` +
-      `<div class="bar"><span class="hd">${esc(secteur)}</span><span class="swipe">Swipe &#8594;</span></div></div>`,
+      `<div class="bar"><span class="hd">${esc(secteur)}</span><span class="swipe">${tf(lg, 'swipe')}</span></div></div>`,
   ];
   slides.forEach((sl, i) => {
     const taille = i % 2 ? 'petite' : 'moyenne'; // l'échelle varie : la série respire
     const pl = sl.pills ? `<div class="pills">${pills(sl.pills)}</div>` : '';
-    const tip = sl.pro_tip ? `<div class="tip"><span class="lbl">Le geste</span><p>${esc(sl.pro_tip)}</p></div>` : '';
+    const tip = sl.pro_tip ? `<div class="tip"><span class="lbl">${tf(lg, 'leGeste')}</span><p>${esc(sl.pro_tip)}</p></div>` : '';
     const txt = sl.texte ? `<p class="sub">${esc(sl.texte)}</p>` : '';
     out.push(
       `<div class="slide">${fond}${rico(taille, i + 1)}` +
         `<div class="top">${marqueHtml}<span class="idx">${i + 2}/${n}</span></div>` +
-        `<div class="haut"><div class="etape"><span></span>Étape ${String(i + 1).padStart(2, '0')}</div>` +
+        `<div class="haut"><div class="etape"><span></span>${tf(lg, 'etape')} ${String(i + 1).padStart(2, '0')}</div>` +
         `<h2 style="font-size:${fitFs(sl.titre, 26)}px">${esc(sl.titre)}</h2>${txt}${pl}${tip}</div>` +
         `<div class="bar"><div class="dots">${dots(n, i + 1)}</div><span class="hd">${esc(nom)}</span></div></div>`,
     );
@@ -122,7 +124,7 @@ export function tplRicoScene(
       `<div class="top">${marqueHtml}<span class="idx" style="color:#fff">${n}/${n}</span></div>` +
       `<div class="haut"><h2 style="font-size:${fitFs(cta.titre, 26)}px">${accrocheMint(cta.titre, A)}</h2>` +
       (cta.texte ? `<p class="sub">${esc(cta.texte)}</p>` : '') +
-      '<span class="btn">Lien en bio &#8594;</span></div>' +
+      `<span class="btn">${tf(lg, 'lienEnBio')}</span></div>` +
       `<div class="bar"><span class="hd">${esc(secteur)}</span><div class="dots">${dots(n, n - 1)}</div></div></div>`,
   );
   return `<!DOCTYPE html><html><head><meta charset="utf-8">${head}${css}</head><body>${out.join('')}</body></html>`;

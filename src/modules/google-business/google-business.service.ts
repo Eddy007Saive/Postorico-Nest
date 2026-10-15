@@ -174,7 +174,7 @@ export class GoogleBusinessService {
         : `End by inviting them back, without a sales pitch. `) +
       `Never invent facts, offers or names. No hashtags, no emoji unless the brand uses them, no signature placeholder. ` +
       `Output only the reply text.` +
-      this.marque.contexteMarqueCourt(u, { audience: false });
+      this.marque.contexteMarqueCourt(u, { audience: false, langue: false });
     const rep = await this.claude.messagesCreate({
       model: MODELE_REDACTION,
       max_tokens: 400,
@@ -336,7 +336,7 @@ export class GoogleBusinessService {
     const u = await this.marque.chargerMarque(telegramId);
     const actuelle = await this.infos(telegramId).catch(() => null);
     const consigne =
-      `Write the description of a business for its Google Business Profile, in French, 500 to 700 characters ` +
+      `Write the description of a business for its Google Business Profile, in ${this.marque.langueSortie(u)}, 500 to 700 characters ` +
       `(hard limit 750). Say concretely what the business does, for whom, where if known, and what makes it ` +
       `different, with the words a local customer would search for. No URL, no phone number, no promotion or ` +
       `price, no ALL CAPS, no emoji, no hashtags (Google forbids them). Output only the description.` +

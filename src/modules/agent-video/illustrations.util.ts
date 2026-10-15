@@ -45,8 +45,9 @@ export function consigneMoments(
     `- "broll" si le passage évoque quelque chose de CONCRET et filmable (objet, lieu, action, métier) : ` +
     `une requête de recherche COURTE EN ANGLAIS (2 à 4 mots) pour une banque de vidéos (Pexels) ;\n` +
     `- "schema" si le passage est une idée abstraite qui se dessine (étapes d'une méthode, avant/après, ` +
-    `chiffre clé, liste, comparaison) : en français, en une phrase, ce que le petit schéma montre, ` +
-    `avec ses mots exacts (ex. « 3 étapes : Comprendre → Analyser → Construire »).\n` +
+    `chiffre clé, liste, comparaison) : en une phrase, ce que le petit schéma montre, avec ses mots ` +
+    `exacts écrits DANS LA LANGUE DE LA VIDÉO (${langue}), car ils s'affichent à l'écran ` +
+    `(ex. en français « 3 étapes : Comprendre → Analyser → Construire »).\n` +
     `Mélange les deux formes quand le propos s'y prête.\n\n` +
     `Réponds uniquement en JSON : {"picks":[{"i":12,"type":"broll","query":"team meeting office"},` +
     `{"i":40,"type":"schema","query":"3 étapes : Comprendre → Analyser → Construire"}]}\n\n` +

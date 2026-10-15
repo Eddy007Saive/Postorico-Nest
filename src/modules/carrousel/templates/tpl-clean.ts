@@ -1,3 +1,4 @@
+import { tf } from '../../../common/utils/textes-fixes.util';
 import { accDark, accLight, inkOn, lighten, mix, near } from './color.util';
 import { avSpan, CarrouselContentShape, esc, fitFs, parts, pills } from './common.util';
 
@@ -23,6 +24,7 @@ export function tplClean(
   const accD = accDark(A);
   const grad = `linear-gradient(165deg,${NEAR},${mix(NEAR, A, 0.5)})`;
   const [hook, slides, cta] = parts(content);
+  const lg = (content as CarrouselContentShape | undefined)?.langue;
   const n = 2 + slides.length;
   const chev =
     '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
@@ -54,7 +56,7 @@ export function tplClean(
   const pbar = (idx: number) =>
     `<div class="pbar"><div class="track"><div class="fill" style="width:${(((idx + 1) / n) * 100).toFixed(0)}%"></div></div><span class="cnt">${idx + 1}/${n}</span></div>`;
   const out = [
-    `<div class="slide lt center"><div class="kick" style="color:${accL}">Carrousel</div><h1>${esc(hook)}</h1><div class="grow"></div><div class="lockup">${av}<div><div class="lk-nm">${esc(nom)}</div><div class="lk-hd">${esc(secteur)}</div></div></div><div class="swipe">${chev}</div>${pbar(0)}</div>`,
+    `<div class="slide lt center"><div class="kick" style="color:${accL}">${tf(lg, 'carrousel')}</div><h1>${esc(hook)}</h1><div class="grow"></div><div class="lockup">${av}<div><div class="lk-nm">${esc(nom)}</div><div class="lk-hd">${esc(secteur)}</div></div></div><div class="swipe">${chev}</div>${pbar(0)}</div>`,
   ];
   slides.forEach((sl, i) => {
     const dk = i % 2 === 0;
@@ -71,7 +73,7 @@ export function tplClean(
   out.push(
     `<div class="slide gr center"><div class="lockup">${av}<div><div class="lk-nm">${esc(nom)}</div><div class="lk-hd" style="color:rgba(255,255,255,.7)">${esc(secteur)}</div></div></div><div class="grow"></div><h2>${esc(cta.titre)}</h2>` +
       (cta.texte ? `<p>${esc(cta.texte)}</p>` : '') +
-      `<span class="ctabtn">Lien en bio →</span>${pbar(n - 1)}</div>`,
+      `<span class="ctabtn">${tf(lg, 'lienEnBio')}</span>${pbar(n - 1)}</div>`,
   );
   return `<!DOCTYPE html><html><head><meta charset="utf-8">${head}${css}</head><body>${out.join('')}</body></html>`;
 }

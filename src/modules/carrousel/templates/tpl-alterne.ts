@@ -1,3 +1,4 @@
+import { tf } from '../../../common/utils/textes-fixes.util';
 import { accDark, accLight, inkOn, lighten, mix, near } from './color.util';
 import { avSpan, CarrouselContentShape, dots, esc, fitFs, parts, pills } from './common.util';
 
@@ -24,6 +25,7 @@ export function tplAlterne(
   const accL = accLight(A);
   const accD = accDark(A);
   const [hook, slides, cta] = parts(content);
+  const lg = (content as CarrouselContentShape | undefined)?.langue;
   const n = 2 + slides.length;
   const initial = (nom || '?')[0].toUpperCase();
   const av = avSpan(logo, initial, A, Aink);
@@ -51,18 +53,18 @@ export function tplAlterne(
   .cta-btn{align-self:flex-start;background:${A};color:${Aink};font-weight:700;font-size:14px;padding:13px 24px;border-radius:8px;margin-top:18px;text-transform:uppercase;letter-spacing:.5px}
 </style>`;
   const out = [
-    `<div class="slide lt"><span class="tag">Carrousel</span><div class="grow" style="display:flex;flex-direction:column;justify-content:center"><h1 style="font-size:${fitFs(hook, 50)}px">${esc(hook)}</h1></div><div class="bar"><div class="foot">${av}<div>${esc(nom)}<small>${esc(secteur)}</small></div></div><span class="swipe">Swipe →</span></div></div>`,
+    `<div class="slide lt"><span class="tag">${tf(lg, 'carrousel')}</span><div class="grow" style="display:flex;flex-direction:column;justify-content:center"><h1 style="font-size:${fitFs(hook, 50)}px">${esc(hook)}</h1></div><div class="bar"><div class="foot">${av}<div>${esc(nom)}<small>${esc(secteur)}</small></div></div><span class="swipe">${tf(lg, 'swipe')}</span></div></div>`,
   ];
   slides.forEach((sl, i) => {
     const kind = i % 2 === 0 ? 'dk' : 'lt';
     const pl = sl.pills ? `<div class="pills">${pills(sl.pills)}</div>` : '';
-    const protip = sl.pro_tip ? `<div class="protip"><span class="lbl">Pro tip</span><p>${esc(sl.pro_tip)}</p></div>` : '';
+    const protip = sl.pro_tip ? `<div class="protip"><span class="lbl">${tf(lg, 'proTip')}</span><p>${esc(sl.pro_tip)}</p></div>` : '';
     out.push(
-      `<div class="slide ${kind}"><span class="tag">Étape ${String(i + 1).padStart(2, '0')}</span><div class="grow"></div><h2 style="font-size:${fitFs(sl.titre, 39)}px">${esc(sl.titre)}</h2>${pl}${protip}<div class="bar"><div class="dots">${dots(n, i + 1)}</div><span class="cnt">${i + 2}/${n}</span></div></div>`,
+      `<div class="slide ${kind}"><span class="tag">${tf(lg, 'etape')} ${String(i + 1).padStart(2, '0')}</span><div class="grow"></div><h2 style="font-size:${fitFs(sl.titre, 39)}px">${esc(sl.titre)}</h2>${pl}${protip}<div class="bar"><div class="dots">${dots(n, i + 1)}</div><span class="cnt">${i + 2}/${n}</span></div></div>`,
     );
   });
   out.push(
-    `<div class="slide lt"><span class="tag">À toi de jouer</span><div class="grow" style="display:flex;flex-direction:column;justify-content:center"><h2 style="font-size:${fitFs(cta.titre, 39)}px">${esc(cta.titre)}</h2><span class="cta-btn">Lien en bio →</span></div><div class="bar"><div class="foot">${av}<div>${esc(nom)}<small>${esc(secteur)}</small></div></div><div class="dots">${dots(n, n - 1)}</div></div></div>`,
+    `<div class="slide lt"><span class="tag">${tf(lg, 'aToiDeJouer')}</span><div class="grow" style="display:flex;flex-direction:column;justify-content:center"><h2 style="font-size:${fitFs(cta.titre, 39)}px">${esc(cta.titre)}</h2><span class="cta-btn">${tf(lg, 'lienEnBio')}</span></div><div class="bar"><div class="foot">${av}<div>${esc(nom)}<small>${esc(secteur)}</small></div></div><div class="dots">${dots(n, n - 1)}</div></div></div>`,
   );
   return `<!DOCTYPE html><html><head><meta charset="utf-8">${css}</head><body>${out.join('')}</body></html>`;
 }

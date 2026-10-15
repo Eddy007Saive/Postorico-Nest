@@ -3,12 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import { ClaudeService } from '../claude/claude.service';
 import { MarqueService } from '../marque/marque.service';
 import { LlmUsage } from '../usage/interfaces/llm-usage.interface';
-import { SAMPLES, Slots, TitleLine } from './templates/gabarit-builders';
+import { Slots, TitleLine } from './templates/gabarit-builders';
 
 /**
  * Agent GABARIT (texte) — port direct de `composer_gabarit` (backend/services/agent_service.py) :
  * à partir du texte d'un post, écrit les champs texte du gabarit choisi (titre/eyebrow/
- * citation/etc.) et les pose sur les défauts structurels du gabarit (SAMPLES).
+ * citation/etc.). Ce que l'IA ne fournit pas reste VIDE (le gabarit pose alors une étiquette
+ * par défaut dans la langue du compte) : plus d'exemple français ni de chiffre inventé.
  */
 
 const ROLE_GABARIT =
@@ -37,13 +38,14 @@ const GAB_SPECS: Record<string, [string, string[]]> = {
     ['eyebrow', 'title_lines', 'stats'],
   ],
   citation: [
-    '{"label":"Témoignage","quote_lines":[{"t":"ligne courte","c":"v sur la dernière"}]} ' +
+    '{"label":"1-2 mots","quote_lines":[{"t":"ligne courte","c":"v sur la dernière"}]} ' +
       '— quote_lines = 2-3 lignes, une citation percutante tirée du post.',
     ['label', 'quote_lines'],
   ],
   dashboard: [
-    '{"eyebrow":"1-2 mots","title_lines":[{"t":"MAJUSCULES","c":"v (optionnel)"}]} — title_lines = 3 lignes.',
-    ['eyebrow', 'title_lines'],
+    '{"eyebrow":"1-2 mots","title_lines":[{"t":"MAJUSCULES","c":"v (optionnel)"}],"big":[{"k":"libellé","n":"valeur","v":true}]} ' +
+      '— title_lines = 3 lignes ; big = 2 indicateurs (chiffres du post, sinon "n":"—", jamais de faux chiffres).',
+    ['eyebrow', 'title_lines', 'big'],
   ],
   features: [
     '{"eyebrow":"1-2 mots","title_lines":[{"t":"MAJUSCULES","c":"a (optionnel)"}],"features":[{"t":"titre court","d":"phrase"}]} ' +
@@ -61,16 +63,17 @@ const GAB_SPECS: Record<string, [string, string[]]> = {
     ['eyebrow', 'title_lines', 'services', 'flow'],
   ],
   mission: [
-    '{"label":"Notre mission","title_lines":[{"t":"MAJUSCULES","c":"v (optionnel)"}],"subtitle":"phrase","statrow":[{"n":"valeur","k":"libellé"}]} ' +
+    '{"label":"1-2 mots","title_lines":[{"t":"MAJUSCULES","c":"v (optionnel)"}],"subtitle":"phrase","statrow":[{"n":"valeur","k":"libellé"}]} ' +
       '— title_lines = 2 lignes ; statrow = 4 (chiffres du post sinon "n":"—").',
     ['label', 'title_lines', 'subtitle', 'statrow'],
   ],
   integrations: [
-    '{"eyebrow":"1-2 mots","title_lines":[{"t":"MAJUSCULES","c":"v (optionnel)"}],"subtitle":"phrase courte"} — title_lines = 2 lignes.',
-    ['eyebrow', 'title_lines', 'subtitle'],
+    '{"eyebrow":"1-2 mots","title_lines":[{"t":"MAJUSCULES","c":"v (optionnel)"}],"subtitle":"phrase courte","logos":["outil"]} ' +
+      '— title_lines = 2 lignes ; logos = 3 à 6 noms des outils ou services CITÉS dans le post, sinon [].',
+    ['eyebrow', 'title_lines', 'subtitle', 'logos'],
   ],
   testimonial: [
-    '{"label":"Nos clients","quote_lines":[{"t":"phrase de l\'avis"}],"author":{"name":"Prénom N.","role":"métier · ville"}} ' +
+    '{"label":"1-2 mots","quote_lines":[{"t":"phrase de l\'avis"}],"author":{"name":"Prénom N.","role":"métier · ville"}} ' +
       '— une citation client en 1-2 lignes ; author = client (pas la marque).',
     ['label', 'quote_lines', 'author'],
   ],
@@ -153,8 +156,8 @@ export class GabaritComposeService {
       return { error: 'parse' };
     }
 
-    // Base = exemple du gabarit (structure complète, toujours rendable) ; on pose les champs IA dessus.
-    const slots: Slots = JSON.parse(JSON.stringify(SAMPLES[gabarit] ?? {}));
+    // Base VIDE : ce que l'IA ne fournit pas n'est pas affiché (les gabarits savent rendre sans).
+    const slots: Slots = gabarit === 'testimonial' ? { stars: 5 } : {};
     for (const f of fields) {
       const v = data[f];
       if (v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length)) continue;
@@ -166,6 +169,13 @@ export class GabaritComposeService {
           .filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === 'object')
           .slice(0, 4)
           .map((x) => ({ k: String(x.k ?? ''), n: String(x.n ?? '—'), ...(x.v ? { v: true } : {}) }));
+      } else if (f === 'big') {
+        slots.big = (Array.isArray(v) ? v : [])
+          .filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === 'object')
+          .slice(0, 2)
+          .map((x) => ({ k: String(x.k ?? ''), n: String(x.n ?? '—'), ...(x.v ? { v: true } : {}) }));
+      } else if (f === 'logos') {
+        slots.logos = (Array.isArray(v) ? v : []).map((x) => String(x)).filter((x) => x.trim()).slice(0, 6);
       } else if (f === 'statrow') {
         slots.statrow = (Array.isArray(v) ? v : [])
           .filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === 'object')

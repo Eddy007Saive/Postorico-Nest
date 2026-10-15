@@ -1,3 +1,4 @@
+import { tf } from '../../../common/utils/textes-fixes.util';
 import { accDark, accLight, inkOn, lighten, near } from './color.util';
 import { avSpan, CarrouselContentShape, esc, fitFs, dots, parts } from './common.util';
 
@@ -35,6 +36,7 @@ export function tplChiffres(
   const Aink = inkOn(A);
   const Sink = inkOn(ss);
   const [hook, slides, cta] = parts(content);
+  const lg = (content as CarrouselContentShape | undefined)?.langue;
   const n = 2 + slides.length;
   const head =
     '<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">';
@@ -56,9 +58,9 @@ export function tplChiffres(
   const avSecondaire = avSpan(logo, initial, Sink, ss);
   const footCover = `<div class="foot">${avAccent}<div>${esc(nom)}</div></div>`;
   const out = [
-    `<div class="slide" style="background:${NEAR};color:#fff"><span class="kick" style="color:${accD}">Chiffres clés</span>` +
+    `<div class="slide" style="background:${NEAR};color:#fff"><span class="kick" style="color:${accD}">${tf(lg, 'chiffresCles')}</span>` +
       `<div class="grow" style="display:flex;align-items:center"><h2 style="font-size:${fitFs(hook, 30)}px;font-weight:800">${esc(hook)}</h2></div>` +
-      `<div class="bar">${footCover}<span class="kick" style="color:${accD}">Swipe →</span></div></div>`,
+      `<div class="bar">${footCover}<span class="kick" style="color:${accD}">${tf(lg, 'swipe')}</span></div></div>`,
   ];
   slides.forEach((sl, i) => {
     const dk = i % 2 === 0;
@@ -68,7 +70,7 @@ export function tplChiffres(
     const chiffre = (sl.chiffre || '').trim() || `0${i + 1}`;
     const chiffreStyle = sl.chiffre ? `color:${acc}` : `color:${ink};opacity:.18`;
     out.push(
-      `<div class="slide" style="background:${bg};color:${ink}"><span class="kick">${esc(sl.titre) || `Étape ${String(i + 1).padStart(2, '0')}`}</span>` +
+      `<div class="slide" style="background:${bg};color:${ink}"><span class="kick">${esc(sl.titre) || `${tf(lg, 'etape')} ${String(i + 1).padStart(2, '0')}`}</span>` +
         `<div class="chiffre" style="font-size:${chiffreFs(chiffre)}px;${chiffreStyle}">${esc(chiffre)}</div>` +
         (sl.texte ? `<p>${esc(sl.texte)}</p>` : '') +
         `<div class="grow"></div><div class="bar"><div class="dots" style="color:${acc}">${dots(n, i + 1)}</div>` +
@@ -77,10 +79,10 @@ export function tplChiffres(
   });
   const footCta = `<div class="foot">${avSecondaire}<div>${esc(nom)}</div></div>`;
   out.push(
-    `<div class="slide" style="background:${ss};color:${Sink}"><span class="kick">À toi de jouer</span>` +
+    `<div class="slide" style="background:${ss};color:${Sink}"><span class="kick">${tf(lg, 'aToiDeJouer')}</span>` +
       `<div class="grow" style="display:flex;flex-direction:column;justify-content:center"><h2 style="font-size:${fitFs(cta.titre, 26)}px">${esc(cta.titre)}</h2>` +
       (cta.texte ? `<p>${esc(cta.texte)}</p>` : '') +
-      `<span class="cta-btn" style="background:${Sink};color:${ss}">Lien en bio →</span></div>` +
+      `<span class="cta-btn" style="background:${Sink};color:${ss}">${tf(lg, 'lienEnBio')}</span></div>` +
       `<div class="bar">${footCta}<div class="dots" style="color:${Sink}">${dots(n, n - 1)}</div></div></div>`,
   );
   return `<!DOCTYPE html><html><head><meta charset="utf-8">${head}${css}</head><body>${out.join('')}</body></html>`;

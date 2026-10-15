@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
+import { langueCode } from '../../common/utils/textes-fixes.util';
 import { MarqueService } from '../marque/marque.service';
 import { PlaywrightBrowserService } from '../playwright/playwright-browser.service';
 import {
@@ -56,6 +57,7 @@ export class GabaritService {
       bg: '#07070e',
       logo: (u.logo_url as string) || null,
       nom: (u.nom as string) || (u.user_name as string) || '',
+      langue: langueCode(u.langue),
     };
   }
 
