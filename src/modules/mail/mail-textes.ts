@@ -30,7 +30,7 @@ export const MAIL = {
       bouton: 'Choisir un nouveau mot de passe',
       pasToi: "Tu n'es pas à l'origine de cette demande&nbsp;? Ignore cet email : ton mot de passe reste inchangé, et personne d'autre ne peut utiliser ce lien.",
       apercu: 'Ton lien de réinitialisation est valable une heure.',
-      sujet: 'Réinitialisation de votre mot de passe — Postorico',
+      sujet: 'Postorico : réinitialisation de ton mot de passe',
     },
     deconnexion: {
       sujet: (r: string) => `⚠️ Ton compte ${r} est déconnecté, reconnecte-le`,
