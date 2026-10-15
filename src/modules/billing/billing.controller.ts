@@ -1,3 +1,4 @@
+import { langueParEmail } from '../../common/utils/notifications-textes.util';
 import { BadRequestException, Body, Controller, Get, HttpException, HttpStatus, Logger, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
@@ -118,10 +119,10 @@ export class BillingController {
     // Confirmation écrite, avec la date de fin d'accès : sans elle, la question "jusqu'à
     // quand ?" revient au support dans les heures qui suivent.
     try {
-      const u = await this.prisma.users.findUnique({ where: { telegram_id: telegramId }, select: { email: true, nom: true } });
+      const u = await this.prisma.users.findUnique({ where: { telegram_id: telegramId }, select: { email: true, nom: true, langue: true } });
       if (u?.email) {
         const fin = res.fin_acces_le instanceof Date ? res.fin_acces_le.toISOString() : (res.fin_acces_le ?? null);
-        const { subject, html } = this.mailService.resiliationHtml(u.nom, fin, `${this.frontendUrl}/dashboard/parametres?s=abonnement`);
+        const { subject, html } = this.mailService.resiliationHtml(u.nom, fin, `${this.frontendUrl}/dashboard/parametres?s=abonnement`, u.langue);
         await this.mailService.sendEmail(u.email, subject, html);
       }
     } catch (e) {
@@ -215,7 +216,8 @@ export class BillingController {
     // Mail 1 au CLIENT : premier échec de prélèvement (lien direct de régularisation).
     if (result.client_impaye) {
       try {
-        const { subject, html } = this.mailService.impayeEchecHtml(result.client_impaye.nom, result.client_impaye.lien);
+        const langue = await langueParEmail(this.prisma, result.client_impaye.email);
+        const { subject, html } = this.mailService.impayeEchecHtml(result.client_impaye.nom, result.client_impaye.lien, langue);
         await this.mailService.sendEmail(result.client_impaye.email, subject, html);
       } catch (e) {
         this.logger.error(`webhook mail impayé client: ${e instanceof Error ? e.message : e}`);
@@ -232,6 +234,7 @@ export class BillingController {
           result.facture.numero ?? undefined,
           result.facture.url ?? undefined,
           result.facture.pdf ?? undefined,
+          await langueParEmail(this.prisma, result.facture.email),
         );
         await this.mailService.sendEmail(result.facture.email, subject, html);
       } catch (e) {
@@ -248,6 +251,7 @@ export class BillingController {
           result.rappel.date,
           `${this.frontendUrl}/dashboard/parametres?s=abonnement`,
           result.rappel.apres_pack,
+          await langueParEmail(this.prisma, result.rappel.email),
         );
         await this.mailService.sendEmail(result.rappel.email, subject, html);
       } catch (e) {

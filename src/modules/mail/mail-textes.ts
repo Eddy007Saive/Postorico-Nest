@@ -1,0 +1,381 @@
+import { Langue } from '../../common/utils/textes-fixes.util';
+
+/**
+ * Textes des emails envoyés aux CLIENTS, par langue du compte (users.langue). Le français est
+ * celui d'avant, mot pour mot ; l'anglais et l'espagnol suivent le même ton (tutoiement en
+ * espagnol, « you » direct en anglais). Les emails internes à l'admin restent en français.
+ *
+ * Les textes peuvent contenir du HTML (<strong>…) : ce sont des gabarits, pas des données.
+ */
+export const MAIL = {
+  fr: {
+    bonjour: (nom: string) => (nom ? `Bonjour ${nom},` : 'Bonjour,'),
+    slogan: 'Votre présence, amplifiée',
+    seDesinscrire: 'Se désinscrire',
+    lienSecours: 'Si le bouton ne fonctionne pas, copie ce lien :',
+    signature: "L'équipe Postorico",
+    signatureQuestion: 'Une question&nbsp;? Réponds simplement à cet email.',
+    code: {
+      sujet: (c: string) => `${c} est ton code de connexion Postorico`,
+      titre: 'Ton code de connexion',
+      texte: "Quelqu'un se connecte à ton compte Postorico depuis un appareil que nous ne connaissons pas.\n        Si c'est toi, saisis ce code. Il expire dans <strong style=\"color:#334155;\">10 minutes</strong>.",
+      encadreSur: 'Code de connexion',
+      encadreTitre: 'À saisir sur la page de connexion',
+      pasToi: "Ce n'est pas toi&nbsp;? N'entre pas ce code et change ton mot de passe : sans le code, personne n'entre.",
+      apercu: (c: string) => `Code : ${c}. Valable 10 minutes.`,
+    },
+    reset: {
+      titre: 'Réinitialise ton mot de passe',
+      texte: "Tu as demandé à changer ton mot de passe. Le bouton ci-dessous t'emmène sur la page où en définir un nouveau.\n        Ce lien expire dans <strong style=\"color:#334155;\">une heure</strong>.",
+      bouton: 'Choisir un nouveau mot de passe',
+      pasToi: "Tu n'es pas à l'origine de cette demande&nbsp;? Ignore cet email : ton mot de passe reste inchangé, et personne d'autre ne peut utiliser ce lien.",
+      apercu: 'Ton lien de réinitialisation est valable une heure.',
+      sujet: 'Réinitialisation de votre mot de passe — Postorico',
+    },
+    deconnexion: {
+      sujet: (r: string) => `⚠️ Ton compte ${r} est déconnecté, reconnecte-le`,
+      titre: (r: string) => `Ton compte ${r} s'est déconnecté`,
+      texte: (r: string) =>
+        `La connexion entre Postorico et ton compte <strong style="color:#334155;">${r}</strong> a expiré.\n        Les réseaux invalident cet accès de temps en temps, ce n'est pas un problème de ton côté.`,
+      pause: (r: string) => `Tes publications prévues sur ${r} sont <strong>en pause</strong> tant que le compte n'est pas reconnecté.`,
+      bouton: 'Reconnecter mon compte',
+      fin: 'La reconnexion prend trente secondes : tu cliques, tu autorises, et les publications en attente repartent toutes seules.',
+      apercu: (r: string) => `Tes publications ${r} sont en pause le temps de reconnecter.`,
+    },
+    facture: {
+      sujet: (num: string, m: string) => `Ta facture Postorico${num} : ${m}`,
+      num: (n: string) => ` n°${n}`,
+      bouton: 'Voir ma facture',
+      pdf: 'Télécharger le PDF',
+      titre: 'Paiement bien reçu',
+      encadre: (num: string) => `Facture${num}`,
+      fin: 'Toutes tes factures sont dans Paramètres → Abonnement.',
+    },
+    rappel: {
+      sujetPack: (d: string) => `Ton abonnement Postorico démarre le ${d}`,
+      titrePack: 'Ton abonnement démarre bientôt',
+      contextePack:
+        'Ton paramétrage touche à sa fin. Comme prévu, ton abonnement prend le relais et le premier prélèvement aura lieu dans trois jours.',
+      sujetEssai: (d: string) => `Tes 14 jours se terminent le ${d}`,
+      titreEssai: 'Tes 14 jours se terminent',
+      contexteEssai: "Ton essai arrive à son terme. Si tu continues, rien à faire : l'abonnement prend le relais automatiquement.",
+      encadreSur: 'Premier prélèvement',
+      encadreTitre: (d: string) => `Le ${d}`,
+      ensuite: (m: string) =>
+        `Puis ${m} chaque mois, tant que tu restes. Tu peux arrêter\n        quand tu veux&nbsp;: la résiliation prend effet à la fin de la période déjà payée,\n        et tu gardes l'accès jusque-là.`,
+      bouton: 'Gérer mon abonnement',
+      fin: (d: string) => `Si tu ne veux pas être prélevé, c'est le moment&nbsp;: résilie avant le ${d} et rien ne partira.`,
+      apercu: (m: string, d: string) => `${m} le ${d} · résiliable avant`,
+    },
+    resiliation: {
+      quand: (j: string) => (j ? `jusqu'au <strong>${j}</strong>` : "jusqu'à la fin de ta période en cours"),
+      sujet: (j: string) => `Ta résiliation est enregistrée${j ? `, accès jusqu'au ${j}` : ''}`,
+      titre: "C'est fait",
+      texte: (q: string) => `Ton abonnement ne se renouvellera pas. Tu gardes l'accès complet ${q} :\n        la période est déjà réglée, elle est à toi.`,
+      encadreSur: "Fin de l'accès",
+      finPeriode: 'fin de la période en cours',
+      garde:
+        "Tes contenus, ton ton de marque et tes gabarits restent conservés.\n        Si tu changes d'avis avant cette date, une seule action suffit : tout\n        repart où tu l'avais laissé.",
+      bouton: 'Réactiver mon abonnement',
+      merci: "Merci d'avoir essayé Postorico. Si quelque chose n'a pas marché, réponds à\n        cet email, on lit tout.",
+      apercu: (j: string) => `Accès conservé${j ? ' jusqu au ' + j : ''} - réactivation en un clic`,
+    },
+    impayeEchec: {
+      titre: "Ton dernier paiement n'est pas passé",
+      texte:
+        "Le prélèvement de ton abonnement Postorico a été refusé par ta banque. C'est souvent une carte\n        expirée ou un plafond atteint, rien de grave : il suffit de mettre à jour ton moyen de paiement.",
+      pause:
+        'En attendant, la génération de nouveaux contenus est <strong>en pause</strong>. Tes publications déjà\n          validées continuent de partir, et tu gardes accès à tout le reste.',
+      bouton: 'Mettre à jour mon moyen de paiement',
+      fin: 'Une question, une trésorerie serrée ce mois-ci ? Réponds simplement à cet email, on trouve une solution.',
+      sujet: "Ton paiement Postorico n'est pas passé",
+      apercu: 'Mets à jour ta carte pour reprendre la génération.',
+    },
+    impayeAvertissement: {
+      titre: 'Demain, tes réseaux seront déconnectés',
+      texte:
+        "Ton paiement est en attente depuis neuf jours. Sans régularisation d'ici demain, nous déconnecterons\n        tes réseaux sociaux de Postorico et annulerons les publications programmées.\n        Il faudra ensuite les reconnecter à la main.",
+      deuxMinutes: "Deux minutes suffisent pour l'éviter :",
+      bouton: 'Régulariser maintenant',
+      fin: "Rien n'est perdu : ta marque, tes gabarits et tes contenus restent en place quoi qu'il arrive.",
+      sujet: 'Demain, tes réseaux seront déconnectés de Postorico',
+      apercu: "Régularise aujourd'hui pour garder tes réseaux connectés.",
+    },
+    impayeSuspension: {
+      titre: 'Tes réseaux ont été déconnectés',
+      texte:
+        'Faute de paiement depuis dix jours, nous avons déconnecté ces réseaux de Postorico et annulé\n        les publications qui étaient programmées :',
+      reprise:
+        "Dès que ton paiement est régularisé, un écran te propose de les reconnecter en trois clics,\n        et tes publications annulées peuvent être reprogrammées d'un bouton.",
+      bouton: 'Régulariser mon paiement',
+      fin: "Sans régularisation sous vingt jours, l'abonnement sera résilié. Tu gardes un accès en lecture à tes contenus.",
+      sujet: 'Tes réseaux ont été déconnectés de Postorico',
+      apercu: 'Régularise pour reconnecter tes réseaux en trois clics.',
+    },
+    impayeDernierAvis: {
+      titre: 'Dernier avis avant résiliation',
+      texte:
+        "Ton abonnement Postorico est impayé depuis vingt-neuf jours. Demain, il sera résilié.\n        Tu conserveras un accès en lecture à tes contenus pendant six mois, mais la génération,\n        la programmation et la publication s'arrêteront.",
+      regulariser: "Pour continuer sans rien perdre, il suffit de régulariser aujourd'hui :",
+      bouton: 'Régulariser et garder mon compte',
+      fin: "Si tu préfères arrêter, tu n'as rien à faire. Si c'est une question de trésorerie, réponds à cet email : on peut décaler.",
+      sujet: 'Dernier avis avant la résiliation de ton abonnement Postorico',
+      apercu: "Demain, ton abonnement sera résilié. Régularise aujourd'hui.",
+    },
+    releve: {
+      sujet: (mois: string, m: string) => `Ton relevé d'affiliation ${mois} : ${m}`,
+      ventes: (n: number) => (n === 1 ? '1 vente commissionnée' : `${n} ventes commissionnées`),
+      titre: 'Ton relevé du mois',
+      encadreSur: (mois: string) => `Période ${mois}`,
+      facture: 'Envoie-nous ta facture de ce montant en réponse à cet email, et on lance le virement.',
+      fin: 'Le détail de tes commissions est dans ton espace Affiliation. Merci de porter Postorico.',
+      apercu: (v: string, m: string) => `${v} · ${m} à facturer`,
+    },
+  },
+  en: {
+    bonjour: (nom: string) => (nom ? `Hi ${nom},` : 'Hi,'),
+    slogan: 'Your presence, amplified',
+    seDesinscrire: 'Unsubscribe',
+    lienSecours: "If the button doesn't work, copy this link:",
+    signature: 'The Postorico team',
+    signatureQuestion: 'A question? Just reply to this email.',
+    code: {
+      sujet: (c: string) => `${c} is your Postorico login code`,
+      titre: 'Your login code',
+      texte: "Someone is signing in to your Postorico account from a device we don't recognise.\n        If it's you, enter this code. It expires in <strong style=\"color:#334155;\">10 minutes</strong>.",
+      encadreSur: 'Login code',
+      encadreTitre: 'Enter it on the login page',
+      pasToi: "Not you? Don't enter this code and change your password: without the code, nobody gets in.",
+      apercu: (c: string) => `Code: ${c}. Valid for 10 minutes.`,
+    },
+    reset: {
+      titre: 'Reset your password',
+      texte: 'You asked to change your password. The button below takes you to the page where you can set a new one.\n        This link expires in <strong style="color:#334155;">one hour</strong>.',
+      bouton: 'Choose a new password',
+      pasToi: "You didn't make this request? Ignore this email: your password stays the same, and nobody else can use this link.",
+      apercu: 'Your reset link is valid for one hour.',
+      sujet: 'Reset your Postorico password',
+    },
+    deconnexion: {
+      sujet: (r: string) => `⚠️ Your ${r} account is disconnected, reconnect it`,
+      titre: (r: string) => `Your ${r} account got disconnected`,
+      texte: (r: string) =>
+        `The connection between Postorico and your <strong style="color:#334155;">${r}</strong> account has expired.\n        Networks revoke this access from time to time, it's not a problem on your side.`,
+      pause: (r: string) => `Your scheduled ${r} posts are <strong>on hold</strong> until the account is reconnected.`,
+      bouton: 'Reconnect my account',
+      fin: 'Reconnecting takes thirty seconds: you click, you authorise, and the pending posts go out on their own.',
+      apercu: (r: string) => `Your ${r} posts are on hold until you reconnect.`,
+    },
+    facture: {
+      sujet: (num: string, m: string) => `Your Postorico invoice${num}: ${m}`,
+      num: (n: string) => ` no. ${n}`,
+      bouton: 'View my invoice',
+      pdf: 'Download the PDF',
+      titre: 'Payment received',
+      encadre: (num: string) => `Invoice${num}`,
+      fin: 'All your invoices are in Settings → Subscription.',
+    },
+    rappel: {
+      sujetPack: (d: string) => `Your Postorico subscription starts on ${d}`,
+      titrePack: 'Your subscription starts soon',
+      contextePack: 'Your setup is almost done. As planned, your subscription takes over and the first payment will be taken in three days.',
+      sujetEssai: (d: string) => `Your 14 days end on ${d}`,
+      titreEssai: 'Your 14 days are ending',
+      contexteEssai: "Your trial is coming to an end. If you're staying, nothing to do: the subscription takes over automatically.",
+      encadreSur: 'First payment',
+      encadreTitre: (d: string) => `On ${d}`,
+      ensuite: (m: string) =>
+        `Then ${m} every month, as long as you stay. You can stop\n        whenever you want: cancellation takes effect at the end of the period already paid,\n        and you keep access until then.`,
+      bouton: 'Manage my subscription',
+      fin: (d: string) => `If you don't want to be charged, now is the time: cancel before ${d} and nothing will be taken.`,
+      apercu: (m: string, d: string) => `${m} on ${d} · cancel before`,
+    },
+    resiliation: {
+      quand: (j: string) => (j ? `until <strong>${j}</strong>` : 'until the end of your current period'),
+      sujet: (j: string) => `Your cancellation is confirmed${j ? `, access until ${j}` : ''}`,
+      titre: 'Done',
+      texte: (q: string) => `Your subscription will not renew. You keep full access ${q}:\n        the period is already paid, it's yours.`,
+      encadreSur: 'Access ends',
+      finPeriode: 'end of the current period',
+      garde: 'Your content, brand voice and templates are kept.\n        If you change your mind before that date, one action is enough: everything\n        picks up where you left it.',
+      bouton: 'Reactivate my subscription',
+      merci: "Thanks for trying Postorico. If something didn't work, reply to\n        this email, we read everything.",
+      apercu: (j: string) => `Access kept${j ? ' until ' + j : ''} - reactivate in one click`,
+    },
+    impayeEchec: {
+      titre: "Your last payment didn't go through",
+      texte:
+        "Your bank declined the payment for your Postorico subscription. It's often an expired card\n        or a limit reached, nothing serious: just update your payment method.",
+      pause:
+        'Meanwhile, creating new content is <strong>on hold</strong>. Your posts already\n          approved keep going out, and you keep access to everything else.',
+      bouton: 'Update my payment method',
+      fin: 'A question, tight cash flow this month? Just reply to this email, we will find a solution.',
+      sujet: "Your Postorico payment didn't go through",
+      apercu: 'Update your card to resume content creation.',
+    },
+    impayeAvertissement: {
+      titre: 'Tomorrow, your networks will be disconnected',
+      texte:
+        "Your payment has been pending for nine days. Without payment by tomorrow, we will disconnect\n        your social networks from Postorico and cancel the scheduled posts.\n        You will then have to reconnect them by hand.",
+      deuxMinutes: 'Two minutes are enough to avoid it:',
+      bouton: 'Pay now',
+      fin: 'Nothing is lost: your brand, templates and content stay in place no matter what.',
+      sujet: 'Tomorrow, your networks will be disconnected from Postorico',
+      apercu: 'Pay today to keep your networks connected.',
+    },
+    impayeSuspension: {
+      titre: 'Your networks have been disconnected',
+      texte:
+        'After ten days without payment, we disconnected these networks from Postorico and cancelled\n        the posts that were scheduled:',
+      reprise:
+        'As soon as your payment is settled, a screen lets you reconnect them in three clicks,\n        and your cancelled posts can be rescheduled with one button.',
+      bouton: 'Settle my payment',
+      fin: 'Without payment within twenty days, the subscription will be cancelled. You keep read access to your content.',
+      sujet: 'Your networks have been disconnected from Postorico',
+      apercu: 'Settle your payment to reconnect your networks in three clicks.',
+    },
+    impayeDernierAvis: {
+      titre: 'Final notice before cancellation',
+      texte:
+        'Your Postorico subscription has been unpaid for twenty-nine days. Tomorrow, it will be cancelled.\n        You will keep read access to your content for six months, but creation,\n        scheduling and publishing will stop.',
+      regulariser: 'To continue without losing anything, just settle it today:',
+      bouton: 'Pay and keep my account',
+      fin: "If you'd rather stop, there's nothing to do. If it's a cash-flow issue, reply to this email: we can push it back.",
+      sujet: 'Final notice before your Postorico subscription is cancelled',
+      apercu: 'Tomorrow, your subscription will be cancelled. Settle it today.',
+    },
+    releve: {
+      sujet: (mois: string, m: string) => `Your affiliate statement ${mois}: ${m}`,
+      ventes: (n: number) => (n === 1 ? '1 commissioned sale' : `${n} commissioned sales`),
+      titre: 'Your monthly statement',
+      encadreSur: (mois: string) => `Period ${mois}`,
+      facture: 'Send us your invoice for this amount in reply to this email, and we will make the transfer.',
+      fin: 'Your commission details are in your Affiliate area. Thanks for championing Postorico.',
+      apercu: (v: string, m: string) => `${v} · ${m} to invoice`,
+    },
+  },
+  es: {
+    bonjour: (nom: string) => (nom ? `Hola ${nom}:` : 'Hola:'),
+    slogan: 'Tu presencia, amplificada',
+    seDesinscrire: 'Darse de baja',
+    lienSecours: 'Si el botón no funciona, copia este enlace:',
+    signature: 'El equipo de Postorico',
+    signatureQuestion: '¿Alguna pregunta? Responde a este email.',
+    code: {
+      sujet: (c: string) => `${c} es tu código de acceso a Postorico`,
+      titre: 'Tu código de acceso',
+      texte: 'Alguien está entrando en tu cuenta de Postorico desde un dispositivo que no conocemos.\n        Si eres tú, introduce este código. Caduca en <strong style="color:#334155;">10 minutos</strong>.',
+      encadreSur: 'Código de acceso',
+      encadreTitre: 'Para introducir en la página de acceso',
+      pasToi: '¿No eres tú? No introduzcas este código y cambia tu contraseña: sin el código, nadie entra.',
+      apercu: (c: string) => `Código: ${c}. Válido 10 minutos.`,
+    },
+    reset: {
+      titre: 'Restablece tu contraseña',
+      texte: 'Has pedido cambiar tu contraseña. El botón de abajo te lleva a la página para elegir una nueva.\n        Este enlace caduca en <strong style="color:#334155;">una hora</strong>.',
+      bouton: 'Elegir una nueva contraseña',
+      pasToi: '¿No has pedido esto? Ignora este email: tu contraseña no cambia y nadie más puede usar este enlace.',
+      apercu: 'Tu enlace para restablecer la contraseña es válido una hora.',
+      sujet: 'Restablece tu contraseña de Postorico',
+    },
+    deconnexion: {
+      sujet: (r: string) => `⚠️ Tu cuenta de ${r} está desconectada, vuelve a conectarla`,
+      titre: (r: string) => `Tu cuenta de ${r} se ha desconectado`,
+      texte: (r: string) =>
+        `La conexión entre Postorico y tu cuenta de <strong style="color:#334155;">${r}</strong> ha caducado.\n        Las redes anulan este acceso de vez en cuando, no es un problema tuyo.`,
+      pause: (r: string) => `Tus publicaciones previstas en ${r} están <strong>en pausa</strong> hasta que vuelvas a conectar la cuenta.`,
+      bouton: 'Volver a conectar mi cuenta',
+      fin: 'Volver a conectarla lleva treinta segundos: haces clic, autorizas y las publicaciones pendientes salen solas.',
+      apercu: (r: string) => `Tus publicaciones en ${r} están en pausa hasta que vuelvas a conectarla.`,
+    },
+    facture: {
+      sujet: (num: string, m: string) => `Tu factura de Postorico${num}: ${m}`,
+      num: (n: string) => ` n.º ${n}`,
+      bouton: 'Ver mi factura',
+      pdf: 'Descargar el PDF',
+      titre: 'Pago recibido',
+      encadre: (num: string) => `Factura${num}`,
+      fin: 'Todas tus facturas están en Ajustes → Suscripción.',
+    },
+    rappel: {
+      sujetPack: (d: string) => `Tu suscripción a Postorico empieza el ${d}`,
+      titrePack: 'Tu suscripción empieza pronto',
+      contextePack: 'Tu configuración está a punto de terminar. Como estaba previsto, tu suscripción toma el relevo y el primer cobro será dentro de tres días.',
+      sujetEssai: (d: string) => `Tus 14 días terminan el ${d}`,
+      titreEssai: 'Tus 14 días están terminando',
+      contexteEssai: 'Tu prueba llega a su fin. Si continúas, no tienes que hacer nada: la suscripción toma el relevo automáticamente.',
+      encadreSur: 'Primer cobro',
+      encadreTitre: (d: string) => `El ${d}`,
+      ensuite: (m: string) =>
+        `Después ${m} cada mes, mientras sigas. Puedes darte de baja\n        cuando quieras: la baja se aplica al final del periodo ya pagado,\n        y mantienes el acceso hasta entonces.`,
+      bouton: 'Gestionar mi suscripción',
+      fin: (d: string) => `Si no quieres que se te cobre, es el momento: date de baja antes del ${d} y no se cobrará nada.`,
+      apercu: (m: string, d: string) => `${m} el ${d} · puedes darte de baja antes`,
+    },
+    resiliation: {
+      quand: (j: string) => (j ? `hasta el <strong>${j}</strong>` : 'hasta el final de tu periodo actual'),
+      sujet: (j: string) => `Tu baja está registrada${j ? `, acceso hasta el ${j}` : ''}`,
+      titre: 'Hecho',
+      texte: (q: string) => `Tu suscripción no se renovará. Mantienes el acceso completo ${q}:\n        el periodo ya está pagado, es tuyo.`,
+      encadreSur: 'Fin del acceso',
+      finPeriode: 'final del periodo actual',
+      garde: 'Tus contenidos, tu tono de marca y tus plantillas se conservan.\n        Si cambias de opinión antes de esa fecha, basta con una acción: todo\n        sigue donde lo dejaste.',
+      bouton: 'Reactivar mi suscripción',
+      merci: 'Gracias por probar Postorico. Si algo no ha funcionado, responde a\n        este email, lo leemos todo.',
+      apercu: (j: string) => `Acceso conservado${j ? ' hasta el ' + j : ''} - reactivación en un clic`,
+    },
+    impayeEchec: {
+      titre: 'Tu último pago no se ha realizado',
+      texte:
+        'Tu banco ha rechazado el cobro de tu suscripción a Postorico. Suele ser una tarjeta\n        caducada o un límite alcanzado, nada grave: basta con actualizar tu método de pago.',
+      pause:
+        'Mientras tanto, la creación de nuevos contenidos está <strong>en pausa</strong>. Tus publicaciones ya\n          validadas siguen saliendo y mantienes el acceso a todo lo demás.',
+      bouton: 'Actualizar mi método de pago',
+      fin: '¿Alguna pregunta o un mes con la tesorería ajustada? Responde a este email y buscamos una solución.',
+      sujet: 'Tu pago de Postorico no se ha realizado',
+      apercu: 'Actualiza tu tarjeta para retomar la creación de contenidos.',
+    },
+    impayeAvertissement: {
+      titre: 'Mañana se desconectarán tus redes',
+      texte:
+        'Tu pago está pendiente desde hace nueve días. Si no se regulariza antes de mañana, desconectaremos\n        tus redes sociales de Postorico y cancelaremos las publicaciones programadas.\n        Después tendrás que volver a conectarlas a mano.',
+      deuxMinutes: 'Bastan dos minutos para evitarlo:',
+      bouton: 'Regularizar ahora',
+      fin: 'No se pierde nada: tu marca, tus plantillas y tus contenidos se quedan en su sitio pase lo que pase.',
+      sujet: 'Mañana se desconectarán tus redes de Postorico',
+      apercu: 'Regulariza hoy para mantener tus redes conectadas.',
+    },
+    impayeSuspension: {
+      titre: 'Tus redes se han desconectado',
+      texte:
+        'Tras diez días sin pago, hemos desconectado estas redes de Postorico y cancelado\n        las publicaciones que estaban programadas:',
+      reprise:
+        'En cuanto regularices tu pago, una pantalla te propondrá volver a conectarlas en tres clics,\n        y podrás reprogramar las publicaciones canceladas con un botón.',
+      bouton: 'Regularizar mi pago',
+      fin: 'Si no se regulariza en veinte días, la suscripción se dará de baja. Mantienes acceso de lectura a tus contenidos.',
+      sujet: 'Tus redes se han desconectado de Postorico',
+      apercu: 'Regulariza para volver a conectar tus redes en tres clics.',
+    },
+    impayeDernierAvis: {
+      titre: 'Último aviso antes de la baja',
+      texte:
+        'Tu suscripción a Postorico lleva veintinueve días impagada. Mañana se dará de baja.\n        Mantendrás acceso de lectura a tus contenidos durante seis meses, pero la creación,\n        la programación y la publicación se detendrán.',
+      regulariser: 'Para seguir sin perder nada, basta con regularizar hoy:',
+      bouton: 'Regularizar y mantener mi cuenta',
+      fin: 'Si prefieres dejarlo, no tienes que hacer nada. Si es un tema de tesorería, responde a este email: podemos aplazarlo.',
+      sujet: 'Último aviso antes de la baja de tu suscripción a Postorico',
+      apercu: 'Mañana se dará de baja tu suscripción. Regulariza hoy.',
+    },
+    releve: {
+      sujet: (mois: string, m: string) => `Tu extracto de afiliación ${mois}: ${m}`,
+      ventes: (n: number) => (n === 1 ? '1 venta con comisión' : `${n} ventas con comisión`),
+      titre: 'Tu extracto del mes',
+      encadreSur: (mois: string) => `Periodo ${mois}`,
+      facture: 'Envíanos tu factura por este importe respondiendo a este email y hacemos la transferencia.',
+      fin: 'El detalle de tus comisiones está en tu espacio de Afiliación. Gracias por recomendar Postorico.',
+      apercu: (v: string, m: string) => `${v} · ${m} a facturar`,
+    },
+  },
+} satisfies Record<Langue, unknown>;
+
+export type TextesMail = (typeof MAIL)['fr'];

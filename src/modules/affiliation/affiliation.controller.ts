@@ -1,3 +1,4 @@
+import { langueParEmail } from '../../common/utils/notifications-textes.util';
 import { BadRequestException, Body, Controller, Get, Logger, NotFoundException, Param, Post, Put, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
@@ -178,7 +179,8 @@ export class AffiliationController {
     for (const e of envois) {
       if (!e.email) continue;
       try {
-        const { subject, html } = this.mailService.releveAffilieHtml(e.nom, e.periode, e.montant, e.devise, e.nb);
+        const langue = await langueParEmail(this.prisma, e.email);
+        const { subject, html } = this.mailService.releveAffilieHtml(e.nom, e.periode, e.montant, e.devise, e.nb, langue);
         await this.mailService.sendEmail(e.email, subject, html);
       } catch (ex) {
         this.logger.error(`relevé affilié non envoyé à ${e.email}: ${ex instanceof Error ? ex.message : ex}`);

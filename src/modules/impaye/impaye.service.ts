@@ -98,9 +98,9 @@ export class ImpayeService {
     return row as SubRow | null;
   }
 
-  private async client(telegramId: string): Promise<{ nom?: string | null; email?: string | null }> {
+  private async client(telegramId: string): Promise<{ nom?: string | null; email?: string | null; langue?: string | null }> {
     try {
-      const u = await this.prisma.users.findUnique({ where: { telegram_id: telegramId }, select: { nom: true, email: true } });
+      const u = await this.prisma.users.findUnique({ where: { telegram_id: telegramId }, select: { nom: true, email: true, langue: true } });
       return u ?? {};
     } catch {
       return {};
@@ -251,7 +251,7 @@ export class ImpayeService {
     }
     if (c.email) {
       try {
-        const { subject, html } = this.mailService.impayeSuspensionHtml(c.nom ?? null, this.lienAbonnement, reseaux);
+        const { subject, html } = this.mailService.impayeSuspensionHtml(c.nom ?? null, this.lienAbonnement, reseaux, c.langue);
         await this.mailService.sendEmail(c.email, subject, html);
       } catch (e) {
         this.logger.error(`suspendre mail 3 ${telegramId}: ${e instanceof Error ? e.message : e}`);
@@ -342,7 +342,7 @@ export class ImpayeService {
         if (s.status === 'past_due') {
           if (jours >= J_AVERTISSEMENT && !s.impaye_mail2_le) {
             if (c.email) {
-              const { subject, html } = this.mailService.impayeAvertissementHtml(c.nom ?? null, this.lienAbonnement);
+              const { subject, html } = this.mailService.impayeAvertissementHtml(c.nom ?? null, this.lienAbonnement, c.langue);
               await this.mailService.sendEmail(c.email, subject, html);
             }
             await this.prisma.subscriptions.update({ where: { id: s.id }, data: { impaye_mail2_le: now } });
@@ -356,7 +356,7 @@ export class ImpayeService {
         } else if (s.status === 'suspended') {
           if (jours >= J_DERNIER_AVIS && !s.impaye_mail4_le) {
             if (c.email) {
-              const { subject, html } = this.mailService.impayeDernierAvisHtml(c.nom ?? null, this.lienAbonnement);
+              const { subject, html } = this.mailService.impayeDernierAvisHtml(c.nom ?? null, this.lienAbonnement, c.langue);
               await this.mailService.sendEmail(c.email, subject, html);
             }
             await this.prisma.subscriptions.update({ where: { id: s.id }, data: { impaye_mail4_le: now } });

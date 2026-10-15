@@ -408,6 +408,20 @@ export function motNotif(langue: unknown, cle: keyof typeof MOTS): string {
   return MOTS[cle][langueCode(langue)];
 }
 
+/** Langue du compte rattaché à cet email (emails envoyés à une adresse) ; français sinon. */
+export async function langueParEmail(
+  prisma: { users: { findFirst: (a: { where: { email: string }; select: { langue: true } }) => Promise<{ langue: string | null } | null> } },
+  email: string | null | undefined,
+): Promise<Langue> {
+  if (!email) return 'fr';
+  try {
+    const u = await prisma.users.findFirst({ where: { email }, select: { langue: true } });
+    return langueCode(u?.langue);
+  } catch {
+    return 'fr';
+  }
+}
+
 /** Langue d'un compte (users.langue) pour ses notifications ; français si introuvable. */
 export async function langueDuCompte(
   prisma: {

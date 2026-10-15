@@ -667,20 +667,12 @@ export class LateService implements OnApplicationBootstrap {
           try {
             const u = await this.prisma.users.findUnique({
               where: { telegram_id: tg },
-              select: { email: true, nom: true },
+              select: { email: true, nom: true, langue: true },
             });
             if (u?.email) {
               const link = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/parametres?s=connections`;
-              const html = this.mailService.accountDisconnectedHtml(
-                u.nom,
-                p,
-                link,
-              );
-              await this.mailService.sendEmail(
-                u.email,
-                `⚠️ Ton compte ${capitalize(p)} est déconnecté, reconnecte-le`,
-                html,
-              );
+              const html = this.mailService.accountDisconnectedHtml(u.nom, p, link, u.langue);
+              await this.mailService.sendEmail(u.email, this.mailService.deconnexionSujet(p, u.langue), html);
             }
           } catch (e) {
             this.logger.warn(

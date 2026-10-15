@@ -80,7 +80,15 @@ export class AuthController {
   private async demanderCode(user: { telegram_id: string; email: string | null; nom: string | null }) {
     const code = await this.mfaService.creerCode(user.telegram_id);
     if (code) {
-      const { subject, html } = this.mailService.codeConnexionHtml(user.nom, code);
+      // Langue du compte : l'email du code part dans la langue du client.
+      // Facultatif : sans langue lisible, le code part en français, jamais bloqué.
+      let langue: string | null | undefined;
+      try {
+        langue = (await this.authService.userForMfa(user.telegram_id))?.langue;
+      } catch {
+        langue = null;
+      }
+      const { subject, html } = this.mailService.codeConnexionHtml(user.nom, code, langue);
       const envoi = await this.mailService.sendEmail(user.email ?? '', subject, html);
       if (envoi.error) {
         this.logger.error(`mfa: envoi du code impossible pour ${user.telegram_id}: ${envoi.error}`);
@@ -168,12 +176,8 @@ export class AuthController {
       if (user) {
         const token = this.authService.createResetToken(user.telegram_id, user.password_hash);
         const link = `${this.config.get<string>('app.frontendUrl')}/reset-password?token=${token}`;
-        const html = this.mailService.resetEmailHtml(user.nom ?? user.username ?? null, link);
-        const envoi = await this.mailService.sendEmail(
-          user.email ?? '',
-          'Réinitialisation de votre mot de passe — Postorico',
-          html,
-        );
+        const html = this.mailService.resetEmailHtml(user.nom ?? user.username ?? null, link, user.langue);
+        const envoi = await this.mailService.sendEmail(user.email ?? '', this.mailService.resetSujet(user.langue), html);
         if (envoi.error) {
           this.logger.error(`Reset email non envoyé (${dto.email}): ${envoi.error}`);
         }
@@ -288,7 +292,7 @@ export class AuthController {
     }
     const telegramId = this.mfaService.lireAttente(dto.jeton);
     const user = await this.authService.userForMfa(telegramId);
-    const { subject, html } = this.mailService.codeConnexionHtml(user?.nom ?? null, code);
+    const { subject, html } = this.mailService.codeConnexionHtml(user?.nom ?? null, code, user?.langue);
     const envoi = await this.mailService.sendEmail(user?.email ?? '', subject, html);
     if (envoi.error) {
       throw new ServiceUnavailableException('envoi_code_impossible');

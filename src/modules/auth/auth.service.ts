@@ -292,7 +292,7 @@ export class AuthService {
   findUserByEmail(email: string) {
     return this.prisma.users.findFirst({
       where: { email },
-      select: { telegram_id: true, email: true, nom: true, username: true, password_hash: true },
+      select: { telegram_id: true, email: true, nom: true, username: true, password_hash: true, langue: true },
     });
   }
 
@@ -340,7 +340,7 @@ export class AuthService {
   async userForMfa(telegramId: string) {
     return this.prisma.users.findUnique({
       where: { telegram_id: telegramId },
-      select: { telegram_id: true, email: true, nom: true },
+      select: { telegram_id: true, email: true, nom: true, langue: true },
     });
   }
 
