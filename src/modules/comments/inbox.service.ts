@@ -1,3 +1,4 @@
+import { langueDuCompte, motNotif, texteNotif } from '../../common/utils/notifications-textes.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../config/prisma.service';
@@ -63,10 +64,15 @@ export class InboxService {
       return { ok: true, no_user: true };
     }
 
-    const authorName = (author.name as string) || (author.username as string) || "Quelqu'un";
+    // Notification dans la langue du compte (push compris).
+    const lg = await langueDuCompte(this.prisma, telegramId);
+    const authorName = (author.name as string) || (author.username as string) || motNotif(lg, 'quelquun');
     const texte = String(comment.text || comment.message || comment.content || '').trim();
-    const titre = `💬 Nouveau commentaire · ${platform.charAt(0).toUpperCase()}${platform.slice(1)}`;
-    const body = texte ? `${authorName}: ${texte.slice(0, 90)}` : `${authorName} a commenté ton post`;
+    const { titre, message: body } = texteNotif(lg, 'commentaire', {
+      reseau: `${platform.charAt(0).toUpperCase()}${platform.slice(1)}`,
+      auteur: authorName,
+      texte: texte.slice(0, 90),
+    });
     // Notification dans l'app : cloche + compteur sur « Commentaires » (lu à l'ouverture de la page)
     try {
       await this.prisma.notifications.create({

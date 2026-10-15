@@ -268,15 +268,11 @@ export class SocialService {
     }
     try {
       const n = rows.length;
-      await this.notificationService.notifier(
-        telegramId,
-        rows[0].id,
-        rows[0].reseau_cible,
-        'post.cancelled',
-        `${n} publication${n > 1 ? 's' : ''} annulée${n > 1 ? 's' : ''}`,
-        (titreNotif ? `${titreNotif} : les publications programmées ne partiront pas. ` : 'Ton abonnement est terminé : les publications programmées ne partiront pas. ') +
-          'Elles restent dans Contenus, prêtes à être reprogrammées si tu reviens.',
-      );
+      // titreNotif n'est posé que par la suspension pour impayé (« Paiement en attente »).
+      await this.notificationService.notifierCle(telegramId, rows[0].id, rows[0].reseau_cible, 'post.cancelled', 'publicationsAnnulees', {
+        n,
+        paiement: titreNotif ? 1 : '',
+      });
     } catch (e) {
       this.logger.warn(`annuler_programmations notification: ${e instanceof Error ? e.message : e}`);
     }

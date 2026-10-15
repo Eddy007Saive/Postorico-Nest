@@ -85,7 +85,7 @@ function make(opts: { url?: string; pexels?: string } = {}) {
     }),
   };
   const planning = { prochainCreneau: jest.fn().mockResolvedValue(null) };
-  const notifications = { notifier: jest.fn().mockResolvedValue(undefined) };
+  const notifications = { notifierCle: jest.fn().mockResolvedValue(undefined) };
   const usage = { log: jest.fn().mockResolvedValue(undefined) };
   const montagePoc = { transcrireUrl: jest.fn() };
   const claude = { messagesCreate: jest.fn(), texte: jest.fn() };
@@ -433,14 +433,7 @@ describe('agent vidéo : suivi', () => {
       video_status: 'ready',
       video_url: expect.stringContaining('reels/t/c.mp4'),
     });
-    expect(notifications.notifier).toHaveBeenCalledWith(
-      TID,
-      CID,
-      'Instagram',
-      'reel.ready',
-      expect.any(String),
-      expect.any(String),
-    );
+    expect(notifications.notifierCle).toHaveBeenCalledWith(TID, CID, 'Instagram', 'reel.ready', 'montagePret', { corrige: '' });
     expect(usage.log).toHaveBeenCalled();
   });
 
@@ -715,7 +708,7 @@ describe('agent vidéo : corrections', () => {
     const maj = prisma.travaux_agent_video.update.mock.calls[0][0].data;
     expect(maj).toMatchObject({ statut: 'termine', brief: { version: 1 } });
     expect(prisma.contenu.update.mock.calls[0][0].data.video_status).toBe('ready');
-    expect(notifications.notifier).toHaveBeenCalledWith(TID, CID, 'Instagram', 'reel.echec', 'Correction impossible', expect.any(String));
+    expect(notifications.notifierCle).toHaveBeenCalledWith(TID, CID, 'Instagram', 'reel.echec', 'correctionImpossible');
     expect(quota.refundByUser).not.toHaveBeenCalled();
   });
 });

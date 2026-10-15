@@ -1,3 +1,4 @@
+import { CleNotif, langueDuCompte, motNotif, texteNotif } from '../../common/utils/notifications-textes.util';
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'crypto';
@@ -660,13 +661,8 @@ export class LateService implements OnApplicationBootstrap {
           await this.prisma.comptes_sociaux.deleteMany({
             where: { telegram_id: tg, plateforme: p },
           });
-          await this.notifyAccount(
-            tg,
-            p,
-            event,
-            'Réseau déconnecté ⚠️',
-            `Ton compte ${capitalize(p)} a été déconnecté. Reconnecte-le dans Paramètres → Réseaux pour continuer à publier.`,
-          );
+          const nd = texteNotif(await langueDuCompte(this.prisma, tg), 'reseauDeconnecte', { reseau: capitalize(p) });
+          await this.notifyAccount(tg, p, event, nd.titre, nd.message);
           // Email d'alerte avec lien de reconnexion : la notification in-app ne suffit pas.
           try {
             const u = await this.prisma.users.findUnique({
@@ -1199,7 +1195,13 @@ export class LateService implements OnApplicationBootstrap {
     const cid = c.id;
     const tg = c.telegram_id;
     const reseau = c.reseau_cible || '';
-    const titreC = (c.titre || 'Ton post').slice(0, 60);
+    // Notifications dans la langue du compte (push compris).
+    const lg = await langueDuCompte(this.prisma, tg);
+    const titreC = (c.titre || motNotif(lg, 'tonPost')).slice(0, 60);
+    const nv = (cle: CleNotif, extra: Record<string, string> = {}): [string, string] => {
+      const t = texteNotif(lg, cle, { titre: titreC, reseau, ...extra });
+      return [t.titre, t.message];
+    };
 
     const platObj =
       typeof payload.platform === 'object' && payload.platform
@@ -1221,24 +1223,18 @@ export class LateService implements OnApplicationBootstrap {
     if (event.includes('published')) {
       upd = { publish_status: 'publié', statut: 'Publie', publish_error: null };
       if (pubUrl) upd.lien_publication = pubUrl;
-      notif = ['Post publié ✅', `« ${titreC} » a été publié sur ${reseau}.`];
+      notif = nv('publie');
     } else if (event.includes('partial')) {
       upd = { publish_status: 'partiel' };
-      notif = [
-        'Publication partielle ⚠️',
-        `« ${titreC} » a été publié partiellement sur ${reseau}.`,
-      ];
+      notif = nv('partiel');
     } else if (event.includes('failed')) {
       const reason =
-        plat0.error || post.error || payload.error || 'raison inconnue';
+        plat0.error || post.error || payload.error || motNotif(lg, 'raisonInconnue');
       upd = {
         publish_status: 'échec',
         publish_error: String(reason).slice(0, 400),
       };
-      notif = [
-        'Échec de publication ❌',
-        `« ${titreC} » n'a pas pu être publié sur ${reseau} : ${reason}`,
-      ];
+      notif = nv('echecPublication', { raison: String(reason) });
     } else if (event.includes('scheduled')) {
       // SEUL endroit qui pose statut=Planifie : la planification est confirmée PAR Zernio.
       upd = {
@@ -1246,22 +1242,13 @@ export class LateService implements OnApplicationBootstrap {
         statut: 'Planifie',
         publish_error: null,
       };
-      notif = [
-        'Publication programmée ⏱',
-        `« ${titreC} » est programmé sur ${reseau}.`,
-      ];
+      notif = nv('programme');
     } else if (event.includes('cancelled')) {
       upd = { publish_status: 'annulé' };
-      notif = [
-        'Publication annulée',
-        `La publication de « ${titreC} » sur ${reseau} a été annulée.`,
-      ];
+      notif = nv('annule');
     } else if (event.includes('recycled')) {
       upd = { publish_status: 'programmé' };
-      notif = [
-        'Post recyclé ♻️',
-        `« ${titreC} » a été reprogrammé sur ${reseau}.`,
-      ];
+      notif = nv('recycle');
     } else {
       return { ok: true, ignored: event };
     }

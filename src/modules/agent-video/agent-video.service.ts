@@ -1016,15 +1016,13 @@ export class AgentVideoService implements OnApplicationBootstrap {
             } as never,
           },
         });
-        await this.notifications.notifier(
+        await this.notifications.notifierCle(
           t.telegram_id,
           t.contenu_id,
           c.reseau_cible,
           'reel.ready',
-          version > 1
-            ? 'Ta vidéo corrigée est prête 🎬'
-            : 'Ton montage IA est prêt 🎬',
-          'À valider dans Contenus.',
+          'montagePret',
+          { corrige: version > 1 ? 1 : '' },
         );
       }
       if (cout !== null)
@@ -1111,13 +1109,12 @@ export class AgentVideoService implements OnApplicationBootstrap {
           } as never,
         },
       });
-      await this.notifications.notifier(
+      await this.notifications.notifierCle(
         t.telegram_id,
         t.contenu_id,
         c.reseau_cible,
         'reel.echec',
-        'Montage IA : échec ❌',
-        "Le montage n'a pas abouti (montage rendu sur ton quota). Supprime-le et réessaie.",
+        'montageEchec',
       );
     }
     await this.quota.refundByUser(t.telegram_id, ACTION_QUOTA);
@@ -1355,13 +1352,12 @@ export class AgentVideoService implements OnApplicationBootstrap {
           } as never,
         },
       });
-      await this.notifications.notifier(
+      await this.notifications.notifierCle(
         t.telegram_id,
         t.contenu_id,
         c.reseau_cible,
         'reel.echec',
-        'Correction impossible',
-        'Ta vidéo précédente est conservée. Reformule la correction et réessaie.',
+        'correctionImpossible',
       );
     }
     if (derniere?.payante)

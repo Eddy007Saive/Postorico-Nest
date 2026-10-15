@@ -245,15 +245,7 @@ export class ImpayeService {
     const c = await this.client(telegramId);
     const reseaux = Object.keys(comptes).sort();
     try {
-      await this.notificationService.notifier(
-        telegramId,
-        null,
-        null,
-        'billing.suspended',
-        'Réseaux déconnectés',
-        "Ton paiement n'a pas été régularisé : tes réseaux ont été déconnectés. Mets à jour ta carte, puis reconnecte-les en trois clics.",
-        'facturation',
-      );
+      await this.notificationService.notifierCle(telegramId, null, null, 'billing.suspended', 'reseauxSuspendus', {}, 'facturation');
     } catch (e) {
       this.logger.warn(`suspendre notification ${telegramId}: ${e instanceof Error ? e.message : e}`);
     }

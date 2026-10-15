@@ -1,3 +1,4 @@
+import { CleNotif, langueDuCompte, texteNotif } from '../../common/utils/notifications-textes.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { PushService } from './push.service';
@@ -16,6 +17,22 @@ export class NotificationService {
     private readonly prisma: PrismaService,
     private readonly pushService: PushService,
   ) {}
+
+  /** Comme `notifier`, mais avec un texte du dictionnaire (notifications-textes.util.ts),
+   * rédigé dans la langue du compte : un client en espagnol reçoit ses push en espagnol. */
+  async notifierCle(
+    telegramId: string | null | undefined,
+    contenuId: string | null | undefined,
+    reseau: string | null | undefined,
+    event: string,
+    cle: CleNotif,
+    vars: Record<string, string | number> = {},
+    type = 'rendu',
+  ): Promise<void> {
+    if (!telegramId) return;
+    const { titre, message } = texteNotif(await langueDuCompte(this.prisma, telegramId), cle, vars);
+    await this.notifier(telegramId, contenuId, reseau, event, titre, message, type);
+  }
 
   /** Insère une notification (cloche) et envoie un push à tous les appareils du compte.
    * `contenuId` permet au front de ramener vers la liste Contenus. */

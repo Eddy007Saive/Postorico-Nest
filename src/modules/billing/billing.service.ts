@@ -1162,15 +1162,7 @@ export class BillingService {
             this.logger.log(`stripe: ${uid} régularisé (reconnexion à faire: ${JSON.stringify(reprise.reconnexion)})`);
             if (reprise.etait_suspendu) {
               try {
-                await this.notificationService.notifier(
-                  uid,
-                  null,
-                  null,
-                  'billing.regularise',
-                  'Paiement reçu, merci',
-                  'Ton compte est de nouveau actif. Reconnecte tes réseaux pour reprendre la publication.',
-                  'facturation',
-                );
+                await this.notificationService.notifierCle(uid, null, null, 'billing.regularise', 'paiementRecu', {}, 'facturation');
               } catch (e) {
                 this.logger.warn(`stripe: notification reprise ${uid}: ${e instanceof Error ? e.message : e}`);
               }

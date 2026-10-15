@@ -256,15 +256,11 @@ export class RenderQueueService implements OnApplicationBootstrap {
     const echec = Boolean(row._echec);
     if ((job.notif || 'story') === 'reel') {
       if (echec) {
-        const suite = job.restaurer ? ' La version précédente est conservée.' : ' Supprime le reel et réessaie.';
-        await this.notificationService.notifier(tid, cid, reseau, 'reel.echec', 'Reel : rendu échoué ❌', "Le rendu n'a pas abouti." + suite);
+        await this.notificationService.notifierCle(tid, cid, reseau, 'reel.echec', 'reelEchec', { garde: job.restaurer ? 1 : '' });
       } else if (job.voix_echec) {
-        await this.notificationService.notifier(
-          tid, cid, reseau, 'reel.ready_sans_voix', 'Ton reel est prêt, mais sans voix ⚠️',
-          'La voix off a échoué au rendu (quota remboursé). Régénère le reel pour retenter la voix.',
-        );
+        await this.notificationService.notifierCle(tid, cid, reseau, 'reel.ready_sans_voix', 'reelSansVoix');
       } else {
-        await this.notificationService.notifier(tid, cid, reseau, 'reel.ready', 'Ton reel est prêt 🎬', 'À valider dans Contenus.');
+        await this.notificationService.notifierCle(tid, cid, reseau, 'reel.ready', 'reelPret');
       }
       return;
     }
@@ -274,21 +270,22 @@ export class RenderQueueService implements OnApplicationBootstrap {
       const statuts = rows.map((x) => x.video_status);
       const echecs = statuts.filter((s) => s === 'echec').length;
       if (echecs === statuts.length) {
-        await this.notificationService.notifier(tid, cid, reseau, 'story.anime.echec', 'Série animée : rendu échoué ❌', "Aucun écran n'a pu être rendu. Supprime la série et réessaie.");
+        await this.notificationService.notifierCle(tid, cid, reseau, 'story.anime.echec', 'serieEchec');
       } else if (echecs) {
-        await this.notificationService.notifier(
-          tid, cid, reseau, 'story.anime.ready', 'Série animée prête (partiellement) ⚠️',
-          `${statuts.length - echecs}/${statuts.length} écrans rendus, ${echecs} en échec. À valider dans Contenus.`,
-        );
+        await this.notificationService.notifierCle(tid, cid, reseau, 'story.anime.ready', 'seriePartielle', {
+          ok: statuts.length - echecs,
+          total: statuts.length,
+          echecs,
+        });
       } else {
-        await this.notificationService.notifier(tid, cid, reseau, 'story.anime.ready', 'Ta série animée est prête 🎬', `${statuts.length} écrans rendus, à valider dans Contenus.`);
+        await this.notificationService.notifierCle(tid, cid, reseau, 'story.anime.ready', 'seriePrete', { total: statuts.length });
       }
       return;
     }
     if (echec) {
-      await this.notificationService.notifier(tid, cid, reseau, 'story.anime.echec', 'Story animée : rendu échoué ❌', "Le rendu n'a pas abouti. Supprime la story et réessaie.");
+      await this.notificationService.notifierCle(tid, cid, reseau, 'story.anime.echec', 'storyEchec');
     } else {
-      await this.notificationService.notifier(tid, cid, reseau, 'story.anime.ready', 'Ta story animée est prête 🎬', 'À valider dans Contenus.');
+      await this.notificationService.notifierCle(tid, cid, reseau, 'story.anime.ready', 'storyPrete');
     }
   }
 
