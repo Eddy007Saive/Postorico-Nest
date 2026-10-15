@@ -1,3 +1,4 @@
+import { langueCode } from '../../common/utils/textes-fixes.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { ClaudeService, MODELE_REDACTION } from '../claude/claude.service';
@@ -195,8 +196,13 @@ export function sujetsSurs(sujets: unknown, reco: Recommandation): string[] {
     .slice(0, Math.min(3, reco.action.quantite));
 }
 
-export function introStandard(mois: string): string {
-  return `Salut ! Voici ton plan pour ${nomMois(mois)}, tiré de tes vrais chiffres du mois dernier 👇`;
+export function introStandard(mois: string, langue: unknown = 'fr'): string {
+  const l = langueCode(langue);
+  if (l === 'fr') return `Salut ! Voici ton plan pour ${nomMois(mois)}, tiré de tes vrais chiffres du mois dernier 👇`;
+  const m = new Intl.DateTimeFormat(l === 'en' ? 'en-US' : 'es-ES', { month: 'long', timeZone: 'UTC' }).format(new Date(`${mois.slice(0, 7)}-01T00:00:00Z`));
+  return l === 'en'
+    ? `Hi! Here is your plan for ${m}, built from your real numbers from last month 👇`
+    : `¡Hola! Aquí tienes tu plan de ${m}, basado en tus cifras reales del mes pasado 👇`;
 }
 
 // ---------------------------------------------------------------------------
@@ -310,9 +316,11 @@ export class PlanService {
     const meilleurs = d.top_posts.meilleurs.filter((p) => p.titre).map((p) => `- « ${p.titre} » (${p.reseau}, ${p.format})`).join('\n');
     const entree = recos.map((r) => ({ id: r.id, phrase: r.texte_standard, chiffres: r.chiffres, action: r.action }));
 
+    // Langue du compte : un client en espagnol recevait son plan en français (« in FRENCH » écrit en dur).
+    const langue = this.marqueService.langueSortie(u);
     const role =
-      "You are Rico, the coach mascot of Postorico. You present a client's monthly action plan, in FRENCH, " +
-      "speaking to the client with 'tu', warm and direct, in the client's brand voice. You never give generic advice: " +
+      `You are Rico, the coach mascot of Postorico. You present a client's monthly action plan, in ${langue}, ` +
+      "speaking to the client informally ('tu' in French, 'tú' in Spanish), warm and direct, in the client's brand voice. You never give generic advice: " +
       'every recommendation is already decided and backed by the client\'s real numbers.\n' +
       'RULES:\n' +
       '- Rewrite each recommendation in 1 or 2 short sentences. Keep its meaning and its action. ' +
@@ -331,7 +339,8 @@ export class PlanService {
           `Plan for ${nomMois(mois)}.\n` +
           (offres ? `Active offers:\n${offres}\n` : '') +
           (meilleurs ? `Best posts last month:\n${meilleurs}\n` : '') +
-          `Recommendations (JSON):\n${JSON.stringify(entree)}`,
+          `Recommendations (JSON, written in French: rewrite them in ${langue}):\n${JSON.stringify(entree)}` +
+          this.marqueService.consigneLangueFinale(u),
       }],
     });
     void this.usageService.log(telegramId, 'coach_plan', MODELE_REDACTION, this.claude.usage(resp), 0);
@@ -344,7 +353,7 @@ export class PlanService {
       r.texte = phraseSure(ia?.texte, r);
       r.sujets = sujetsSurs(ia?.sujets, r);
     }
-    const intro = typeof data.intro === 'string' && data.intro.trim() && !/\d/.test(data.intro) ? data.intro.trim().slice(0, 300) : introStandard(mois);
+    const intro = typeof data.intro === 'string' && data.intro.trim() && !/\d/.test(data.intro) ? data.intro.trim().slice(0, 300) : introStandard(mois, u.langue);
     return { intro };
   }
 }
