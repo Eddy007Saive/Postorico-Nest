@@ -18,17 +18,18 @@ export class NewsletterController {
   // ----------------------------------------------------------------- publiques
   /** La lettre telle qu'elle sera reçue (lien « Lire dans le navigateur »). */
   @Get('apercu/:nid')
-  async apercu(@Param('nid') nid: string, @Query('token') token: string, @Res() res: Response) {
+  async apercu(@Param('nid') nid: string, @Query('token') token: string, @Query('langue') langue: string, @Res() res: Response) {
     const nl = await this.newsletterService.charger(nid, token);
     if (!nl) {
       res.status(404).send(this.newsletterService.page('Lien invalide', "Cette lettre n'existe pas ou le lien a expiré.", false));
       return;
     }
-    if (nl.html) {
+    // Version traduite demandée (?langue=es) : rendue à la volée. Sinon le français figé à l'envoi.
+    if (nl.html && (!langue || langue === 'fr')) {
       res.send(nl.html);
       return;
     }
-    res.send(this.newsletterService.renduHtml((nl.data as any) || {}));
+    res.send(this.newsletterService.renduHtml((nl.data as any) || {}, '#', '', langue || 'fr'));
   }
 
   /** Bouton « Envoyer aux abonnés » de l'email de validation. */
@@ -69,7 +70,7 @@ export class NewsletterController {
   /** Inscription depuis le site public (formulaire newsletter). */
   @Post('abonner')
   async abonner(@Body() body: AbonnementDto) {
-    const res = await this.newsletterService.abonner(body.email, body.nom, 'site');
+    const res = await this.newsletterService.abonner(body.email, body.nom, 'site', body.langue);
     if (res.error) throw new BadRequestException(res.error);
     return { ok: true };
   }

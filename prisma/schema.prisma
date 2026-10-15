@@ -505,6 +505,7 @@ model newsletter_abonnes {
   token           String    @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   created_at      DateTime  @default(now()) @db.Timestamptz(6)
   unsubscribed_at DateTime? @db.Timestamptz(6)
+  langue          String    @default("fr")
 
   @@index([statut])
 }

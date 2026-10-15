@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../config/prisma.service';
 import { ClaudeService } from '../claude/claude.service';
+import { Langue, langueCode } from '../../common/utils/textes-fixes.util';
 import { MailService } from '../mail/mail.service';
 import { LettreActu, LettreData, LettreSection, VeilleResult, VeilleSource } from './interfaces/lettre.interface';
 
@@ -39,6 +40,55 @@ const MOIS = [
 function dateFr(d: Date): string {
   return `${d.getUTCDate()} ${MOIS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
+
+/** Date de l'édition dans la langue de l'abonné (« 15 octobre 2026 », « October 15, 2026 »…). */
+function dateLangue(d: Date, l: Langue): string {
+  if (l === 'fr') return dateFr(d);
+  return new Intl.DateTimeFormat(l === 'en' ? 'en-US' : 'es-ES', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(d);
+}
+
+/** Textes fixes de la lettre, par langue de l'abonné (le français est celui d'avant). */
+const NL_TEXTES: Record<Langue, Record<string, string>> = {
+  fr: {
+    geste: 'Le geste',
+    bouge: 'Ce qui a bougé cette semaine',
+    source: 'Lire la source',
+    navigateur: 'Lire dans le navigateur',
+    kicker: 'La lettre de Rico',
+    action: 'Ton action de la semaine',
+    baseline: "Postorico, ta présence sociale pilotée par l'IA",
+    question: 'Une question, un sujet à traiter&nbsp;? Réponds simplement à cet email, Rico lit tout.',
+    desinscrire: 'Se désinscrire',
+  },
+  en: {
+    geste: 'Quick win',
+    bouge: 'What changed this week',
+    source: 'Read the source',
+    navigateur: 'Read in your browser',
+    kicker: "Rico's letter",
+    action: 'Your action this week',
+    baseline: 'Postorico, your social presence run by AI',
+    question: 'A question, a topic you want covered? Just reply to this email, Rico reads everything.',
+    desinscrire: 'Unsubscribe',
+  },
+  es: {
+    geste: 'El gesto',
+    bouge: 'Lo que ha cambiado esta semana',
+    source: 'Leer la fuente',
+    navigateur: 'Leer en el navegador',
+    kicker: 'La carta de Rico',
+    action: 'Tu acción de la semana',
+    baseline: 'Postorico, tu presencia social gestionada con IA',
+    question: '¿Una pregunta, un tema que quieras que tratemos? Responde a este email, Rico lo lee todo.',
+    desinscrire: 'Darse de baja',
+  },
+};
+
+const NOM_LANGUE: Record<Langue, string> = { fr: 'français', en: 'English (anglais)', es: 'español (espagnol)' };
+
+// Traduction de l'édition validée en français pour les abonnés d'une autre langue. Une fois par
+// semaine et par langue présente parmi les abonnés : rien en plus tant qu'ils sont tous français.
+const MODEL_TRADUCTION = 'claude-sonnet-4-6';
 
 const ROLE_VEILLE =
   "Tu es le veilleur de Postorico, un logiciel qui pilote la présence sociale des " +
@@ -467,6 +517,58 @@ export class NewsletterService implements OnApplicationBootstrap {
     return data;
   }
 
+  /** Traduit la lettre française dans la langue `l`, même voix (Rico, tutoiement), mêmes
+   * faits, mêmes URLs. Sortie JSON validée par le même schéma que la rédaction. */
+  private async traduire(fr: LettreData, l: Langue): Promise<LettreData> {
+    const source: Record<string, unknown> = { ...fr };
+    delete source.traductions;
+    delete source._rappel_le;
+    const resp = await this.claude.messagesCreate({
+      model: MODEL_TRADUCTION,
+      max_tokens: 8000,
+      output_config: { format: { type: 'json_schema', schema: SCHEMA_LETTRE } },
+      system:
+        `Tu traduis « La lettre de Rico », newsletter hebdomadaire de Postorico, du français vers : ${NOM_LANGUE[l]}.\n` +
+        'Garde la voix de Rico : directe, chaleureuse, concrète, phrases courtes, tutoiement (« tú » en espagnol), ' +
+        "aucun emoji, aucun jargon. Traduis le SENS, pas mot à mot, comme l'écrirait un natif. " +
+        'Ne change aucun fait, chiffre, date ni nom ; recopie chaque URL « source » telle quelle ; garde les noms ' +
+        'de réseaux (LinkedIn, Instagram…) et le nom Postorico. Jamais de tiret cadratin ni demi-cadratin. ' +
+        'Typographie native de la langue cible (accents, ponctuation, ¿ ¡ en espagnol).',
+      messages: [{ role: 'user', content: `Lettre à traduire (JSON) :\n${JSON.stringify(source)}` }],
+    });
+    if (resp.stop_reason === 'refusal') throw new Error(`traduction ${l} refusée par le modèle`);
+    const brut = resp.content.find((b): b is Anthropic.Messages.TextBlock => b.type === 'text')?.text || '';
+    const t = this.sansTirets(JSON.parse(brut) as LettreData);
+    t.numero = fr.numero;
+    t.date = dateLangue(new Date(), l);
+    // Les URLs de source restent celles de la veille, même si le modèle les avait touchées.
+    t.actus = (t.actus || []).map((a, i) => ({ ...a, source: fr.actus?.[i]?.source ?? a.source }));
+    return t;
+  }
+
+  /** Langues autres que le français parmi les abonnés actifs (une traduction par langue). */
+  private async languesAbonnes(): Promise<Langue[]> {
+    const ls = new Set((await this.abonnesActifs()).map((a) => langueCode(a.langue)));
+    ls.delete('fr');
+    return [...ls];
+  }
+
+  /** Ajoute à la lettre une version par langue d'abonné. Une traduction ratée n'empêche pas
+   * l'envoi : ces abonnés reçoivent alors le français (signalé dans l'email de validation). */
+  private async traduireLettre(data: LettreData): Promise<{ data: LettreData; ratees: Langue[] }> {
+    const traductions: Record<string, LettreData> = {};
+    const ratees: Langue[] = [];
+    for (const l of await this.languesAbonnes()) {
+      try {
+        traductions[l] = await this.traduire(data, l);
+      } catch (e) {
+        ratees.push(l);
+        this.logger.error(`newsletter traduction ${l}: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    return { data: Object.keys(traductions).length ? { ...data, traductions } : data, ratees };
+  }
+
   // ------------------------------------------------------------------------------ 3. Rendu
   private e(t: unknown): string {
     return String(t ?? '')
@@ -482,8 +584,13 @@ export class NewsletterService implements OnApplicationBootstrap {
   }
 
   /** La lettre en HTML email (tables + styles inline : compatible tous clients). */
-  renduHtml(dataIn: LettreData, unsubUrl = '#', apercuUrl = ''): string {
-    const data = this.sansTirets(dataIn);
+  renduHtml(dataIn: LettreData, unsubUrl = '#', apercuUrl = '', langue: unknown = 'fr'): string {
+    const l = langueCode(langue);
+    const T = NL_TEXTES[l];
+    // Version de la langue de l'abonné si elle a été traduite, sinon le français.
+    const trad = l !== 'fr' ? (dataIn.traductions as Record<string, LettreData> | undefined)?.[l] : undefined;
+    const data = this.sansTirets(trad ? { ...dataIn, ...trad } : dataIn);
+    const lang = trad ? l : 'fr';
     const sections = (data.sections || [])
       .map(
         (s: LettreSection) => `
@@ -492,7 +599,7 @@ export class NewsletterService implements OnApplicationBootstrap {
         <p style="margin:0 0 14px;color:#c3ccdb;font-size:15px;line-height:1.65;">${this.e(s.corps)}</p>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
           <td style="background:rgba(58,255,163,0.07);border-left:3px solid ${ACCENT};padding:12px 16px;">
-            <span style="color:${ACCENT};font-size:11px;font-weight:bold;letter-spacing:.12em;text-transform:uppercase;">Le geste</span><br>
+            <span style="color:${ACCENT};font-size:11px;font-weight:bold;letter-spacing:.12em;text-transform:uppercase;">${T.geste}</span><br>
             <span style="color:#e2e8f0;font-size:14px;line-height:1.6;">${this.e(s.astuce)}</span>
           </td>
         </tr></table>
@@ -506,7 +613,7 @@ export class NewsletterService implements OnApplicationBootstrap {
       const couleur = COULEUR_RESEAU[reseau.toLowerCase().trim()] || '#94a3b8';
       const src = String(a.source || '').trim();
       const lien = src.startsWith('http')
-        ? `<a href="${this.e(src)}" target="_blank" style="color:#8A6CFF;font-size:12px;text-decoration:underline;">Lire la source</a>`
+        ? `<a href="${this.e(src)}" target="_blank" style="color:#8A6CFF;font-size:12px;text-decoration:underline;">${T.source}</a>`
         : '';
       actus += `
           <tr><td style="padding:0 0 18px;">
@@ -521,17 +628,17 @@ export class NewsletterService implements OnApplicationBootstrap {
       ? `
       <tr><td style="padding:6px 34px 8px;">
         <div style="height:1px;background:rgba(255,255,255,0.08);margin-bottom:24px;"></div>
-        <h2 style="margin:0 0 18px;color:#ffffff;font-size:18px;font-weight:bold;">Ce qui a bougé cette semaine</h2>
+        <h2 style="margin:0 0 18px;color:#ffffff;font-size:18px;font-weight:bold;">${T.bouge}</h2>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${actus}</table>
       </td></tr>`
       : '';
 
     const voirEnLigne = apercuUrl
-      ? `<a href="${this.e(apercuUrl)}" target="_blank" style="color:#64748b;text-decoration:underline;">Lire dans le navigateur</a> · `
+      ? `<a href="${this.e(apercuUrl)}" target="_blank" style="color:#64748b;text-decoration:underline;">${T.navigateur}</a> · `
       : '';
 
     return `<!DOCTYPE html>
-<html lang="fr">
+<html lang="${lang}">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${this.e(data.sujet)}</title></head>
 <body style="margin:0;padding:0;background:#ffffff;font-family:Arial,Helvetica,sans-serif;">
@@ -565,7 +672,7 @@ export class NewsletterService implements OnApplicationBootstrap {
 
         <!-- Titre + edito -->
         <tr><td style="padding:22px 34px 4px;">
-          <span style="display:inline-block;color:${ACCENT};font-size:11px;font-weight:bold;letter-spacing:.18em;text-transform:uppercase;">La lettre de Rico</span>
+          <span style="display:inline-block;color:${ACCENT};font-size:11px;font-weight:bold;letter-spacing:.18em;text-transform:uppercase;">${T.kicker}</span>
           <h1 style="margin:10px 0 14px;color:#ffffff;font-size:27px;line-height:1.25;font-weight:bold;letter-spacing:-.02em;">${this.e(data.titre)}</h1>
           <p style="margin:0 0 26px;color:#c3ccdb;font-size:15.5px;line-height:1.7;">${this.e(data.edito)}</p>
         </td></tr>
@@ -578,7 +685,7 @@ export class NewsletterService implements OnApplicationBootstrap {
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
                  style="background:linear-gradient(135deg,${G1},${G2});border-radius:14px;">
             <tr><td style="padding:22px 24px;">
-              <span style="color:rgba(255,255,255,0.72);font-size:11px;font-weight:bold;letter-spacing:.16em;text-transform:uppercase;">Ton action de la semaine</span>
+              <span style="color:rgba(255,255,255,0.72);font-size:11px;font-weight:bold;letter-spacing:.16em;text-transform:uppercase;">${T.action}</span>
               <div style="color:#ffffff;font-size:16.5px;line-height:1.55;font-weight:bold;margin-top:9px;">${this.e(data.action)}</div>
             </td></tr>
           </table>
@@ -588,16 +695,16 @@ export class NewsletterService implements OnApplicationBootstrap {
         <tr><td style="padding:0 34px 30px;">
           <p style="margin:0 0 6px;color:#c3ccdb;font-size:15px;line-height:1.65;">${this.e(data.signature)}</p>
           <p style="margin:0;color:#ffffff;font-size:15px;font-weight:bold;">Rico</p>
-          <p style="margin:2px 0 0;color:#64748b;font-size:12.5px;">Postorico, ta présence sociale pilotée par l'IA</p>
+          <p style="margin:2px 0 0;color:#64748b;font-size:12.5px;">${T.baseline}</p>
         </td></tr>
 
         <!-- Pied -->
         <tr><td style="padding:20px 34px 26px;border-top:1px solid rgba(255,255,255,0.06);">
           <p style="margin:0 0 8px;color:#64748b;font-size:11.5px;line-height:1.6;">
-            Une question, un sujet à traiter&nbsp;? Réponds simplement à cet email, Rico lit tout.
+            ${T.question}
           </p>
           <p style="margin:0;color:#475569;font-size:11px;">
-            ${voirEnLigne}<a href="${this.e(unsubUrl)}" target="_blank" style="color:#475569;text-decoration:underline;">Se désinscrire</a>
+            ${voirEnLigne}<a href="${this.e(unsubUrl)}" target="_blank" style="color:#475569;text-decoration:underline;">${T.desinscrire}</a>
             · © ${new Date().getUTCFullYear()} Postorico
           </p>
         </td></tr>
@@ -616,12 +723,22 @@ export class NewsletterService implements OnApplicationBootstrap {
       const connus = new Set(
         (await this.prisma.newsletter_abonnes.findMany({ select: { email: true } })).map((a) => a.email.toLowerCase()),
       );
-      const candidats = new Map<string, { email: string; nom: string | null; source: string }>();
-      for (const row of await this.prisma.users.findMany({ select: { email: true, nom: true } })) {
+      const candidats = new Map<string, { email: string; nom: string | null; source: string; langue?: string }>();
+      const clients = await this.prisma.users.findMany({ select: { email: true, nom: true, langue: true } });
+      for (const row of clients) {
         const email = (row.email || '').trim();
         if (email && email.includes('@') && !connus.has(email.toLowerCase())) {
-          candidats.set(email.toLowerCase(), { email, nom: row.nom, source: 'app' });
+          candidats.set(email.toLowerCase(), { email, nom: row.nom, source: 'app', langue: langueCode(row.langue) });
         }
+      }
+      // Un client déjà abonné suit la langue de son compte (elle peut changer).
+      for (const row of clients) {
+        const email = (row.email || '').trim();
+        if (!email || !connus.has(email.toLowerCase())) continue;
+        await this.prisma.newsletter_abonnes.updateMany({
+          where: { email: { equals: email, mode: 'insensitive' }, NOT: { langue: langueCode(row.langue) } },
+          data: { langue: langueCode(row.langue) },
+        });
       }
       for (const row of await this.prisma.brand_audits.findMany({ select: { email: true, marque: true } })) {
         const email = (row.email || '').trim();
@@ -641,7 +758,12 @@ export class NewsletterService implements OnApplicationBootstrap {
 
   /** Inscription publique. Une désinscription passée est respectée (pas de réactivation
    * silencieuse) : on renvoie simplement 'ok' sans rien changer. */
-  async abonner(email: string, nom?: string | null, source = 'site'): Promise<{ ok?: boolean; deja?: boolean; error?: string }> {
+  async abonner(
+    email: string,
+    nom?: string | null,
+    source = 'site',
+    langue?: string | null,
+  ): Promise<{ ok?: boolean; deja?: boolean; error?: string }> {
     const em = (email || '').trim();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(em)) return { error: 'Email invalide.' };
     try {
@@ -650,7 +772,7 @@ export class NewsletterService implements OnApplicationBootstrap {
         select: { id: true },
       });
       if (existant) return { ok: true, deja: true };
-      await this.prisma.newsletter_abonnes.create({ data: { email: em, nom: nom || null, source } });
+      await this.prisma.newsletter_abonnes.create({ data: { email: em, nom: nom || null, source, langue: langueCode(langue) } });
       return { ok: true };
     } catch (e) {
       this.logger.error(`newsletter abonner: ${e instanceof Error ? e.message : e}`);
@@ -673,11 +795,11 @@ export class NewsletterService implements OnApplicationBootstrap {
     }
   }
 
-  async abonnesActifs(): Promise<Array<{ email: string; nom: string | null; token: string }>> {
+  async abonnesActifs(): Promise<Array<{ email: string; nom: string | null; token: string; langue: string }>> {
     try {
       return await this.prisma.newsletter_abonnes.findMany({
         where: { statut: 'actif' },
-        select: { email: true, nom: true, token: true },
+        select: { email: true, nom: true, token: true, langue: true },
       });
     } catch (e) {
       this.logger.error(`newsletter abonnes actifs: ${e instanceof Error ? e.message : e}`);
@@ -739,7 +861,7 @@ export class NewsletterService implements OnApplicationBootstrap {
     const { id: nid, token } = nl;
     const base = `${this.config.get<string>('app.backendUrl')}/api/newsletter`;
     const total = (await this.abonnesActifs()).length;
-    let html = this.htmlValidation(data, nid, token, total, 0, 0, this.renduHtml(data, `${base}/desinscription?token=apercu`, `${base}/apercu/${nid}?token=${token}`));
+    let html = await this.htmlValidation(data, nid, token, total, 0, 0, this.renduHtml(data, `${base}/desinscription?token=apercu`, `${base}/apercu/${nid}?token=${token}`));
     html = html.replace('En attente de ta validation', 'Rappel : lettre toujours en attente de ta validation');
     try {
       await this.mailService.sendEmail(
@@ -765,7 +887,8 @@ export class NewsletterService implements OnApplicationBootstrap {
       return { error: 'Veille trop pauvre cette semaine : rien à publier.' };
     }
     this.logger.log(`newsletter n°${numero} : rédaction (${veilleRes.sources.length} sources)`);
-    const data = await this.rediger(veilleRes, numero);
+    const nb = await this.syncAbonnes(); // avant la traduction : les langues des abonnés comptent
+    const { data, ratees } = await this.traduireLettre(await this.rediger(veilleRes, numero));
 
     const nl = await this.prisma.newsletters.create({
       data: {
@@ -779,7 +902,6 @@ export class NewsletterService implements OnApplicationBootstrap {
     });
     const { id: nid, token } = nl;
 
-    const nb = await this.syncAbonnes();
     const total = (await this.abonnesActifs()).length;
     const base = `${this.config.get<string>('app.backendUrl')}/api/newsletter`;
     const apercu = `${base}/apercu/${nid}?token=${token}`;
@@ -789,7 +911,7 @@ export class NewsletterService implements OnApplicationBootstrap {
       await this.mailService.sendEmail(
         this.config.get<string>('app.adminNotifEmail')!,
         `À valider : ${data.sujet}`,
-        this.htmlValidation(data, nid, token, total, nb, veilleRes.sources.length, corps),
+        await this.htmlValidation(data, nid, token, total, nb, veilleRes.sources.length, corps, ratees),
       );
     } catch (e) {
       this.logger.error(`newsletter email validation: ${e instanceof Error ? e.message : e}`);
@@ -799,7 +921,7 @@ export class NewsletterService implements OnApplicationBootstrap {
   }
 
   /** Email interne : la lettre complète + les deux boutons de décision. */
-  private htmlValidation(
+  private async htmlValidation(
     data: LettreData,
     nid: string,
     token: string,
@@ -807,8 +929,28 @@ export class NewsletterService implements OnApplicationBootstrap {
     nouveaux: number,
     nbSources: number,
     corps: string,
-  ): string {
+    ratees: Langue[] = [],
+  ): Promise<string> {
     const base = `${this.config.get<string>('app.backendUrl')}/api/newsletter`;
+    // Répartition des abonnés par langue, avec l'aperçu de chaque version traduite.
+    const parLangue = new Map<Langue, number>();
+    for (const a of await this.abonnesActifs()) {
+      const l = langueCode(a.langue);
+      parLangue.set(l, (parLangue.get(l) || 0) + 1);
+    }
+    const trads = (data.traductions as Record<string, LettreData> | undefined) || {};
+    const langues = [...parLangue.entries()]
+      .map(([l, n]) => {
+        let lien = '';
+        if (l !== 'fr' && trads[l]) {
+          lien = ` (<a href="${base}/apercu/${nid}?token=${token}&langue=${l}" target="_blank" style="color:#8A6CFF;">aperçu</a>)`;
+        } else if (l !== 'fr') {
+          lien = ' (pas de traduction : recevra le français)';
+        }
+        return `${l.toUpperCase()} : ${n}${lien}`;
+      })
+      .join(' · ');
+    const alerte = ratees.length ? `<br><span style="color:#f87171;">Traduction impossible : ${ratees.join(', ')}</span>` : '';
     const valider = `${base}/valider/${nid}?token=${token}`;
     const refuser = `${base}/refuser/${nid}?token=${token}`;
     const entete = `
@@ -820,7 +962,8 @@ export class NewsletterService implements OnApplicationBootstrap {
       <div style="color:#ffffff;font-size:19px;font-weight:bold;margin:8px 0 4px;">Lettre n°${this.e(data.numero)} : ${this.e(data.sujet)}</div>
       <div style="color:#94a3b8;font-size:13px;line-height:1.6;">
         ${total} abonné(s) actifs${nouveaux ? ` · ${nouveaux} nouveau(x) cette semaine` : ''} · ${nbSources} sources de veille<br>
-        Rien ne part tant que tu n'as pas cliqué. Aperçu complet ci-dessous.
+        Par langue : ${langues || 'FR'}${alerte}<br>
+        Rien ne part tant que tu n'as pas cliqué. Aperçu complet (français) ci-dessous.
       </div>
       <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:18px;"><tr>
         <td style="background:#3AFFA3;border-radius:10px;">
@@ -911,11 +1054,15 @@ export class NewsletterService implements OnApplicationBootstrap {
       const abonnes = await this.abonnesActifs();
       let ok = 0;
       let ko = 0;
+      const trads = (data.traductions as Record<string, LettreData> | undefined) || {};
       for (const ab of abonnes) {
         const unsub = this.lienDesinscription(ab.token);
-        const html = this.renduHtml(data, unsub, apercu);
+        const l = langueCode(ab.langue);
+        // Version de sa langue si elle existe (sinon le français), aperçu en ligne compris.
+        const html = this.renduHtml(data, unsub, trads[l] ? `${apercu}&langue=${l}` : apercu, l);
+        const sujetAb = trads[l]?.sujet || sujet;
         try {
-          const res = await this.mailService.sendEmail(ab.email, sujet, html, undefined, unsub);
+          const res = await this.mailService.sendEmail(ab.email, sujetAb, html, undefined, unsub);
           if (res.error) ko++;
           else ok++;
         } catch (e) {
