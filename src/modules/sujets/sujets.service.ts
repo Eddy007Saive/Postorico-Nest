@@ -126,7 +126,8 @@ export class SujetsService {
         .map((t) => `- ${t}`)
         .join('\n'); // petite liste = coût négligeable
       consigne =
-        `\n\nTopics ALREADY proposed or published for this brand. You must NOT repeat them, ` +
+        `\n\nTopics ALREADY proposed or published for this brand (possibly in another language). ` +
+        `You must NOT repeat them, ` +
         `rephrase them, or propose simple variants:\n${deja}\n` +
         `Propose genuinely new angles, different from this list.`;
     }
@@ -183,10 +184,14 @@ export class SujetsService {
             `BRIEF described by 4 dimensions:\n${menu}\n\n` +
             `Answer ONLY with a JSON array (no surrounding text), one object per topic:\n` +
             `[{"sujet":"…","objectif":"…","angle":"…","cible":"…","format":"…","offre":"…"}]\n` +
-            `"sujet" = a concrete, catchy hook (not a vague theme), written in the output language. ` +
-            `The other fields take EXACTLY one value from the lists above.` +
+            `"sujet" = a concrete, catchy hook (not a vague theme). ` +
+            `The other fields take EXACTLY one value from the lists above (keep those values as written).` +
             consigne +
-            hintOffres,
+            hintOffres +
+            // En DERNIER : c'est la consigne que le modèle lit juste avant de répondre. Placée
+            // seulement en tête du contexte, elle était noyée sous une fiche de marque en français.
+            `\n\nWrite every "sujet" in ${this.marqueService.langueSortie(u)}, even if the brand ` +
+            `profile, the topic history or the offers above are written in another language.`,
         },
       ],
     });

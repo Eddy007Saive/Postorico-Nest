@@ -217,7 +217,24 @@ export class MarqueService {
       );
     }
     lignes.push(REGLES_ANTI_IA);
+    // Rappel EN FIN de contexte quand la langue n'est pas le français : la fiche de marque
+    // (secteur, voix, accroches) est souvent rédigée en français, et la consigne du haut,
+    // noyée sous ce texte, ne suffisait pas — un compte en espagnol recevait ses sujets en
+    // français (retour client du 15/10/2026).
+    if (lang !== 'fr') {
+      lignes.push(
+        `\nREMINDER — OUTPUT LANGUAGE: ${langueSortie}. The brand profile above may be written in ` +
+          `another language: it describes the brand, it is NOT a language to copy. Translate its ` +
+          `ideas, hooks and CTAs into ${langueSortie}; never output a single sentence in another language.`,
+      );
+    }
     return lignes.join('\n');
+  }
+
+  /** Nom de la langue de sortie du compte (« espagnol (Español) »…), pour les consignes. */
+  langueSortie(u: Record<string, unknown>): string {
+    const lang = String(u.langue ?? 'fr').toLowerCase();
+    return LANGUES_CONTENU[lang] ?? lang;
   }
 
   /** Fiche de marque ALLÉGÉE et BALISÉE, pour les générateurs créatifs courts qui n'ont pas le
