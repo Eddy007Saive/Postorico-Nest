@@ -13,6 +13,7 @@ import { MontageRendreDto } from './dto/montage-rendre.dto';
 import { MontageSilencesDto } from './dto/montage-silences.dto';
 import { MontageTranscrireDto } from './dto/montage-transcrire.dto';
 import { MontageVoixOffDto } from './dto/montage-voix-off.dto';
+import { MontageVoixDto } from './dto/montage-voix.dto';
 
 type AuthedRequest = Request & { user: JwtPayload };
 
@@ -127,6 +128,20 @@ export class EditeurController {
       const q = res.error_quota;
       throw new HttpException({ raison: q.reason || 'quota', message: q.message || 'Quota de voix off épuisé.' }, HttpStatus.PAYMENT_REQUIRED);
     }
+    if ('error' in res && res.error) throw new BadRequestException(res.error);
+    return res;
+  }
+
+  /** « Améliorer la voix » d'un plan (débruitage, niveau des réseaux). Gratuit, 20 par heure. */
+  @Post('montages/:montageId/voix')
+  async voix(@Param('montageId') montageId: string, @Body() body: MontageVoixDto, @Req() req: AuthedRequest) {
+    const telegramId = req.user.telegram_id;
+    const cle = `voix-nette:${telegramId}`;
+    if (this.rateLimitService.lockedFor(cle) > 0) {
+      throw new HttpException('Beaucoup de traitements d\'un coup. Réessaie dans quelques minutes.', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    this.rateLimitService.fail(cle, 20, 3600, 600);
+    const res = await this.editeurService.ameliorerVoix(telegramId, montageId, body.element_id, body.force ?? 60, body.normaliser ?? true);
     if ('error' in res && res.error) throw new BadRequestException(res.error);
     return res;
   }

@@ -1,4 +1,9 @@
 import * as crypto from 'crypto';
+import { execFile } from 'child_process';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { promisify } from 'util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
@@ -10,6 +15,14 @@ import { MusicLibraryService } from '../music/music-library.service';
 import { QuotaService } from '../quota/quota.service';
 import { RenderQueueService } from '../render-queue/render-queue.service';
 import { VoixClientError, VoixService } from '../voix/voix.service';
+import { envoyerGrosFichier } from '../../common/utils/cloudinary-envoi.util';
+import { Semaphore } from '../../common/utils/semaphore.util';
+import { argumentsVoix } from './voix-nette.util';
+
+const execFileP = promisify(execFile);
+// Deux nettoyages de voix à la fois au plus : ffmpeg prend un cœur entier pendant le traitement.
+const FILE_VOIX = new Semaphore(2, () => new Error('file de traitement pleine'));
+const MAX_SOURCE_VOIX_MO = 300;
 
 /**
  * Éditeur vidéo manuel (façon CapCut) : projets de montage — port direct de
@@ -22,6 +35,11 @@ import { VoixClientError, VoixService } from '../voix/voix.service';
  */
 
 const TYPES_PISTE = new Set(['texte', 'soustitres', 'image', 'video', 'audio']);
+// Même liste que TRANSITIONS de backend/remotion/src/montage/schema.js (hors « aucune »).
+const TRANSITIONS_CONNUES = new Set([
+  'fondu', 'glisser', 'zoom', 'volet', 'noir',
+  'pousser', 'panoramique', 'zoomflou', 'flash', 'glitch', 'iris', 'horloge', 'floufondu',
+]);
 const TYPES_ELEMENT = new Set(['texte', 'soustitre', 'image', 'video', 'audio']);
 const MAX_ELEMENTS = 300;
 const MAX_DUREE_S = 600.0;
@@ -187,9 +205,20 @@ export function normaliser(projetIn: unknown): Projet {
     }
     if (['video', 'image'].includes(t) && e.transition && typeof e.transition === 'object') {
       const tr = e.transition as Record<string, unknown>;
-      if (['fondu', 'glisser', 'zoom', 'volet', 'noir'].includes(String(tr.type))) {
+      if (TRANSITIONS_CONNUES.has(String(tr.type))) {
         el.transition = { type: String(tr.type), duree: nombre(tr.duree, 0.5, 0.1, 2) };
       }
+    }
+    // Fondu d'entrée / de sortie (image et son) et miroir d'un plan visuel.
+    if (['video', 'image'].includes(t) && e.fondu && typeof e.fondu === 'object') {
+      const fd = e.fondu as Record<string, unknown>;
+      const entree = Math.round(nombre(fd.entree, 0, 0, 5) * 100) / 100;
+      const sortie = Math.round(nombre(fd.sortie, 0, 0, 5) * 100) / 100;
+      if (entree || sortie) el.fondu = { entree, sortie };
+    }
+    if (['video', 'image'].includes(t) && e.miroir && typeof e.miroir === 'object') {
+      const mi = e.miroir as Record<string, unknown>;
+      if (mi.h || mi.v) el.miroir = { h: Boolean(mi.h), v: Boolean(mi.v) };
     }
     if (['texte', 'soustitre'].includes(t)) el.texte = String(e.texte || '').slice(0, 600);
     if (t === 'soustitre' && Array.isArray(e.mots)) {
@@ -683,6 +712,62 @@ export class EditeurService {
       await this.quotaService.refund(q);
       this.logger.error(`editeur voix off: ${e instanceof Error ? e.message : e}`);
       return { error: 'Échec de la génération de la voix.' };
+    }
+  }
+
+  /**
+   * « Améliorer la voix » d'un plan vidéo ou audio : débruitage, dé-essage, compression et
+   * niveau des réseaux, dosés par un seul curseur (voix-nette.util.ts). L'image est recopiée
+   * sans réencodage ; le fichier retraité remplace la source du plan, à la même place (le
+   * décalage dans la source ne change pas). L'original reste en ligne : « Annuler » y revient.
+   */
+  async ameliorerVoix(telegramId: string, montageId: string, elementId: string, force = 60, niveau = true) {
+    const m = await this.lire(telegramId, montageId);
+    if (!m) return { error: 'Montage introuvable.' };
+    const projet = normaliser(m.projet);
+    const el = projet.elements.find((e) => e.id === elementId);
+    if (!el || !['video', 'audio'].includes(el.type) || !el.src) return { error: 'Choisis un plan vidéo ou audio.' };
+    const video = el.type === 'video';
+    const base = path.join(os.tmpdir(), `voix_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`);
+    const entree = `${base}_in`;
+    const sortie = `${base}_out.${video ? 'mp4' : 'm4a'}`;
+    let jeton = false;
+    try {
+      const r = await fetch(el.src);
+      if (!r.ok) return { error: 'Source du plan inaccessible.' };
+      const data = Buffer.from(await r.arrayBuffer());
+      if (data.length > MAX_SOURCE_VOIX_MO * 1024 * 1024) return { error: `Plan trop lourd (max ${MAX_SOURCE_VOIX_MO} Mo).` };
+      await fs.promises.writeFile(entree, data);
+      try {
+        await FILE_VOIX.acquire(3 * 60_000);
+        jeton = true;
+      } catch {
+        return { error: 'Beaucoup de traitements en cours. Réessaie dans une minute.' };
+      }
+      try {
+        await execFileP('ffmpeg', argumentsVoix(entree, sortie, video, force, niveau), { timeout: 10 * 60_000, maxBuffer: 8 * 1024 * 1024 });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.logger.warn(`editeur voix ${montageId}/${elementId}: ${msg.slice(0, 300)}`);
+        if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { error: 'Traitement audio indisponible sur le serveur.' };
+        if (/does not contain any stream|matches no streams|0:a:0/i.test(msg)) return { error: "Ce plan n'a pas de son à nettoyer." };
+        return { error: 'Nettoyage de la voix impossible pour ce fichier.' };
+      }
+      const up = await envoyerGrosFichier(sortie, {
+        resource_type: 'video',
+        folder: `editeur-voix/${telegramId}`,
+        public_id: crypto.randomBytes(6).toString('hex'),
+      });
+      el.src = up.secure_url;
+      const m2 = await this.maj(montageId, { projet });
+      return { projet: m2.projet || projet, element_id: elementId };
+    } catch (e) {
+      this.logger.error(`editeur voix ${montageId}: ${e instanceof Error ? e.message : e}`);
+      return { error: 'Nettoyage de la voix impossible.' };
+    } finally {
+      if (jeton) FILE_VOIX.release();
+      fs.unlink(entree, () => undefined);
+      fs.unlink(sortie, () => undefined);
     }
   }
 
