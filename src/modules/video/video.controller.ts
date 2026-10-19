@@ -27,6 +27,7 @@ import { VideoImportDto } from './dto/video-import.dto';
 import { VideoRerenderDto } from './dto/video-rerender.dto';
 import { MontagePocService, PRESETS } from './montage-poc.service';
 import { VideoService } from './video.service';
+import { DescriptionVideoService } from './description-video.service';
 import { VideoTropLongue } from '../transcodage/transcodage.service';
 
 type AuthedRequest = Request & { user: JwtPayload };
@@ -43,6 +44,7 @@ export class VideoController {
     private readonly videoService: VideoService,
     private readonly montagePoc: MontagePocService,
     private readonly quotaService: QuotaService,
+    private readonly descriptionVideo: DescriptionVideoService,
   ) {}
 
   /** Presets de sous-titres (fixes, Studio Montage) + bibliothèque de sons. */
@@ -150,6 +152,23 @@ export class VideoController {
       if (msg.startsWith('conflict:')) throw new HttpException(msg.slice('conflict:'.length), HttpStatus.CONFLICT);
       if (msg.includes('pas été montée')) throw new BadRequestException(msg);
       throw new HttpException(msg || "Le re-rendu n'a pas pu démarrer.", HttpStatus.BAD_GATEWAY);
+    }
+  }
+
+  /** « Générer la description » d'une vidéo montée (le texte publié avec elle). Renvoie le
+   * texte sans l'enregistrer : le client le relit dans Contenus. Abonnement requis, sans quota. */
+  @Post(':contenuId/description')
+  async description(@Param('contenuId') contenuId: string, @Req() req: AuthedRequest) {
+    await this.quotaService.exigerAbonnement(req.user.telegram_id);
+    try {
+      return await this.descriptionVideo.generer(req.user.telegram_id, contenuId);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === 'not_found') throw new NotFoundException('Contenu introuvable');
+      if (msg === 'pas_de_video') throw new BadRequestException("Cette vidéo n'est pas encore prête.");
+      if (msg === 'rien_a_decrire') throw new BadRequestException('Aucune parole ni texte dans la vidéo : écris la description à la main.');
+      this.logger.error(`description vidéo ${contenuId}: ${msg}`);
+      throw new InternalServerErrorException("La description n'a pas pu être générée. Réessaie.");
     }
   }
 

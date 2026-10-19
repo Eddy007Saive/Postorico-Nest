@@ -205,6 +205,11 @@ export class LateService implements OnApplicationBootstrap {
       const u = contenu[cle] as string | undefined;
       if (u && u.includes('res.cloudinary.com') && u.includes('/image/upload/'))
         return this.jpg(u);
+      // Vignette posée par le rendu (frame JPEG extraite de la vidéo, à l'instant choisi par
+      // « Couverture ici » dans l'éditeur). Avant, seule une /image/upload/ passait : la
+      // couverture choisie était ignorée au profit de la frame à 3 s.
+      if (u && u.includes('res.cloudinary.com') && u.includes('/video/upload/') && /\.jpe?g$/i.test(u))
+        return u;
     }
     const v = (contenu.video_url as string) || '';
     if (v.includes('res.cloudinary.com') && v.includes('/video/upload/')) {
