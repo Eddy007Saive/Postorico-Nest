@@ -42,6 +42,7 @@ import { RedigerPhotoDto } from './dto/rediger-photo.dto';
 import { RedigerDto } from './dto/rediger.dto';
 import { EnregistrerDto } from './dto/enregistrer.dto';
 import { CreateTemplateDto } from './dto/create-template.dto';
+import { UpdateTemplateDto } from './dto/update-template.dto';
 import { PutDraftsDto } from './dto/put-drafts.dto';
 import { PostsService, MODELE_REDACTION } from './posts.service';
 
@@ -417,6 +418,26 @@ export class PostsController {
       this.logger.error(`Create template error: ${e instanceof Error ? e.message : e}`);
       throw new InternalServerErrorException(e instanceof Error ? e.message : String(e));
     }
+  }
+
+  /** Modifie le nom ou la note d'utilisation d'un template (avant : création et suppression seulement,
+   * la note ne se corrigeait plus une fois le template créé). */
+  @Patch('templates/:id')
+  async updateTemplate(@Param('id') id: string, @Body() dto: UpdateTemplateDto, @Req() req: AuthedRequest) {
+    const data: { nom?: string; note?: string | null } = {};
+    if (dto.nom !== undefined) {
+      const nom = dto.nom.trim();
+      if (!nom) throw new BadRequestException('Nom requis');
+      data.nom = nom.slice(0, 80);
+    }
+    if (dto.note !== undefined) data.note = dto.note.trim() || null;
+    if (!Object.keys(data).length) throw new BadRequestException('Rien à modifier');
+    const r = await this.prisma.brand_templates.updateMany({ where: { id, telegram_id: req.user.telegram_id }, data });
+    if (!r.count) throw new NotFoundException('Template introuvable');
+    return this.prisma.brand_templates.findFirst({
+      where: { id, telegram_id: req.user.telegram_id },
+      select: { id: true, nom: true, images: true, note: true, created_at: true },
+    });
   }
 
   @Delete('templates/:id')
