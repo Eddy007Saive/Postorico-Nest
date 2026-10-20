@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   HttpException,
   HttpStatus,
   Logger,
@@ -27,6 +28,9 @@ import { OnboardingService } from './onboarding.service';
 import { SubmitAuditDto } from './dto/submit-audit.dto';
 import { ReplyAuditDto } from './dto/reply-audit.dto';
 import { SetAuditStatusDto } from './dto/set-audit-status.dto';
+import { AnalyserSiteDto } from './dto/analyser-site.dto';
+import { AdresseRefusee, SiteIllisible, SiteService } from '../site/site.service';
+import { cleDomaine, GardeAnalyseSite } from './analyse-site.garde';
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 Mo par fichier
 const UPLOAD_MAX = 20; // max 20 uploads
@@ -43,6 +47,8 @@ export class OnboardingController {
     private readonly mailService: MailService,
     private readonly rateLimit: RateLimitService,
     private readonly config: ConfigService,
+    private readonly siteService: SiteService,
+    private readonly garde: GardeAnalyseSite,
   ) {}
 
   /** Upload public (logo / image) pour le formulaire d'audit. Limité en taille et en débit. */
@@ -77,6 +83,65 @@ export class OnboardingController {
     } catch (e) {
       this.logger.error(`Onboarding upload error: ${e instanceof Error ? e.message : e}`);
       throw new HttpException("Échec de l'upload.", HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  /** « On part de ton site » : lit le site du prospect et pré-remplit le questionnaire.
+   * Public, et chaque analyse réelle coûte un appel Claude et fait partir des requêtes de
+   * NOTRE serveur : Turnstile, puis les garde-fous de GardeAnalyseSite (cache 7 j par
+   * domaine, 1 analyse / IP / 24 h, plafond global / jour). Rien n'est enregistré ici. */
+  @Post('analyser-site')
+  @HttpCode(HttpStatus.OK)
+  async analyserSite(@Body() body: AnalyserSiteDto, @Req() req: Request) {
+    const ip = clientIp(req);
+    const url = (body.url || '').trim();
+    if (!url) throw new BadRequestException("Indique l'adresse de ton site.");
+    const dom = cleDomaine(url);
+    if (!dom) throw new BadRequestException('Adresse invalide.');
+
+    const token = body.cf_turnstile_token || body.turnstile_token || '';
+    if (!(await this.turnstileService.verify(token, ip))) {
+      throw new HttpException('Vérification anti-bot échouée. Recharge la page et réessaie.', HttpStatus.FORBIDDEN);
+    }
+
+    // Même IP, même domaine, déjà en cache : rechargement de page, gratuit et non compté.
+    const enCache = this.garde.lireCache(dom);
+    if (enCache && this.garde.dejaAnalyse(ip, dom)) return enCache;
+    if (!this.garde.dejaAnalyse(ip, dom) && this.garde.ipEpuisee(ip)) {
+      throw new HttpException(
+        'Tu as déjà analysé un site : continue le questionnaire, tes réponses sont gardées.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    if (enCache) {
+      this.garde.compterIp(ip, dom); // servi sans coût, mais c'est l'analyse de cette IP
+      return enCache;
+    }
+    if (this.garde.plafondAtteint()) {
+      throw new HttpException(
+        "L'analyse automatique est très demandée aujourd'hui : remplis le questionnaire à la main, ça va vite.",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+
+    // Réservé AVANT l'analyse (deux requêtes simultanées ne passent pas toutes les deux),
+    // rendu si le site n'a pas pu être lu : aucun appel Claude n'a eu lieu dans ce cas.
+    this.garde.compterIp(ip, dom);
+    this.garde.compterJour();
+    try {
+      const r = await this.siteService.preRemplir(url); // r.cout : journalisé par le service
+      const resultat = { url: r.url, champs: r.champs, pages_lues: r.pages_lues };
+      this.garde.mettreEnCache(dom, resultat);
+      return resultat;
+    } catch (e) {
+      this.garde.libererIp(ip, dom);
+      this.garde.libererJour();
+      if (e instanceof AdresseRefusee) throw new BadRequestException(e.message);
+      if (e instanceof SiteIllisible) {
+        throw new HttpException(`Impossible de lire ce site : ${e.message}`, HttpStatus.UNPROCESSABLE_ENTITY);
+      }
+      this.logger.error(`Analyse de site error: ${e instanceof Error ? e.message : e}`);
+      throw new HttpException('Analyse du site impossible pour le moment.', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 

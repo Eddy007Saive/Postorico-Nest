@@ -101,6 +101,11 @@ export default registerAs('app', () => {
   firebaseServiceAccount: process.env.FIREBASE_SERVICE_ACCOUNT || '',
   // Cloudflare Turnstile (anti-bot, formulaire public /audit-marque) — voir modules/turnstile.
   turnstileSecretKey: process.env.TURNSTILE_SECRET_KEY || '',
+  // Analyse de site de l'onboarding public (POST onboarding/analyser-site) — garde-fous de coût :
+  // plafond global d'analyses réelles par jour (Europe/Paris), et N analyses par IP sur une fenêtre.
+  onboardingAnalysesMaxJour: parseInt(process.env.ONBOARDING_ANALYSES_MAX_JOUR || '100', 10) || 100,
+  onboardingAnalysesParIp: parseInt(process.env.ONBOARDING_ANALYSES_PAR_IP || '1', 10) || 1,
+  onboardingFenetreIpH: parseInt(process.env.ONBOARDING_FENETRE_IP_H || '24', 10) || 24,
   // Newsletter hebdomadaire « La lettre de Rico » — voir modules/newsletter.
   // NEWSLETTER_CRON_ACTIVE=0 sur le backend dev (sinon dev et prod préparent/envoient chacun leur édition).
   newsletterCronActive: (process.env.NEWSLETTER_CRON_ACTIVE || '1') !== '0',

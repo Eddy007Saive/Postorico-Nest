@@ -21,6 +21,21 @@ describe('TurnstileService', () => {
     await expect(service.verify('un-token')).resolves.toBe(true);
   });
 
+  it('mode test (clé absente ou clé de test Cloudflare) : avertit au démarrage', () => {
+    for (const cle of [undefined, '', TurnstileService.CLE_TEST]) {
+      const service = makeService(cle);
+      const warn = jest.spyOn((service as unknown as { logger: { warn: () => void } }).logger, 'warn').mockImplementation();
+      expect(service.enModeTest).toBe(true);
+      service.onModuleInit();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('MODE TEST'));
+    }
+    const vraie = makeService('0x4AAAAAAA-vraie-cle');
+    const warn = jest.spyOn((vraie as unknown as { logger: { warn: () => void } }).logger, 'warn').mockImplementation();
+    vraie.onModuleInit();
+    expect(vraie.enModeTest).toBe(false);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   it('rejette un token vide quand un secret est configuré', async () => {
     const service = makeService('secret-key');
     await expect(service.verify('')).resolves.toBe(false);

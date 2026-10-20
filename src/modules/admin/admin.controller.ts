@@ -5,6 +5,7 @@ import {
   Delete,
   Get,
   Header,
+  HttpCode,
   HttpException,
   HttpStatus,
   InternalServerErrorException,
@@ -15,7 +16,6 @@ import {
   Post,
   Query,
   Req,
-  ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
@@ -31,6 +31,7 @@ import { MarqueService } from '../marque/marque.service';
 import { QuotaService } from '../quota/quota.service';
 import { SocialService } from '../social/social.service';
 import { UsersService } from '../users/users.service';
+import { SiteIllisible, SiteService } from '../site/site.service';
 import { AdminService } from './admin.service';
 import { AvatarUpdateDto } from './dto/avatar-update.dto';
 import { CarrouselTemplateImportDto } from './dto/carrousel-template-import.dto';
@@ -44,9 +45,9 @@ type AuthedRequest = Request & { user: JwtPayload };
 
 /** Port direct de backend/routes/admin.py.
  *
- * Stub documenté (dépendance pas encore portée) : `/analyser-site` (site_service).
+ * `/analyser-site` passe par SiteService (lecture du site + fiche proposée par Claude).
  * `/appliquer-marque` pose bien les champs de marque ; seule la reprise du logo depuis
- * le site est un stub. */
+ * le site est encore un stub. */
 @Controller('admin')
 @UseGuards(AdminGuard)
 export class AdminController {
@@ -64,6 +65,7 @@ export class AdminController {
     private readonly analyticsService: AnalyticsService,
     private readonly promoService: PromoService,
     private readonly prisma: PrismaService,
+    private readonly siteService: SiteService,
   ) {}
 
   @Get('users')
@@ -371,11 +373,22 @@ export class AdminController {
     }
   }
 
-  /** TODO (site_service pas porté) : lirait le site d'un prospect/client et proposerait sa
-   * fiche de marque. Domaine séparé (analyse de site web), pas encore porté. */
+  /** Lit le site d'un prospect ou d'un client et propose sa fiche de marque — port de
+   * POST /admin/analyser-site (backend/routes/admin.py). Rien n'est écrit : la fiche est
+   * renvoyée pour relecture, c'est `appliquer-marque` qui la pose sur un compte. Les
+   * erreurs portent `detail` (lu par adminFetch côté front) en plus de `message`. */
   @Post('analyser-site')
-  analyserSiteAdmin() {
-    throw new ServiceUnavailableException('Analyse du site indisponible pour le moment (fonctionnalité en cours de portage).');
+  @HttpCode(HttpStatus.OK)
+  async analyserSiteAdmin(@Body() body: { url?: string; langue?: string }) {
+    const erreur = (status: number, detail: string) =>
+      new HttpException({ statusCode: status, message: detail, detail }, status);
+    try {
+      return await this.siteService.ficheMarque(String(body?.url || ''), String(body?.langue || 'fr'));
+    } catch (e) {
+      if (e instanceof SiteIllisible) throw erreur(HttpStatus.BAD_REQUEST, e.message);
+      this.logger.error(`analyse de site (admin): ${e instanceof Error ? e.message : e}`);
+      throw erreur(HttpStatus.BAD_GATEWAY, 'Analyse du site impossible pour le moment.');
+    }
   }
 
   /** Pose sur le compte du client la fiche déduite de son site. Le logo suit un autre

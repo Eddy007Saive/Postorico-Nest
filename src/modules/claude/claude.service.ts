@@ -37,15 +37,18 @@ export class ClaudeService {
   }
 
   /** Appel LLM centralisé : retry sur surcharge/limite (529/429/5xx) + message propre.
-   * Ne laisse jamais remonter l'erreur brute du fournisseur (anti-fuite). */
+   * Ne laisse jamais remonter l'erreur brute du fournisseur (anti-fuite).
+   * `essais` : 4 par défaut ; 1 pour un appel public dont on borne le coût (pas de nouvel essai). */
   async messagesCreate(
     params: Anthropic.Messages.MessageCreateParamsNonStreaming,
+    options: { essais?: number } = {},
   ): Promise<Anthropic.Messages.Message> {
+    const essais = Math.max(1, options.essais ?? 4);
     if (!this.client) {
       throw new GenerationError('Le service de génération est momentanément surchargé. Réessaie dans quelques secondes.');
     }
     let last: unknown;
-    for (let attempt = 0; attempt < 4; attempt++) {
+    for (let attempt = 0; attempt < essais; attempt++) {
       try {
         return await this.client.messages.create(params);
       } catch (e) {
@@ -57,7 +60,7 @@ export class ClaudeService {
           msg.includes('overloaded') ||
           msg.includes('rate') ||
           e instanceof Anthropic.APIConnectionError;
-        if (!retryable || attempt === 3) break;
+        if (!retryable || attempt === essais - 1) break;
         await sleep(800 * 2 ** attempt); // 0.8s, 1.6s, 3.2s
       }
     }

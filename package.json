@@ -37,6 +37,7 @@
     "cloudinary": "^2.11.0",
     "ipaddr.js": "^2.5.0",
     "jsonwebtoken": "^9.0.3",
+    "node-html-parser": "9.0.4",
     "openai": "^4.104.0",
     "pdf-lib": "^1.17.1",
     "playwright": "^1.63.0",

@@ -8,6 +8,7 @@ import { MarqueModule } from '../marque/marque.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PromoModule } from '../promo/promo.module';
 import { QuotaModule } from '../quota/quota.module';
+import { SiteModule } from '../site/site.module';
 import { SocialModule } from '../social/social.module';
 import { UsersModule } from '../users/users.module';
 import { AdminController } from './admin.controller';
@@ -26,6 +27,7 @@ import { AdminService } from './admin.service';
     NotificationsModule,
     AnalyticsModule,
     PromoModule,
+    SiteModule,
   ],
   controllers: [AdminController],
   providers: [AdminService],

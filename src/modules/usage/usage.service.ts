@@ -38,8 +38,9 @@ export class UsageService {
     return (inp / 1e6) * p.in + (cw / 1e6) * p.in * 1.25 + (cr / 1e6) * p.in * 0.1 + (out / 1e6) * p.out;
   }
 
+  /** `telegramId` null : appel d'un visiteur anonyme (ex. analyse de site de l'onboarding public). */
   async log(
-    telegramId: string,
+    telegramId: string | null,
     action: string,
     model: string,
     usage: LlmUsage | undefined,
@@ -53,7 +54,7 @@ export class UsageService {
       const cost = costOverride ?? this.coutReel(model, u);
       await this.prisma.usage_log.create({
         data: {
-          telegram_id: telegramId,
+          telegram_id: telegramId || null,
           action,
           model,
           qualite: qualite ?? null,
