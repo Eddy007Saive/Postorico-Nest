@@ -11,7 +11,7 @@ const contenuBase = {
   reel_data: null,
 };
 
-function monter(opts: { contenu?: Record<string, unknown> | null; montage?: Record<string, unknown> | null; source?: string; transcript?: string[]; whisper?: string[] }) {
+function monter(opts: { contenu?: Record<string, unknown> | null; montage?: Record<string, unknown> | null; source?: string; transcript?: string[]; whisper?: string[]; travail?: Record<string, unknown> | null }) {
   const prompts: string[] = [];
   const prisma = {
     contenu: {
@@ -22,6 +22,7 @@ function monter(opts: { contenu?: Record<string, unknown> | null; montage?: Reco
       }),
     },
     montages: { findFirst: jest.fn(async () => opts.montage ?? null) },
+    travaux_agent_video: { findFirst: jest.fn(async () => opts.travail ?? null) },
   };
   const claude = {
     messagesCreate: jest.fn(async (p: { messages: Array<{ content: string }> }) => {
@@ -85,6 +86,21 @@ describe('DescriptionVideoService', () => {
   it('refuse une vidéo pas encore prête et un contenu inconnu', async () => {
     await expect(monter({ contenu: { ...contenuBase, video_url: null } }).svc.generer('u1', 'c1')).rejects.toThrow('pas_de_video');
     await expect(monter({ contenu: null }).svc.generer('u1', 'c1')).rejects.toThrow('not_found');
+  });
+
+  it("vidéo animée de l'agent : le texte exact de la voix off, sans écouter la vidéo", async () => {
+    const { svc, prompts, montagePoc } = monter({ travail: { brief: { mode: 'motion', script: "Le message que tu n'envoies pas." } } });
+    await svc.generer('u1', 'c1');
+    expect(prompts[0]).toContain("Le message que tu n'envoies pas.");
+    expect(montagePoc.transcrireUrl).not.toHaveBeenCalled();
+  });
+
+  it("montage face caméra de l'agent : écoute la vidéo finale", async () => {
+    const { svc, prompts, montagePoc } = monter({ travail: { brief: { mode: 'video', consignes: 'reel nerveux' } }, whisper: ['salut', 'à', 'tous'] });
+    await svc.generer('u1', 'c1');
+    expect(montagePoc.transcrireUrl).toHaveBeenCalledTimes(1);
+    expect(prompts[0]).toContain('salut à tous');
+    expect(prompts[0]).not.toContain('reel nerveux');
   });
 
   it('signale une vidéo sans parole ni texte ni titre', async () => {

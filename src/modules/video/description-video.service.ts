@@ -112,6 +112,26 @@ export class DescriptionVideoService {
       }
     }
 
+    // Montage par l'agent IA : le texte exact de la voix off (vidéo animée), sinon ce que dit la
+    // vidéo finale (face caméra : les rushs ont été coupés, seule la vidéo finale fait foi).
+    const travail = await this.prisma.travaux_agent_video.findFirst({
+      where: { contenu_id: c.id, telegram_id: telegramId },
+      orderBy: { created_at: 'desc' },
+      select: { brief: true },
+    });
+    if (travail) {
+      const brief = (travail.brief || {}) as { mode?: string; script?: string };
+      if (brief.mode === 'motion' && brief.script?.trim()) {
+        morceaux.push(`Voice-over (exact words):
+${brief.script.trim()}`);
+      } else if (c.video_url) {
+        const r = await this.montagePoc.transcrireUrl(c.video_url, 150);
+        const t = (r.words || []).map((w) => String(w.text || '').trim()).filter(Boolean).join(' ');
+        if (t) morceaux.push(`Spoken words:
+${t}`);
+      }
+    }
+
     // Studio Reel : textes des plans ; montage par l'IA : son résumé.
     const segments = (rd.segments as Array<{ texte?: string }> | undefined) || [];
     const txtSeg = segments.map((s) => String(s.texte || '').trim()).filter(Boolean).join('\n');

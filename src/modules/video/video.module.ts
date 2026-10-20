@@ -16,6 +16,6 @@ import { DescriptionVideoService } from './description-video.service';
   imports: [PrismaModule, AuthModule, QuotaModule, MusicLibraryModule, ContenuEvenementModule, TranscodageModule, ClaudeModule, MarqueModule],
   controllers: [VideoController],
   providers: [VideoService, MontagePocService, DescriptionVideoService],
-  exports: [VideoService, MontagePocService],
+  exports: [VideoService, MontagePocService, DescriptionVideoService],
 })
 export class VideoModule {}

@@ -1,5 +1,5 @@
 import { langueCode } from '../../common/utils/textes-fixes.util';
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
 import { createWriteStream } from 'node:fs';
@@ -21,6 +21,7 @@ import { PlanningService } from '../planning/planning.service';
 import { QuotaService } from '../quota/quota.service';
 import { UsageService } from '../usage/usage.service';
 import { MontagePocService } from '../video/montage-poc.service';
+import { DescriptionVideoService } from '../video/description-video.service';
 import { ClaudeService } from '../claude/claude.service';
 import { MusicLibraryService } from '../music/music-library.service';
 import { VoixService } from '../voix/voix.service';
@@ -211,6 +212,21 @@ export class AgentVideoService implements OnApplicationBootstrap {
   private suiviEnCours = false;
   private readonly recuperations = new Set<string>();
 
+  /** Rédige la description d'une vidéo que l'agent vient de monter, si le texte du post est
+   * encore vide (une correction ne remplace pas un texte déjà écrit ou retouché par le client).
+   * Best-effort : un échec laisse le texte vide, Contenus propose alors « Générer la description ». */
+  private async decrireApresMontage(telegramId: string, contenuId: string): Promise<void> {
+    if (!this.descriptionVideo) return;
+    try {
+      const c = await this.prisma.contenu.findUnique({ where: { id: contenuId }, select: { contenu: true } });
+      if (!c || (c.contenu || '').trim()) return;
+      const { texte } = await this.descriptionVideo.generer(telegramId, contenuId);
+      await this.prisma.contenu.update({ where: { id: contenuId }, data: { contenu: texte } });
+    } catch (e) {
+      this.logger.warn(`description après montage ${contenuId}: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly quota: QuotaService,
@@ -223,6 +239,7 @@ export class AgentVideoService implements OnApplicationBootstrap {
     private readonly musiques: MusicLibraryService,
     private readonly voix: VoixService,
     config: ConfigService,
+    @Optional() private readonly descriptionVideo?: DescriptionVideoService,
   ) {
     this.url = (config.get<string>('app.agentVideoUrl') || '').replace(
       /\/+$/,
@@ -368,7 +385,9 @@ export class AgentVideoService implements OnApplicationBootstrap {
             0,
             60,
           ),
-          contenu: (motion ? script : consignes) || null,
+          // Le texte publié n'est ni le script ni les consignes de montage : la description est
+          // rédigée d'après la vidéo à la fin du montage (voir decrireApresMontage).
+          contenu: null,
           type: normTypeContenu('Reel'),
           reseau_cible: reseau,
           statut: normStatutContenu('A valider'),
@@ -1016,6 +1035,7 @@ export class AgentVideoService implements OnApplicationBootstrap {
             } as never,
           },
         });
+        await this.decrireApresMontage(t.telegram_id, t.contenu_id);
         await this.notifications.notifierCle(
           t.telegram_id,
           t.contenu_id,
