@@ -30,6 +30,7 @@ import { RateLimitService } from '../../common/utils/rate-limit.service';
 import { VoixClientError, VoixService } from '../voix/voix.service';
 import { DecoupageMusiqueDto } from './dto/decoupage-musique.dto';
 import { MiniatureRequestDto } from './dto/miniature-request.dto';
+import { MiniatureSujetDto } from './dto/miniature-sujet.dto';
 import { ReelCreerDto } from './dto/reel-creer.dto';
 import { ReelGenererDto } from './dto/reel-generer.dto';
 import { ReelImageGenDto } from './dto/reel-image-gen.dto';
@@ -417,6 +418,26 @@ export class ReelController {
   @Get('miniature/gabarits')
   miniatureGabarits() {
     return { gabarits: this.miniatureService.gabarits(), styles: this.miniatureService.styles(), polices: this.miniatureService.polices() };
+  }
+
+  /** Génère un sujet (mascotte, personnage, objet) décrit par le client, rangé dans sa banque
+   * et marqué « à intégrer » : il devient choisissable dans l'onglet Sujet. Une image du quota. */
+  @Post('miniature/sujet')
+  async miniatureSujet(@Body() body: MiniatureSujetDto, @Req() req: AuthedRequest) {
+    const telegramId = requireTelegramId(req);
+    await this.quotaService.exigerAbonnement(telegramId);
+    const modele = body.modele && body.modele in IMAGE_MODELS ? body.modele : 'nano2';
+    const q = await this.quotaService.consume(telegramId, imageAction(modele));
+    if (!q.ok) throw quotaHttpException(q);
+    try {
+      const url = await this.miniatureService.genererSujet(telegramId, body.description, body.style || 'photo', modele);
+      await this.quotaService.confirm(q);
+      return { url };
+    } catch (e) {
+      await this.quotaService.refund(q);
+      this.logger.error(`miniature sujet: ${e instanceof Error ? e.message : e}`);
+      throw new HttpException("Échec de la génération de l'image. Réessaie.", HttpStatus.BAD_GATEWAY);
+    }
   }
 
   @Post(':contenuId/miniature/textes')

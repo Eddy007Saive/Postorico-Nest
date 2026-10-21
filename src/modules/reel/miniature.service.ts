@@ -416,6 +416,46 @@ export class MiniatureService {
     return res.lien_visuel;
   }
 
+  /**
+   * Génère un sujet réutilisable (mascotte, personnage, objet) décrit par le client et le
+   * range directement dans sa banque d'images, marqué « à intégrer tel quel » : il devient
+   * choisissable dans l'onglet Sujet de la miniature (et sert de référence ailleurs).
+   * Fond uni et sujet entier, pour qu'il se laisse ensuite intégrer dans n'importe quelle scène.
+   */
+  async genererSujet(telegramId: string, description: string, style = 'photo', modele = 'nano2'): Promise<string> {
+    const st = STYLES[style] || STYLES.photo;
+    const prompt =
+      `${description.trim()}\n\n` +
+      'One single subject, centred, seen entirely (head to toe for a character, the whole object otherwise), ' +
+      'on a plain uniform light-grey studio background, soft even light, crisp details, clear silhouette. ' +
+      'It will be reused as a reference character or object in video thumbnails, so keep it simple and recognisable. ' +
+      `STYLE: ${st.texte} ABSOLUTELY NO TEXT, NO LETTERS, NO LOGOS, NO WATERMARK anywhere in the image.`;
+    const publicId = `inspirations/${telegramId}/sujet-${Math.floor(Date.now() / 1000)}`;
+    const res = await this.imageService.genererImage(
+      telegramId,
+      prompt,
+      false,
+      IMAGE_MODELS[modele] || IMAGE_MODELS.nano2,
+      null,
+      [], // pas de références de style du compte : le sujet doit suivre la description, pas les inspirations
+      null,
+      false,
+      '4:5',
+      undefined,
+      publicId,
+      !st.photo,
+      style in STYLES ? style : 'photo',
+    );
+    if ('error' in res) throw new Error(res.error);
+    // Rôle « intégrer » (même marqueur Cloudinary que dans Paramètres) : utilisé littéralement.
+    try {
+      await cloudinary.api.update(publicId, { resource_type: 'image', context: 'integrate=1|ecran=0' });
+    } catch (e) {
+      this.logger.warn(`sujet miniature : rôle « intégrer » non posé (${publicId}) : ${e instanceof Error ? e.message : e}`);
+    }
+    return res.lien_visuel;
+  }
+
   /** Compose le texte, dépose la miniature, en fait la couverture du reel. */
   async finaliser(
     telegramId: string,
