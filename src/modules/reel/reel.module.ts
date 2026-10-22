@@ -19,7 +19,9 @@ import { MontageService } from './montage.service';
 import { ReelController } from './reel.controller';
 import { ReelService } from './reel.service';
 import { StockVideoService } from './stock-video.service';
+import { MoteurBService } from './moteur-b.service';
 import { InspirationReelService } from './inspiration-reel.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -38,9 +40,10 @@ import { InspirationReelService } from './inspiration-reel.service';
     VoixModule,
     QuotaModule,
     DemarrageModule,
+    NotificationsModule,
   ],
   controllers: [ReelController],
-  providers: [MontageService, ReelService, MiniatureService, StockVideoService, InspirationReelService],
+  providers: [MontageService, ReelService, MiniatureService, StockVideoService, MoteurBService, InspirationReelService],
   exports: [MontageService, ReelService, MiniatureService],
 })
 export class ReelModule {}

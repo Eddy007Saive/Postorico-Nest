@@ -32,6 +32,8 @@ import { DecoupageMusiqueDto } from './dto/decoupage-musique.dto';
 import { MiniatureRequestDto } from './dto/miniature-request.dto';
 import { MiniatureSujetDto } from './dto/miniature-sujet.dto';
 import { MiniatureRetoucheDto } from './dto/miniature-retouche.dto';
+import { MoteurBDto } from './dto/moteur-b.dto';
+import { MoteurBService } from './moteur-b.service';
 import { InspirationScriptDto } from './dto/inspiration-script.dto';
 import { StockVideoService } from './stock-video.service';
 import { InspirationReelService, normaliserAnalyse } from './inspiration-reel.service';
@@ -67,6 +69,7 @@ export class ReelController {
   constructor(
     private readonly reelService: ReelService,
     private readonly miniatureService: MiniatureService,
+    private readonly moteurBService: MoteurBService,
     private readonly inspirationReelService: InspirationReelService,
     private readonly banqueService: BanqueService,
     private readonly musicLibraryService: MusicLibraryService,
@@ -494,6 +497,24 @@ export class ReelController {
     });
     if (!plan) throw new NotFoundException('Aucun autre plan trouvé pour ce passage.');
     return plan;
+  }
+
+  // ---------------------------------------------------------------- moteur B (test A/B)
+
+  /** Le moteur B est-il ouvert pour ce compte ? (l'interface n'affiche l'option que si oui) */
+  @Get('moteur-b')
+  moteurBStatut(@Req() req: AuthedRequest) {
+    return { actif: this.moteurBService.autorise(requireTelegramId(req)) };
+  }
+
+  /** Lance un reel par le moteur B (MoneyPrinterTurbo) ; suivi en arrière-plan. */
+  @Post('moteur-b')
+  async moteurBLancer(@Body() body: MoteurBDto, @Req() req: AuthedRequest) {
+    const telegramId = requireTelegramId(req);
+    await this.quotaService.exigerAbonnement(telegramId);
+    const res = await this.moteurBService.lancer(telegramId, { contenuId: body.contenu_id, brief: body.brief, reseau: body.reseau });
+    if ('error' in res) throw new HttpException(res.error, res.status || HttpStatus.BAD_REQUEST);
+    return res;
   }
 
   @Get('miniature/gabarits')

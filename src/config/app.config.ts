@@ -90,6 +90,11 @@ export default registerAs('app', () => {
   agentVideoUrl: process.env.AGENT_VIDEO_URL || '',
   agentVideoJeton: process.env.AGENT_VIDEO_JETON || '',
   agentVideoDureeMaxS: parseInt(process.env.AGENT_VIDEO_DUREE_MAX_S || '180', 10),
+  // Moteur B (test) : MoneyPrinterTurbo sur le VPS, derrière un proxy à clé. Réservé aux comptes
+  // listés (telegram_id séparés par des virgules). Sans adresse, clé ou compte : coupé.
+  moteurBUrl: (process.env.MOTEUR_B_URL || '').replace(/\/$/, ''),
+  moteurBCle: process.env.MOTEUR_B_CLE || '',
+  moteurBComptes: (process.env.MOTEUR_B_COMPTES || '').split(',').map((s) => s.trim()).filter(Boolean),
   remotionAttenteMaxS: parseInt(process.env.REMOTION_ATTENTE_MAX_S || '150', 10),
   elevenlabsApiKey: process.env.ELEVENLABS_API_KEY || '',
   // Studio Vidéo (montage IA) : service self-hosted "submagic-poc" (Railway séparé),
