@@ -18,6 +18,7 @@ import { MiniatureService } from './miniature.service';
 import { MontageService } from './montage.service';
 import { ReelController } from './reel.controller';
 import { ReelService } from './reel.service';
+import { StockVideoService } from './stock-video.service';
 
 @Module({
   imports: [
@@ -38,7 +39,7 @@ import { ReelService } from './reel.service';
     DemarrageModule,
   ],
   controllers: [ReelController],
-  providers: [MontageService, ReelService, MiniatureService],
+  providers: [MontageService, ReelService, MiniatureService, StockVideoService],
   exports: [MontageService, ReelService, MiniatureService],
 })
 export class ReelModule {}

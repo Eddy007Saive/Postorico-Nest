@@ -166,6 +166,7 @@ export class ReelController {
         musique: body.musique,
         voix,
         montageIa: body.montage_ia,
+        plansVideo: body.plans_video,
       });
     } catch (e) {
       await this.quotaService.refund(q);
@@ -200,6 +201,7 @@ export class ReelController {
         musique: body.musique,
         voix: body.voix,
         montageIa: body.montage_ia,
+        plansVideo: body.plans_video,
       });
     } catch (e) {
       await this.quotaService.refund(q);
@@ -240,6 +242,7 @@ export class ReelController {
         musique: body.musique,
         voix: body.voix !== undefined ? body.voix || 'none' : undefined,
         montageIa: body.montage_ia,
+        plansVideo: body.plans_video,
       });
     } catch (e) {
       await this.quotaService.refund(q);

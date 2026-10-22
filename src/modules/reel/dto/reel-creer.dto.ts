@@ -31,4 +31,9 @@ export class ReelCreerDto {
   @IsOptional()
   @IsBoolean()
   montage_ia?: boolean;
+
+  /** Plans vidéo réels (Pexels) pour les passages concrets ; absent = oui. */
+  @IsOptional()
+  @IsBoolean()
+  plans_video?: boolean;
 }

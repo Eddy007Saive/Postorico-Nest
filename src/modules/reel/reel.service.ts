@@ -15,6 +15,7 @@ import { RenderQueueService } from '../render-queue/render-queue.service';
 import { UsageService } from '../usage/usage.service';
 import { sansTiret } from '../../common/utils/texte-genere.util';
 import { MontageService, MontageSegment } from './montage.service';
+import { StockVideoService } from './stock-video.service';
 import { EFFETS, GUIDES_STYLE, LANGUES, VisuelPool, clipRenduSimple, estClip, estImageSource, estVisuel, imgRendu, morceau, pimenterReveals } from './reel-common.util';
 
 /**
@@ -222,6 +223,7 @@ export class ReelService {
     private readonly renderQueueService: RenderQueueService,
     private readonly planningService: PlanningService,
     private readonly imageService: ImageService,
+    private readonly stockVideoService: StockVideoService,
     config: ConfigService,
   ) {
     cloudinary.config({
@@ -829,7 +831,7 @@ export class ReelService {
   async creerReelLibre(
     telegramId: string,
     brief: string,
-    opts: { images?: ReelImageInput[] | null; reseau?: string; style?: string | null; musique?: string | null; voix?: string | null; montageIa?: boolean } = {},
+    opts: { images?: ReelImageInput[] | null; reseau?: string; style?: string | null; musique?: string | null; voix?: string | null; montageIa?: boolean; plansVideo?: boolean } = {},
   ): Promise<Record<string, unknown> | { error: string }> {
     if (!(brief || '').trim()) return { error: 'Décris ton reel : le brief est le sujet.' };
     const u = await this.marqueService.chargerMarque(telegramId);
@@ -840,7 +842,8 @@ export class ReelService {
       const pool = this.poolDepuisImages(imgs);
       scenario = await this.scenariser(brief, u, pool, { brief, imposees: true, style: st, avecVoix: Boolean(opts.voix), montageIa: opts.montageIa });
     } else {
-      scenario = await this.scenariser(brief, u, [], { brief, style: st, avecVoix: Boolean(opts.voix) });
+      const pool = opts.plansVideo !== false ? await this.stockVideoService.pool(brief, 3) : [];
+      scenario = await this.scenariser(brief, u, pool, { brief, style: st, avecVoix: Boolean(opts.voix) });
     }
     scenario.style = st;
     scenario.montage_ia = Boolean(opts.montageIa);
@@ -882,7 +885,7 @@ export class ReelService {
   async regenererReel(
     telegramId: string,
     reelId: string,
-    opts: { images?: ReelImageInput[] | null; brief?: string | null; style?: string | null; musique?: string | null; voix?: string | null; montageIa?: boolean | null } = {},
+    opts: { images?: ReelImageInput[] | null; brief?: string | null; style?: string | null; musique?: string | null; voix?: string | null; montageIa?: boolean | null; plansVideo?: boolean } = {},
   ): Promise<Record<string, unknown> | { error: string }> {
     const cur = await this.prisma.contenu.findFirst({ where: { id: reelId, telegram_id: telegramId } });
     if (!cur) return { error: 'Reel introuvable.' };
@@ -935,6 +938,8 @@ export class ReelService {
       scenario = await this.scenariser(texte, u, pool, { brief, imposees: true, style: st, avecVoix: Boolean(voix), montageIa, depuisScript });
     } else {
       const pool = await this.poolVisuels(telegramId, cur);
+      if (opts.plansVideo !== false) pool.push(...(await this.stockVideoService.pool(`${brief || ''}
+${texte}`, 3)));
       scenario = await this.scenariser(texte, u, pool, { brief, style: st, avecVoix: Boolean(voix), montageIa, depuisScript });
     }
     scenario.style = st;
@@ -1005,7 +1010,7 @@ export class ReelService {
   async genererReel(
     telegramId: string,
     contenuId: string,
-    opts: { template?: string; images?: ReelImageInput[] | null; brief?: string | null; style?: string | null; musique?: string | null; voix?: string | null; montageIa?: boolean } = {},
+    opts: { template?: string; images?: ReelImageInput[] | null; brief?: string | null; style?: string | null; musique?: string | null; voix?: string | null; montageIa?: boolean; plansVideo?: boolean } = {},
   ): Promise<Record<string, unknown> | { error: string }> {
     const template = opts.template || 'impact';
     if (!(template in TEMPLATES)) return { error: 'Template de reel inconnu.' };
@@ -1028,6 +1033,9 @@ export class ReelService {
         scenario = await this.scenariser(texte, u, pool, { brief: opts.brief, imposees: true, style: st, avecVoix: Boolean(opts.voix), montageIa: opts.montageIa, depuisScript });
       } else {
         const pool = await this.poolVisuels(telegramId, cur);
+        // Plans vidéo réels (Pexels) pour les passages concrets, sauf si le client les coupe.
+        if (opts.plansVideo !== false) pool.push(...(await this.stockVideoService.pool(`${opts.brief || ''}
+${texte}`, 3)));
         scenario = await this.scenariser(texte, u, pool, { brief: opts.brief, style: st, avecVoix: Boolean(opts.voix), montageIa: opts.montageIa, depuisScript });
       }
       scenario.style = st;
