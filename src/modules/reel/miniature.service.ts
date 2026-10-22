@@ -456,6 +456,90 @@ export class MiniatureService {
     return res.lien_visuel;
   }
 
+  /**
+   * Interprète une consigne libre du client sur une miniature déjà faite (« titre plus court »,
+   * « mets ça en jaune », « enlève la casquette ») et la répartit entre ce qui est gratuit et
+   * exact (les textes et la police, posés par nous par-dessus le fond) et ce qui demande l'IA
+   * d'image (une retouche du fond). Ne fait rien elle-même : le contrôleur applique le plan.
+   */
+  async planRetouche(
+    telegramId: string,
+    mini: Pick<Miniature, 'gabarit' | 'textes' | 'police'>,
+    instruction: string,
+  ): Promise<{ textes: MiniatureTextes; police: string; fond: string | null; reponse: string }> {
+    const u = await this.marqueService.chargerMarque(telegramId);
+    const langue = LANGUES[String(u.langue || 'fr').toLowerCase()] || 'French';
+    const g = PAR_ID.get(mini.gabarit) || GABARITS[0];
+    const champs = g.textes.filter((c) => c !== 'objet');
+    const actuels = Object.fromEntries(champs.map((c) => [c, mini.textes?.[c as keyof MiniatureTextes] || '']));
+    const policeActuelle = mini.police in POLICES ? mini.police : POLICE_DEFAUT[g.id] || 'impact';
+    const resp = await this.claude.messagesCreate({
+      model: 'claude-haiku-4-5',
+      max_tokens: 400,
+      system:
+        'You edit a video thumbnail for a small business owner. The thumbnail has two layers: ' +
+        'a BACKGROUND image made by an image AI, and TEXT we set on top (exact, editable for free). ' +
+        `Editable text fields: ${champs.join(', ')} (kicker: 1 to 3 words above the title; titre: 2 to 4 words, the promise; sous: 2 to 5 words). ` +
+        `Available title fonts: ${Object.keys(POLICES).join(', ')}. Texts are in ${langue.toUpperCase()}. ` +
+        'Read the request and return STRICT JSON: {"textes": {only the text fields to change, with their new value}, ' +
+        '"police": "a font id from the list if the request is about the lettering style, else null", ' +
+        '"fond": "if and only if the request needs the BACKGROUND image itself changed (people, objects, colours, light, scene), ' +
+        'a short precise edit instruction IN ENGLISH for the image AI, else null", ' +
+        `"reponse": "one short friendly sentence in ${langue.toUpperCase()}, addressing the user as tu if French, saying what you changed"}. ` +
+        'Text colours, size and placement are fixed by the template: if asked, say so in reponse and change nothing. ' +
+        'Never put text into the background instruction. No emoji, no quotes inside values.' +
+        this.marqueService.contexteMarqueCourt(u, { secteur: false, audience: false }),
+      messages: [{
+        role: 'user',
+        content: `Current texts: ${JSON.stringify(actuels)}\nCurrent font: ${policeActuelle}\n\nRequest from the user: ${instruction.slice(0, 500)}`,
+      }],
+    });
+    const raw = this.claude.texte(resp);
+    let d: Record<string, unknown> = {};
+    try {
+      const m = /\{[\s\S]*\}/.exec(raw);
+      d = JSON.parse(m ? m[0] : raw);
+    } catch {
+      d = {};
+    }
+    const nouveaux = (d.textes && typeof d.textes === 'object' ? d.textes : {}) as Record<string, unknown>;
+    const textes: MiniatureTextes = { ...(mini.textes || {}) };
+    for (const c of champs) {
+      if (typeof nouveaux[c] === 'string') textes[c as keyof MiniatureTextes] = String(nouveaux[c]).trim().slice(0, c === 'kicker' ? 30 : 50);
+    }
+    const police = typeof d.police === 'string' && d.police in POLICES ? d.police : policeActuelle;
+    const fond = typeof d.fond === 'string' && d.fond.trim() ? d.fond.trim().slice(0, 400) : null;
+    return { textes, police, fond, reponse: String(d.reponse || '').slice(0, 240) };
+  }
+
+  /** Retouche le fond d'une miniature (consigne en anglais), déposé à côté de l'ancien. */
+  async retoucherFond(telegramId: string, contenuId: string, fondUrl: string, consigne: string, ratio: string, modele = 'nano2'): Promise<string> {
+    const res = await this.imageService.editerImage(
+      telegramId,
+      fondUrl,
+      `${consigne} Keep the image free of any text, letters or logos.`,
+      IMAGE_MODELS[modele] || IMAGE_MODELS.nano2,
+      null,
+      `miniatures/${telegramId}/${contenuId}-fond-${Math.floor(Date.now() / 1000)}`,
+      ratio === '16:9' ? '16:9' : '9:16',
+    );
+    if ('error' in res) throw new Error(res.error);
+    return res.lien_visuel;
+  }
+
+  /** Supprime un ancien fond remplacé (sans bloquer : un échec laisse juste un fichier en trop).
+   * Limité au dossier des miniatures du compte, pour ne jamais toucher autre chose. */
+  async supprimerFond(telegramId: string, url: string): Promise<void> {
+    const m = /\/upload\/(?:[^/]+\/)*?(?:v\d+\/)?(miniatures\/[^.]+)\.[a-z0-9]+$/i.exec(url || '');
+    const publicId = m?.[1];
+    if (!publicId || !publicId.startsWith(`miniatures/${telegramId}/`)) return;
+    try {
+      await cloudinary.uploader.destroy(publicId, { resource_type: 'image', invalidate: true });
+    } catch (e) {
+      this.logger.warn(`ancien fond non supprimé (${publicId}) : ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
   /** Compose le texte, dépose la miniature, en fait la couverture du reel. */
   async finaliser(
     telegramId: string,

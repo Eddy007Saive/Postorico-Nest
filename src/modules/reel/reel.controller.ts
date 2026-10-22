@@ -31,6 +31,7 @@ import { VoixClientError, VoixService } from '../voix/voix.service';
 import { DecoupageMusiqueDto } from './dto/decoupage-musique.dto';
 import { MiniatureRequestDto } from './dto/miniature-request.dto';
 import { MiniatureSujetDto } from './dto/miniature-sujet.dto';
+import { MiniatureRetoucheDto } from './dto/miniature-retouche.dto';
 import { ReelCreerDto } from './dto/reel-creer.dto';
 import { ReelGenererDto } from './dto/reel-generer.dto';
 import { ReelImageGenDto } from './dto/reel-image-gen.dto';
@@ -39,7 +40,7 @@ import { ReelRegenererDto } from './dto/reel-regenerer.dto';
 import { ReelVoixDto } from './dto/reel-voix.dto';
 import { ReelVisuelsProposerDto } from './dto/reel-visuels-proposer.dto';
 import { VoixDefautDto } from './dto/voix-defaut.dto';
-import { MiniatureService } from './miniature.service';
+import { Miniature, MiniatureService } from './miniature.service';
 import { ReelService } from './reel.service';
 
 type AuthedRequest = Request & { user: JwtPayload };
@@ -527,6 +528,60 @@ export class ReelController {
     }
     await this.quotaService.confirm(q);
     return { miniature: mini };
+  }
+
+  /** Retouche d'une miniature déjà faite par une consigne libre. Textes et police : recomposés
+   * sur le même fond (gratuit, exact). Fond : retouché par l'IA d'image (une image du quota,
+   * remboursée en cas d'échec ; l'ancien fond est supprimé une fois le nouveau en place). */
+  @Post(':contenuId/miniature/retoucher')
+  async miniatureRetoucher(@Param('contenuId') contenuId: string, @Body() body: MiniatureRetoucheDto, @Req() req: AuthedRequest) {
+    const telegramId = requireTelegramId(req);
+    let c: Awaited<ReturnType<MiniatureService['contenu']>>;
+    try {
+      c = await this.miniatureService.contenu(telegramId, contenuId);
+    } catch (e) {
+      throw new NotFoundException(e instanceof Error ? e.message : String(e));
+    }
+    const ancienne = (c.reel_data as { miniature?: Miniature } | undefined)?.miniature;
+    if (!ancienne?.fond) throw new BadRequestException("Génère d'abord la miniature, puis retouche-la.");
+
+    let plan: Awaited<ReturnType<MiniatureService['planRetouche']>>;
+    try {
+      plan = await this.miniatureService.planRetouche(telegramId, ancienne, body.instruction);
+    } catch (e) {
+      this.logger.error(`miniature retouche (plan): ${e instanceof Error ? e.message : e}`);
+      throw new HttpException('Impossible de comprendre la demande. Réessaie.', HttpStatus.BAD_GATEWAY);
+    }
+
+    let fond = ancienne.fond;
+    let q: Awaited<ReturnType<QuotaService['consume']>> | null = null;
+    if (plan.fond) {
+      await this.quotaService.exigerAbonnement(telegramId);
+      const modele = body.modele && body.modele in IMAGE_MODELS ? body.modele : 'nano2';
+      q = await this.quotaService.consume(telegramId, imageAction(modele));
+      if (!q.ok) throw quotaHttpException(q);
+      try {
+        fond = await this.miniatureService.retoucherFond(telegramId, contenuId, ancienne.fond, plan.fond, ancienne.ratio, modele);
+      } catch (e) {
+        await this.quotaService.refund(q);
+        this.logger.error(`miniature retouche (fond): ${e instanceof Error ? e.message : e}`);
+        throw new HttpException("Échec de la retouche de l'image. Réessaie.", HttpStatus.BAD_GATEWAY);
+      }
+    }
+
+    let mini: Miniature;
+    try {
+      mini = await this.miniatureService.finaliser(telegramId, c, fond, ancienne.gabarit, plan.textes, ancienne.ratio, ancienne.style || 'photo', plan.police, ancienne.ref);
+    } catch (e) {
+      if (q) await this.quotaService.refund(q);
+      this.logger.error(`miniature retouche (composition): ${e instanceof Error ? e.message : e}`);
+      throw new HttpException('Échec de la composition de la miniature. Réessaie.', HttpStatus.BAD_GATEWAY);
+    }
+    if (q) {
+      await this.quotaService.confirm(q);
+      await this.miniatureService.supprimerFond(telegramId, ancienne.fond);
+    }
+    return { miniature: mini, reponse: plan.reponse, fondRetouche: Boolean(plan.fond) };
   }
 
   @Delete('banque/:assetId')
