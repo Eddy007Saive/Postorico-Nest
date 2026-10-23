@@ -118,7 +118,7 @@ export const POLICES: Record<string, { famille: string; gf: string; poids: numbe
   retro: { famille: 'Righteous', gf: 'Righteous', poids: 400, maj: true },
 };
 const POLICE_DEFAUT: Record<string, string> = {
-  affiche: 'cinema',
+  affiche: 'impact',
   action: 'impact',
   allonge: 'elegant',
   'grande-action': 'comics',
@@ -272,7 +272,7 @@ export class MiniatureService {
       'titre-bas': `
     .voile{background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(0,0,0,.82) 100%);}
     .txt{bottom:${horiz ? '9%' : '8%'};text-align:left;}
-    .kicker{margin-bottom:1.2rem;} .titre{font-size:${horiz ? '8.5rem' : '11.5rem'};} .sous{font-size:${horiz ? '4.4rem' : '5.6rem'};margin-top:1.2rem;}`,
+    .kicker{margin-bottom:1.2rem;} .titre{font-size:${horiz ? '8.5rem' : '11.5rem'};letter-spacing:-.02em;} .sous{font-size:${horiz ? '4.4rem' : '5.6rem'};margin-top:1.2rem;}`,
       coin: `
     .voile{background:linear-gradient(180deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,0) 40%);}
     .txt{top:6%;text-align:left;} .titre{font-size:${horiz ? '6.5rem' : '8rem'};}`,
