@@ -32,6 +32,8 @@ import { DecoupageMusiqueDto } from './dto/decoupage-musique.dto';
 import { MiniatureRequestDto } from './dto/miniature-request.dto';
 import { MiniatureSujetDto } from './dto/miniature-sujet.dto';
 import { MiniatureRetoucheDto } from './dto/miniature-retouche.dto';
+import { InspirationScriptDto } from './dto/inspiration-script.dto';
+import { InspirationReelService, normaliserAnalyse } from './inspiration-reel.service';
 import { ReelCreerDto } from './dto/reel-creer.dto';
 import { ReelGenererDto } from './dto/reel-generer.dto';
 import { ReelImageGenDto } from './dto/reel-image-gen.dto';
@@ -64,6 +66,7 @@ export class ReelController {
   constructor(
     private readonly reelService: ReelService,
     private readonly miniatureService: MiniatureService,
+    private readonly inspirationReelService: InspirationReelService,
     private readonly banqueService: BanqueService,
     private readonly musicLibraryService: MusicLibraryService,
     private readonly voixService: VoixService,
@@ -418,6 +421,57 @@ export class ReelController {
   }
 
   // ---------------------------------------------------------------- miniature (couverture)
+
+  // ---------------------------------------------------------------- m'inspirer d'un reel qui marche
+
+  /** Analyse d'un reel de référence importé (vidéo envoyée à Gemini, jamais stockée). Un « post » du quota,
+   * rendu si l'analyse échoue. */
+  @Post('inspiration/analyser')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 60 * 1024 * 1024 } }))
+  async inspirationAnalyser(@UploadedFile() file: Express.Multer.File, @Req() req: AuthedRequest) {
+    const telegramId = requireTelegramId(req);
+    if (!this.inspirationReelService.actif) throw new HttpException('Analyse vidéo indisponible pour le moment.', HttpStatus.SERVICE_UNAVAILABLE);
+    const ct = (file?.mimetype || '').toLowerCase();
+    if (!file || !(ct.startsWith('video/') || /\.(mp4|mov|webm|m4v)$/i.test(file.originalname || ''))) {
+      throw new BadRequestException('Importe la vidéo du reel (MP4, MOV ou WEBM, 60 Mo au plus).');
+    }
+    await this.quotaService.exigerAbonnement(telegramId);
+    const q = await this.quotaService.consume(telegramId, 'post');
+    if (!q.ok) throw quotaHttpException(q);
+    try {
+      const analyse = await this.inspirationReelService.analyser(telegramId, file.buffer, ct.startsWith('video/') ? ct : 'video/mp4');
+      await this.quotaService.confirm(q);
+      return { analyse };
+    } catch (e) {
+      await this.quotaService.refund(q);
+      this.logger.error(`inspiration analyse: ${e instanceof Error ? e.message : e}`);
+      throw new HttpException("Impossible d'analyser cette vidéo. Essaie un fichier plus court ou un autre format.", HttpStatus.BAD_GATEWAY);
+    }
+  }
+
+  /** Script adapté à la marque à partir d'une analyse ; contrôle qualité et réécriture inclus. */
+  @Post('inspiration/script')
+  async inspirationScript(@Body() body: InspirationScriptDto, @Req() req: AuthedRequest) {
+    const telegramId = requireTelegramId(req);
+    // Garde-fou : 15 scripts par heure et par compte (chacun jusqu'à 3 passes Claude), puis 15 min de pause.
+    const cle = `inspiration:${telegramId}`;
+    if (this.rateLimitService.lockedFor(cle) > 0) {
+      throw new HttpException('Tu as beaucoup sollicité l’IA. Réessaie dans quelques minutes.', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    this.rateLimitService.fail(cle, 15, 3600, 900);
+    let analyse;
+    try {
+      analyse = normaliserAnalyse(body.analyse);
+    } catch {
+      throw new BadRequestException('Analyse du reel invalide : relance l’analyse.');
+    }
+    try {
+      return await this.inspirationReelService.ecrireScript(telegramId, analyse, body.sujet);
+    } catch (e) {
+      this.logger.error(`inspiration script: ${e instanceof Error ? e.message : e}`);
+      throw new HttpException("Le script n'a pas pu être écrit. Réessaie.", HttpStatus.BAD_GATEWAY);
+    }
+  }
 
   @Get('miniature/gabarits')
   miniatureGabarits() {
