@@ -269,6 +269,26 @@ export class PostsController {
   }
 
   /** Reprise d'une ancienne carte du Studio : la range dans contenu au statut Brouillon. Sans IA, sans quota. */
+  /** Six autres accroches pour un post déjà écrit (gratuit, 20 par heure et par compte). */
+  @Post('accroches')
+  async accroches(@Body() body: Record<string, unknown>, @Req() req: AuthedRequest) {
+    const telegramId = req.user.telegram_id;
+    const texte = typeof body.texte === 'string' ? body.texte.trim() : '';
+    if (!texte) throw new BadRequestException('texte requis');
+    const reseau = typeof body.reseau === 'string' ? body.reseau.toLowerCase() : 'linkedin';
+    const cle = `accroches:${telegramId}`;
+    if (this.rateLimitService.lockedFor(cle) > 0) {
+      throw new HttpException('Tu as beaucoup sollicité l’IA. Réessaie dans quelques minutes.', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    this.rateLimitService.fail(cle, 20, 3600, 600);
+    try {
+      return { accroches: await this.postsService.accroches(telegramId, texte, reseau) };
+    } catch (e) {
+      this.logger.error(`accroches: ${e instanceof Error ? e.message : e}`);
+      throw new HttpException("Les accroches n'ont pas pu être proposées. Réessaie.", HttpStatus.BAD_GATEWAY);
+    }
+  }
+
   /** Premier commentaire proposé par l'IA pour un post (gratuit, 30 par heure et par compte). */
   @Post('premier-commentaire')
   async premierCommentaire(@Body() body: Record<string, unknown>, @Req() req: AuthedRequest) {

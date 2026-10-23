@@ -37,6 +37,8 @@ export default registerAs('app', () => {
   cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
   // Pexels : photos libres de droits des styles de carrousel avec photos (vide = aplats à la place)
   pexelsApiKey: process.env.PEXELS_API_KEY || '',
+  // Pixabay : plans vidéo de secours quand Pexels n'a rien (ou pas de clé Pexels)
+  pixabayApiKey: process.env.PIXABAY_API_KEY || '',
   cloudinaryApiKey: process.env.CLOUDINARY_API_KEY || '',
   cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET || '',
   // Optionnel : force le binaire Chromium utilisé par Playwright (carrousels). Utile en

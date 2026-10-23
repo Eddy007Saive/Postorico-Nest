@@ -113,3 +113,33 @@ describe('MiniatureService.genererSujet', () => {
     await expect(service.genererSujet('u1', 'Un trophée')).resolves.toBe('https://res.cloudinary.com/x/s.png');
   });
 });
+
+describe('MiniatureService.objetEnAnglais', () => {
+  const messagesCreate = jest.fn().mockResolvedValue({});
+  const texte = jest.fn();
+  const service = new MiniatureService(
+    {} as never,
+    { messagesCreate, texte } as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    { get: jest.fn().mockReturnValue('nuage') } as never,
+  );
+  beforeEach(() => { messagesCreate.mockClear(); messagesCreate.mockResolvedValue({}); });
+
+  it('traduit l’objet saisi en français pour le générateur', async () => {
+    texte.mockReturnValue('"a giant golden key."');
+    await expect(service.objetEnAnglais('une clé dorée géante')).resolves.toBe('a giant golden key');
+    expect(messagesCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('remplace un objet vide sans appeler l’IA', async () => {
+    await expect(service.objetEnAnglais('  ')).resolves.toBe('a glowing object');
+    expect(messagesCreate).not.toHaveBeenCalled();
+  });
+
+  it('garde le texte du client si la traduction échoue', async () => {
+    messagesCreate.mockRejectedValueOnce(new Error('panne'));
+    await expect(service.objetEnAnglais('une boussole')).resolves.toBe('une boussole');
+  });
+});

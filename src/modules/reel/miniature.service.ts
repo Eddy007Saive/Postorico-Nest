@@ -208,7 +208,7 @@ export class MiniatureService {
         `You write YouTube/Instagram thumbnail text for a small business owner. Language of the texts: ${langue.toUpperCase()}. ` +
         'Punchy, concrete, no hype words, no emoji, no quotes, no trailing period. Return STRICT JSON: ' +
         '{"kicker": "1 to 3 words, small label above the title", "titre": "2 to 4 words, THE promise, uppercase-friendly", ' +
-        '"sous": "2 to 5 words, the twist or the benefit", "objet": "in ENGLISH: a short noun phrase for one iconic object that symbolises the subject, e.g. a giant golden key"}' +
+        '"sous": "2 to 5 words, the twist or the benefit", "objet": "2 to 6 words, one iconic object that symbolises the subject, e.g. a giant golden key"}' +
         this.marqueService.contexteMarqueCourt(u, { secteur: false, audience: false }),
       messages: [{ role: 'user', content: `Subject of the video:\n${sujet}\n\nOn-screen texts of the video: ${plans.slice(0, 600)}\n\nBrand: ${u.nom || ''} (${u.secteur || ''}).` }],
     });
@@ -224,8 +224,27 @@ export class MiniatureService {
       kicker: String(d.kicker || '').slice(0, 30),
       titre: String(d.titre || contenu.titre || '').slice(0, 50),
       sous: String(d.sous || '').slice(0, 50),
-      objet: String(d.objet || 'a glowing object').slice(0, 60),
+      objet: String(d.objet || '').slice(0, 60),
     };
+  }
+
+  /** L'objet mis en scène est saisi dans la langue du client : traduit en anglais pour le
+   * générateur d'image (un texte déjà en anglais revient inchangé ; échec : gardé tel quel). */
+  async objetEnAnglais(objet: string | undefined): Promise<string> {
+    const o = String(objet || '').trim();
+    if (!o) return 'a glowing object';
+    try {
+      const resp = await this.claude.messagesCreate({
+        model: 'claude-haiku-4-5',
+        max_tokens: 60,
+        system: 'Translate the noun phrase into a short, concrete English noun phrase for an image generator. Return only the phrase, no quotes, no period.',
+        messages: [{ role: 'user', content: o.slice(0, 60) }],
+      });
+      const t = this.claude.texte(resp).replace(/^["'\s]+|["'.\s]+$/g, '').slice(0, 80);
+      return t || o;
+    } catch {
+      return o;
+    }
   }
 
   private css(layout: string, brand: { accent?: string | null }, ratio: string, police = 'impact'): string {
@@ -386,7 +405,8 @@ export class MiniatureService {
     const u = await this.marqueService.chargerMarque(telegramId);
     const sujetPhoto = refUrl || u.photo_url;
     const avecPhoto = Boolean(sujetPhoto);
-    const scene = (avecPhoto ? g.scene : g.scene_sans_photo).replace('{objet}', textes.objet || 'a glowing object');
+    const objet = g.textes.includes('objet') ? await this.objetEnAnglais(textes.objet) : '';
+    const scene = (avecPhoto ? g.scene : g.scene_sans_photo).replace('{objet}', objet);
     const sujet = (contenu.contenu || contenu.titre || '').slice(0, 400).replace(/\n/g, ' ');
     const orient =
       (ratio !== '16:9' ? 'Vertical 9:16 composition' : 'Horizontal 16:9 composition') +

@@ -2,11 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { nettoyerTexteGenere } from '../../common/utils/texte-genere.util';
 import { blocStructure, LIMITE_PREMIER_COMMENTAIRE } from './structures.util';
 import {
+  A_EVITER,
   blocConsigneAccroche,
   chiffresNonSources,
   extraireFormule,
   premiereLigne,
   sansInvisibles,
+  selectionFormules,
 } from '../../common/utils/accroche.util';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
@@ -123,6 +125,59 @@ export class PostsService {
    * Premier commentaire (« commentaire épinglé ») d'un post : publié par l'auteur juste après le
    * post pour lancer la conversation. Ne répète pas le post, n'invente ni lien ni chiffre.
    */
+  /**
+   * Six autres premières lignes pour un post déjà écrit, chacune tirée d'une formule différente
+   * de la bibliothèque d'accroches. Un chiffre absent du post et des infos de marque est signalé.
+   */
+  async accroches(
+    telegramId: string,
+    texte: string,
+    reseau = 'linkedin',
+  ): Promise<Array<{ formule: number; nom: string; texte: string; chiffres_non_sources: string[] }>> {
+    const u = await this.marqueService.chargerMarque(telegramId);
+    const reseauLabel = RESEAUX[reseau] ?? 'LinkedIn';
+    const contexte = this.marqueService.contexteMarque(u);
+    const sources = `${texte} ${contexte}`;
+    const formules = selectionFormules(texte, contexte).slice(0, 6);
+    const resp = await this.claude.messagesCreate({
+      model: MODELE_REDACTION,
+      max_tokens: 900,
+      system:
+        `You write alternative FIRST LINES (hooks) for an existing ${reseauLabel} post, in the language and voice of the post. ` +
+        'Write exactly one hook per formula below, in this order, each clearly different. ' +
+        'Rules: put the key fact or the stake in the first words, no greeting, about 12 words at most, specific to this brand. ' +
+        'Use only facts present in the post or the brand information: NEVER invent a number, a client or a result; ' +
+        'if a formula needs a figure and none is available, write it without one. No hashtags, no emoji, no quotes around the line. ' +
+        'Avoid: ' + A_EVITER.map((x) => `« ${x} »`).join('; ') + '. ' +
+        'Return STRICT JSON: {"accroches": [{"formule": <number>, "texte": "<the hook>"}]}.\n\n' +
+        formules.map((f) => `${f.id}. ${f.nom} : ${f.modele}`).join('\n') +
+        contexte,
+      messages: [{ role: 'user', content: `The post:\n\n${texte.slice(0, 4000)}` }],
+    });
+    const raw = this.claude.texte(resp);
+    let d: { accroches?: Array<{ formule?: unknown; texte?: unknown }> } = {};
+    try {
+      const m = /\{[\s\S]*\}/.exec(raw);
+      d = JSON.parse(m ? m[0] : raw);
+    } catch {
+      d = {};
+    }
+    const parId = new Map(formules.map((f) => [f.id, f]));
+    const vus = new Set<string>();
+    return (Array.isArray(d.accroches) ? d.accroches : [])
+      .map((a) => {
+        const f = parId.get(Number(a.formule));
+        const ligne = nettoyerTexteGenere(sansInvisibles(String(a.texte || '')))
+          .split('\n')[0]
+          .replace(/^["«\s]+|["»\s]+$/g, '')
+          .slice(0, 220)
+          .trim();
+        return f && ligne ? { formule: f.id, nom: f.nom, texte: ligne, chiffres_non_sources: chiffresNonSources(ligne, sources) } : null;
+      })
+      .filter((a): a is NonNullable<typeof a> => !!a && !vus.has(a.texte) && !!vus.add(a.texte))
+      .slice(0, 6);
+  }
+
   async premierCommentaire(telegramId: string, texte: string, reseau = 'linkedin'): Promise<string> {
     const u = await this.marqueService.chargerMarque(telegramId);
     const reseauLabel = RESEAUX[reseau] ?? 'LinkedIn';
