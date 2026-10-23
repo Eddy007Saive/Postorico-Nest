@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { nettoyerTexteGenere } from '../../common/utils/texte-genere.util';
+import { blocStructure, LIMITE_PREMIER_COMMENTAIRE } from './structures.util';
 import {
   blocConsigneAccroche,
   chiffresNonSources,
@@ -118,6 +119,32 @@ export class PostsService {
     return '';
   }
 
+  /**
+   * Premier commentaire (« commentaire épinglé ») d'un post : publié par l'auteur juste après le
+   * post pour lancer la conversation. Ne répète pas le post, n'invente ni lien ni chiffre.
+   */
+  async premierCommentaire(telegramId: string, texte: string, reseau = 'linkedin'): Promise<string> {
+    const u = await this.marqueService.chargerMarque(telegramId);
+    const reseauLabel = RESEAUX[reseau] ?? 'LinkedIn';
+    const limite = LIMITE_PREMIER_COMMENTAIRE[reseau] ?? 1250;
+    const resp = await this.claude.messagesCreate({
+      model: 'claude-haiku-4-5',
+      max_tokens: 400,
+      system:
+        `You write the author's own FIRST COMMENT under their ${reseauLabel} post, posted right after it to start the conversation. ` +
+        'Write it in the same language as the post and in the same voice. Pick the most natural of: a specific, easy-to-answer question tied to the post; ' +
+        'a complementary detail or behind-the-scenes fact that the post did not say; or, only if the post itself announces a resource, a line saying where to find it. ' +
+        'Never repeat or summarise the post, never invent a link, a number or a promise, no hashtags, at most one emoji, 1 to 3 short sentences, ' +
+        `under ${Math.min(limite, 400)} characters. Return only the comment text.` +
+        this.marqueService.contexteMarqueCourt(u, { secteur: false, audience: false }),
+      messages: [{ role: 'user', content: `The post:\n\n${texte.slice(0, 4000)}` }],
+    });
+    return nettoyerTexteGenere(sansInvisibles(this.claude.texte(resp)))
+      .replace(/^["«\s]+|["»\s]+$/g, '')
+      .slice(0, limite)
+      .trim();
+  }
+
   async redigerPost(
     telegramId: string,
     sujet: string,
@@ -157,6 +184,7 @@ export class PostsService {
             `\n\n${reseauLabel} format: strong hook on the first line, short airy lines, ` +
             'one central idea, and a question / engagement prompt at the end.' +
             this.consigneLongueur(reseau) +
+            blocStructure(dimensions?.structure) +
             (accroche ? blocConsigneAccroche(sujet, contexte, dimensions) : '') +
             ' Give only the post text' +
             (accroche ? ' and the final FORMULE line.' : '.'),
@@ -183,6 +211,7 @@ export class PostsService {
     mediaType: string,
     reseau = 'linkedin',
     model?: string,
+    structure?: string,
   ): Promise<RedigerPostResult | { error: string }> {
     if (!this.claude.isConfigured) return { error: 'no_api_key' };
     const u = await this.marqueService.chargerMarque(telegramId);
@@ -215,6 +244,7 @@ export class PostsService {
               text:
                 `Write ONE ready-to-publish ${reseauLabel} post from this photo, in the brand's voice.` +
                 this.consigneLongueur(reseau) +
+                blocStructure(structure) +
                 ' Give only the text.',
             },
           ],

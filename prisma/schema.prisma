@@ -355,6 +355,8 @@ model contenu {
   carrousel_design      Json?
   /// Fiche Google : type de post, bouton d'action, événement, offre (migration google_business_posts.sql)
   google_options        Json?
+  premier_commentaire   String?
+  premier_commentaire_auto Boolean @default(false)
   analytics_performance analytics_performance[]
   commentaires          commentaires[]
   users                 users?                  @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)

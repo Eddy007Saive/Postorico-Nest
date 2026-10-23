@@ -16,6 +16,8 @@ import {
   UploadedFile,
   UseGuards,
   UseInterceptors,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -24,6 +26,7 @@ import type { Request } from 'express';
 import { mapAgentError, refusQuota } from '../../common/utils/agent-http-errors';
 import { labelTypeContenu } from '../../common/utils/contenu-enum.util';
 import { PrismaService } from '../../config/prisma.service';
+import { RateLimitService } from '../../common/utils/rate-limit.service';
 import { JwtPayload } from '../auth/auth.service';
 import { ContenuEvenementService } from '../contenus/contenu-evenement.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -85,6 +88,7 @@ export class PostsController {
     private readonly carrouselRenduService: CarrouselRenduService,
     private readonly scriptService: ScriptService,
     private readonly contenuEvenement: ContenuEvenementService,
+    private readonly rateLimitService: RateLimitService,
     config: ConfigService,
   ) {
     cloudinary.config({
@@ -202,6 +206,7 @@ export class PostsController {
         file.mimetype,
         reseau,
         MODELE_REDACTION,
+        dto.structure,
       );
     } catch (e: unknown) {
       await this.quotaService.refund(q);
@@ -253,7 +258,10 @@ export class PostsController {
   async brouillonsContenus(@Req() req: AuthedRequest) {
     const rows = await this.prisma.contenu.findMany({
       where: { telegram_id: req.user.telegram_id, statut: 'Brouillon' as never },
-      select: { id: true, titre: true, contenu: true, contenu_original: true, script: true, reseau_cible: true, type: true, created_at: true },
+      select: {
+        id: true, titre: true, contenu: true, contenu_original: true, script: true, reseau_cible: true, type: true, created_at: true,
+        premier_commentaire: true, premier_commentaire_auto: true,
+      },
       orderBy: { created_at: 'desc' },
       take: 50,
     });
@@ -261,6 +269,26 @@ export class PostsController {
   }
 
   /** Reprise d'une ancienne carte du Studio : la range dans contenu au statut Brouillon. Sans IA, sans quota. */
+  /** Premier commentaire proposé par l'IA pour un post (gratuit, 30 par heure et par compte). */
+  @Post('premier-commentaire')
+  async premierCommentaire(@Body() body: Record<string, unknown>, @Req() req: AuthedRequest) {
+    const telegramId = req.user.telegram_id;
+    const texte = typeof body.texte === 'string' ? body.texte.trim() : '';
+    if (!texte) throw new BadRequestException('texte requis');
+    const reseau = typeof body.reseau === 'string' ? body.reseau.toLowerCase() : 'linkedin';
+    const cle = `premier-commentaire:${telegramId}`;
+    if (this.rateLimitService.lockedFor(cle) > 0) {
+      throw new HttpException('Tu as beaucoup sollicité l’IA. Réessaie dans quelques minutes.', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    this.rateLimitService.fail(cle, 30, 3600, 600);
+    try {
+      return { commentaire: await this.postsService.premierCommentaire(telegramId, texte, reseau) };
+    } catch (e) {
+      this.logger.error(`premier commentaire: ${e instanceof Error ? e.message : e}`);
+      throw new HttpException("Le commentaire n'a pas pu être proposé. Réessaie.", HttpStatus.BAD_GATEWAY);
+    }
+  }
+
   @Post('brouillons-contenus')
   async creerBrouillonContenu(@Body() body: Record<string, unknown>, @Req() req: AuthedRequest) {
     const telegramId = req.user.telegram_id;
@@ -303,6 +331,8 @@ export class PostsController {
     if (typeof body.contenu_original === 'string' && body.contenu_original.trim()) data.contenu_original = body.contenu_original;
     if (typeof body.script === 'string') data.script = body.script;
     if (Number.isInteger(body.formule_accroche)) data.formule_accroche = body.formule_accroche; // régénération
+    if (typeof body.premier_commentaire === 'string') data.premier_commentaire = body.premier_commentaire.slice(0, 2200);
+    if (typeof body.premier_commentaire_auto === 'boolean') data.premier_commentaire_auto = body.premier_commentaire_auto;
     const r = await this.prisma.contenu.updateMany({
       where: { id, telegram_id: req.user.telegram_id, statut: 'Brouillon' as never },
       data: data as never,

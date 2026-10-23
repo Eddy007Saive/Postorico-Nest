@@ -16,6 +16,8 @@ import { UsageModule } from '../usage/usage.module';
 import { PostsController } from './posts.controller';
 import { PostsService } from './posts.service';
 
+import { RateLimitModule } from '../../common/utils/rate-limit.module';
+
 @Module({
   imports: [
     PrismaModule,
@@ -32,6 +34,7 @@ import { PostsService } from './posts.service';
     CarrouselModule,
     ScriptModule,
     ContenuEvenementModule,
+    RateLimitModule,
   ],
   controllers: [PostsController],
   providers: [PostsService],

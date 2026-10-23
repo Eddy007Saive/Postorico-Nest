@@ -1,9 +1,11 @@
 import {
+  IsBoolean,
   IsInt,
   IsObject,
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 
@@ -43,4 +45,14 @@ export class ContenuUpdateDto {
   @IsOptional()
   @IsObject()
   google_options?: Record<string, unknown>;
+
+  /** Premier commentaire (publié par Zernio juste après le post si premier_commentaire_auto). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(2200)
+  premier_commentaire?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  premier_commentaire_auto?: boolean;
 }

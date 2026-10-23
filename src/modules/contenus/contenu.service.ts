@@ -184,6 +184,8 @@ export class ContenuService {
       date_publication?: string;
       note_ressemblance?: number;
       motif_refus?: string;
+      premier_commentaire?: string;
+      premier_commentaire_auto?: boolean;
     },
   ): Promise<ContenuRow | { error: 'not_found' }> {
     const current = await this.getContenu(contenuId, telegramId);

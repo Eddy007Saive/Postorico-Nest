@@ -21,6 +21,7 @@ import {
   OptionsGoogle,
   verifierOptionsGoogle,
 } from '../google-business/google-options.util';
+import { LIMITE_PREMIER_COMMENTAIRE, RESEAUX_PREMIER_COMMENTAIRE } from '../posts/structures.util';
 
 /**
  * Publication sociale via Late / Zernio (backend-direct, sans n8n) — port direct de
@@ -64,6 +65,18 @@ const DEFAULT_TZ = 'Europe/Paris';
 const COUVERTURE_DANS_MEDIA = new Set(['facebook', 'linkedin']);
 
 type ContenuRow = Record<string, unknown>;
+
+/**
+ * Premier commentaire à publier avec le post (Zernio « firstComment ») : seulement si le client l'a
+ * demandé, sur un réseau qui le permet, hors story, et coupé à la limite du réseau.
+ */
+export function premierCommentaireAPublier(contenu: Record<string, unknown>, reseau: string): string | null {
+  if (contenu.premier_commentaire_auto !== true) return null;
+  if (!RESEAUX_PREMIER_COMMENTAIRE.includes(reseau) || contenu.type === 'Story') return null;
+  const texte = String(contenu.premier_commentaire || '').trim();
+  if (!texte) return null;
+  return texte.slice(0, LIMITE_PREMIER_COMMENTAIRE[reseau] ?? 1250);
+}
 
 export interface PublishResult {
   ok: boolean;
@@ -433,8 +446,11 @@ export class LateService implements OnApplicationBootstrap {
       mediaItems?: ZernioMediaItem[];
       publishNow?: boolean;
       scheduledFor?: string;
+      firstComment?: string;
     } = { content, platforms: [platEntry], timezone: userTz };
     if (media.length) payload.mediaItems = media;
+    const premier = premierCommentaireAPublier(contenu, reseau);
+    if (premier) payload.firstComment = premier;
     if (publishNow) {
       payload.publishNow = true;
     } else if (contenu.date_publication) {
