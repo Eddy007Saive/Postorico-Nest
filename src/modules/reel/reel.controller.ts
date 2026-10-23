@@ -566,10 +566,12 @@ export class ReelController {
     const gabarit = body.gabarit || 'affiche';
     const style = body.style && body.style in { photo: 1, cinema: 1, '3d': 1, illustration: 1, neon: 1, pop: 1 } ? body.style : 'photo';
     const police = body.police || undefined;
-    const ancienne = ((c.reel_data as { miniature?: { fond?: string; style?: string; ref?: string | null } } | undefined)?.miniature) || {};
+    const ancienne = ((c.reel_data as { miniature?: { fond?: string; style?: string; ref?: string | null; couleur?: string | null } } | undefined)?.miniature) || {};
+    // Couleur du titre : celle envoyée (« » = celle du gabarit), sinon on garde celle d'avant.
+    const couleur = body.couleur === undefined || body.couleur === null ? ancienne.couleur ?? null : body.couleur || null;
     if (body.reutiliser_fond && ancienne.fond) {
       try {
-        const mini = await this.miniatureService.finaliser(telegramId, c, ancienne.fond, gabarit, textes, ratio, ancienne.style || 'photo', police, ancienne.ref);
+        const mini = await this.miniatureService.finaliser(telegramId, c, ancienne.fond, gabarit, textes, ratio, ancienne.style || 'photo', police, ancienne.ref, couleur);
         return { miniature: mini };
       } catch (e) {
         this.logger.error(`miniature recomposer: ${e instanceof Error ? e.message : e}`);
@@ -594,7 +596,7 @@ export class ReelController {
     let derniere: unknown;
     for (let essai = 0; essai < 2; essai++) {
       try {
-        mini = await this.miniatureService.finaliser(telegramId, c, fond, gabarit, textes, ratio, style, police, body.ref || null);
+        mini = await this.miniatureService.finaliser(telegramId, c, fond, gabarit, textes, ratio, style, police, body.ref || null, couleur);
         break;
       } catch (e) {
         derniere = e;
@@ -651,17 +653,118 @@ export class ReelController {
 
     let mini: Miniature;
     try {
-      mini = await this.miniatureService.finaliser(telegramId, c, fond, ancienne.gabarit, plan.textes, ancienne.ratio, ancienne.style || 'photo', plan.police, ancienne.ref);
+      mini = await this.miniatureService.finaliser(telegramId, c, fond, ancienne.gabarit, plan.textes, ancienne.ratio, ancienne.style || 'photo', plan.police, ancienne.ref, ancienne.couleur);
     } catch (e) {
       if (q) await this.quotaService.refund(q);
       this.logger.error(`miniature retouche (composition): ${e instanceof Error ? e.message : e}`);
       throw new HttpException('Échec de la composition de la miniature. Réessaie.', HttpStatus.BAD_GATEWAY);
     }
-    if (q) {
-      await this.quotaService.confirm(q);
-      await this.miniatureService.supprimerFond(telegramId, ancienne.fond);
-    }
+    if (q) await this.quotaService.confirm(q);
     return { miniature: mini, reponse: plan.reponse, fondRetouche: Boolean(plan.fond) };
+  }
+
+  /** Revenir à une version précédente de la miniature (recomposée sur son fond gardé : gratuit). */
+  @Post(':contenuId/miniature/restaurer')
+  async miniatureRestaurer(@Param('contenuId') contenuId: string, @Body() body: Record<string, unknown>, @Req() req: AuthedRequest) {
+    const telegramId = requireTelegramId(req);
+    let c: Awaited<ReturnType<MiniatureService['contenu']>>;
+    try {
+      c = await this.miniatureService.contenu(telegramId, contenuId);
+    } catch (e) {
+      throw new NotFoundException(e instanceof Error ? e.message : String(e));
+    }
+    const index = Number(body.index);
+    const historique = ((c.reel_data as { miniature_historique?: Miniature[] } | undefined)?.miniature_historique) || [];
+    const v = Number.isInteger(index) ? historique[index] : undefined;
+    if (!v?.fond) throw new NotFoundException('Version introuvable.');
+    try {
+      const mini = await this.miniatureService.finaliser(telegramId, c, v.fond, v.gabarit, v.textes, v.ratio, v.style || 'photo', v.police, v.ref, v.couleur, { restaurer: index });
+      return { miniature: mini };
+    } catch (e) {
+      this.logger.error(`miniature restaurer: ${e instanceof Error ? e.message : e}`);
+      throw new HttpException('Échec de la restauration de la miniature. Réessaie.', HttpStatus.BAD_GATEWAY);
+    }
+  }
+
+  /** Trois propositions d'un coup (trois images du quota ; une proposition ratée est remboursée). */
+  @Post(':contenuId/miniature/variantes')
+  async miniatureVariantes(@Param('contenuId') contenuId: string, @Body() body: MiniatureRequestDto, @Req() req: AuthedRequest) {
+    const telegramId = requireTelegramId(req);
+    let c: Awaited<ReturnType<MiniatureService['contenu']>>;
+    try {
+      c = await this.miniatureService.contenu(telegramId, contenuId);
+    } catch (e) {
+      throw new NotFoundException(e instanceof Error ? e.message : String(e));
+    }
+    const textesIn = body.textes || {};
+    const textes = {
+      kicker: String(textesIn.kicker || '').trim().slice(0, 60),
+      titre: String(textesIn.titre || '').trim().slice(0, 60),
+      sous: String(textesIn.sous || '').trim().slice(0, 60),
+      objet: String(textesIn.objet || '').trim().slice(0, 60),
+    };
+    const ratio = body.ratio && ['9:16', '16:9'].includes(body.ratio) ? body.ratio : '9:16';
+    const gabarit = body.gabarit || 'affiche';
+    const style = body.style && body.style in { photo: 1, cinema: 1, '3d': 1, illustration: 1, neon: 1, pop: 1 } ? body.style : 'photo';
+    const ancienne = ((c.reel_data as { miniature?: { couleur?: string | null } } | undefined)?.miniature) || {};
+    const couleur = body.couleur === undefined || body.couleur === null ? ancienne.couleur ?? null : body.couleur || null;
+    await this.demarrageService.exigerProfil(telegramId);
+    await this.quotaService.exigerAbonnement(telegramId);
+    const modele = body.modele && body.modele in IMAGE_MODELS ? body.modele : 'nano2';
+    // Les trois images sont réservées d'abord : sans quota pour trois, rien n'est lancé.
+    const reservations: Array<Awaited<ReturnType<QuotaService['consume']>>> = [];
+    for (let n = 0; n < 3; n++) {
+      const q = await this.quotaService.consume(telegramId, imageAction(modele));
+      if (!q.ok) {
+        for (const r of reservations) await this.quotaService.refund(r);
+        throw quotaHttpException(q);
+      }
+      reservations.push(q);
+    }
+    const essais = await Promise.all(
+      reservations.map((_, n) =>
+        this.miniatureService.genererFond(telegramId, c, gabarit, textes, ratio, modele, style, body.ref || null, `-v${n + 1}`).catch((e) => {
+          this.logger.warn(`miniature variante ${n + 1} (fond): ${e instanceof Error ? e.message : e}`);
+          return null;
+        }),
+      ),
+    );
+    const fonds = essais.filter((f): f is string => Boolean(f));
+    let variantes: Array<{ fond: string; url: string }> = [];
+    if (fonds.length) {
+      variantes = await this.miniatureService.composerVariantes(telegramId, c, fonds, {
+        gabarit, textes, ratio, style, police: body.police || null, ref: body.ref || null, couleur,
+      });
+    }
+    // Une image payée = une proposition montrée ; le reste est remboursé.
+    for (const [n, r] of reservations.entries()) {
+      if (n < variantes.length) await this.quotaService.confirm(r);
+      else await this.quotaService.refund(r);
+    }
+    for (const f of fonds) if (!variantes.some((v) => v.fond === f)) await this.miniatureService.supprimerFond(telegramId, f);
+    if (!variantes.length) throw new HttpException("Aucune proposition n'a pu être générée. Réessaie.", HttpStatus.BAD_GATEWAY);
+    return { variantes };
+  }
+
+  /** Le client garde l'une des trois propositions. */
+  @Post(':contenuId/miniature/choisir')
+  async miniatureChoisir(@Param('contenuId') contenuId: string, @Body() body: Record<string, unknown>, @Req() req: AuthedRequest) {
+    const telegramId = requireTelegramId(req);
+    let c: Awaited<ReturnType<MiniatureService['contenu']>>;
+    try {
+      c = await this.miniatureService.contenu(telegramId, contenuId);
+    } catch (e) {
+      throw new NotFoundException(e instanceof Error ? e.message : String(e));
+    }
+    const fond = typeof body.fond === 'string' ? body.fond : '';
+    try {
+      return { miniature: await this.miniatureService.choisirVariante(telegramId, c, fond) };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.startsWith('Proposition introuvable')) throw new BadRequestException(msg);
+      this.logger.error(`miniature choisir: ${msg}`);
+      throw new HttpException('Échec de la composition de la miniature. Réessaie.', HttpStatus.BAD_GATEWAY);
+    }
   }
 
   @Delete('banque/:assetId')

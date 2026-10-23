@@ -143,3 +143,51 @@ describe('MiniatureService.objetEnAnglais', () => {
     await expect(service.objetEnAnglais('une boussole')).resolves.toBe('une boussole');
   });
 });
+
+describe('MiniatureService.finaliser : historique et couleur', () => {
+  const update = jest.fn().mockResolvedValue({});
+  const upload = jest.fn().mockResolvedValue({ secure_url: 'https://res.cloudinary.com/n/image/upload/v9/miniatures/u1/c1.png' });
+  const service = new MiniatureService(
+    { contenu: { update } } as never,
+    {} as never,
+    { chargerMarque: jest.fn().mockResolvedValue({ couleur_accent: '#3AFFA3' }) } as never,
+    { uploadAvecReprise: upload } as never,
+    {} as never,
+    { get: jest.fn().mockReturnValue('nuage') } as never,
+  );
+  const composer = jest.spyOn(service as unknown as { composer: (...a: unknown[]) => Promise<Buffer> }, 'composer').mockResolvedValue(Buffer.from('png'));
+  const supprimer = jest.spyOn(service, 'supprimerFond').mockResolvedValue();
+  const fond = (n: number) => `https://res.cloudinary.com/n/image/upload/v1/miniatures/u1/c1-fond-${n}.png`;
+  const version = (n: number) => ({ url: 'x', fond: fond(n), gabarit: 'affiche', textes: { titre: `V${n}` }, ratio: '9:16', style: 'photo', police: 'impact', date: '' });
+  const textes = { titre: 'Nouveau' };
+  beforeEach(() => { update.mockClear(); supprimer.mockClear(); composer.mockClear(); });
+
+  it('la version remplacée passe en tête de l’historique, plafonné à 3 ; seul le fond sorti est supprimé', async () => {
+    const rd = { miniature: version(4), miniature_historique: [version(3), version(2), version(1)] };
+    const mini = await service.finaliser('u1', { id: 'c1', reel_data: rd }, fond(5), 'affiche', textes, '9:16', 'photo', null, null, '#FFD60A');
+    const enregistre = update.mock.calls[0][0].data.reel_data;
+    expect(enregistre.miniature_historique.map((m: { fond: string }) => m.fond)).toEqual([fond(4), fond(3), fond(2)]);
+    expect(supprimer.mock.calls.map((c) => c[1])).toEqual([fond(1)]);
+    expect(mini.couleur).toBe('#ffd60a');
+    expect(composer.mock.calls[0][6]).toBe('#ffd60a');
+  });
+
+  it('changer seulement le texte garde le même fond, jamais supprimé', async () => {
+    const rd = { miniature: version(4) };
+    await service.finaliser('u1', { id: 'c1', reel_data: rd }, fond(4), 'affiche', textes, '9:16');
+    expect(supprimer).not.toHaveBeenCalled();
+    expect(update.mock.calls[0][0].data.reel_data.miniature_historique).toHaveLength(1);
+  });
+
+  it('restaurer une version la retire de l’historique et y place la version actuelle', async () => {
+    const rd = { miniature: version(4), miniature_historique: [version(3), version(2)] };
+    await service.finaliser('u1', { id: 'c1', reel_data: rd }, fond(2), 'affiche', { titre: 'V2' }, '9:16', 'photo', null, null, null, { restaurer: 1 });
+    expect(update.mock.calls[0][0].data.reel_data.miniature_historique.map((m: { fond: string }) => m.fond)).toEqual([fond(4), fond(3)]);
+    expect(supprimer).not.toHaveBeenCalled();
+  });
+
+  it('une couleur invalide est ignorée', async () => {
+    const mini = await service.finaliser('u1', { id: 'c1', reel_data: {} }, fond(1), 'affiche', textes, '9:16', 'photo', null, null, 'red; background:url(x)');
+    expect(mini.couleur).toBeNull();
+  });
+});

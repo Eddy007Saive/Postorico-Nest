@@ -144,8 +144,14 @@ export interface Miniature {
   style: string;
   police: string;
   ref?: string | null;
+  /** Couleur du titre choisie par le client (#rrggbb) ; absente = celle du gabarit. */
+  couleur?: string | null;
   date: string;
 }
+
+/** Versions précédentes gardées pour « revenir en arrière » (leurs fonds restent stockés). */
+export const HISTORIQUE_MAX = 3;
+export const COULEUR = /^#[0-9a-f]{6}$/i;
 
 function htmlEscape(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -247,7 +253,7 @@ export class MiniatureService {
     }
   }
 
-  private css(layout: string, brand: { accent?: string | null }, ratio: string, police = 'impact'): string {
+  private css(layout: string, brand: { accent?: string | null }, ratio: string, police = 'impact', couleur?: string | null): string {
     const acc = brand.accent || '#3AFFA3';
     const horiz = ratio === '16:9';
     const po = POLICES[police] || POLICES.impact;
@@ -293,25 +299,26 @@ export class MiniatureService {
     .titre{font-size:${horiz ? '13rem' : '19rem'};line-height:.9;letter-spacing:-.04em;}`,
       aucun: '.voile{background:transparent;} .txt{display:none;}',
     };
-    return base + (L[layout] || L['titre-bas']);
+    const titre = couleur && COULEUR.test(couleur) ? `\n    .titre{color:${couleur};}` : '';
+    return base + (L[layout] || L['titre-bas']) + titre;
   }
 
-  private htmlMiniature(fondUrl: string, layout: string, textes: MiniatureTextes, brand: { accent?: string | null }, ratio: string, police = 'impact'): string {
+  private htmlMiniature(fondUrl: string, layout: string, textes: MiniatureTextes, brand: { accent?: string | null }, ratio: string, police = 'impact', couleur?: string | null): string {
     let blocs = '';
     if (textes.kicker && ['titre-bas', 'mot-geant'].includes(layout)) blocs += `<div class="kicker">${htmlEscape(textes.kicker)}</div>`;
     if (textes.titre && layout !== 'aucun') blocs += `<div class="titre">${htmlEscape(textes.titre)}</div>`;
     if (textes.sous && ['titre-bas', 'centre', 'haut-neon', 'bande'].includes(layout)) blocs += `<div class="sous">${htmlEscape(textes.sous)}</div>`;
     return (
-      `<!doctype html><html><head><meta charset='utf-8'><style>${this.css(layout, brand, ratio, police)}</style></head>` +
+      `<!doctype html><html><head><meta charset='utf-8'><style>${this.css(layout, brand, ratio, police, couleur)}</style></head>` +
       `<body><div class='m'><img class='fond' src='${htmlEscape(fondUrl)}'><div class='voile'></div>` +
       `<div class='txt'>${blocs}</div></div></body></html>`
     );
   }
 
   /** Fond + texte -> PNG (1080x1920 ou 1280x720). Le titre rétrécit s'il déborde. */
-  private async composer(fondUrl: string, layout: string, textes: MiniatureTextes, brand: { accent?: string | null }, ratio = '9:16', police = 'impact'): Promise<Buffer> {
+  private async composer(fondUrl: string, layout: string, textes: MiniatureTextes, brand: { accent?: string | null }, ratio = '9:16', police = 'impact', couleur?: string | null): Promise<Buffer> {
     const [w, h, dsf] = RATIOS[ratio] || RATIOS['9:16'];
-    const htmlStr = this.htmlMiniature(fondUrl, layout, textes, brand, ratio, police).replace('<html>', `<html style='font-size:${w / 100}px'>`);
+    const htmlStr = this.htmlMiniature(fondUrl, layout, textes, brand, ratio, police, couleur).replace('<html>', `<html style='font-size:${w / 100}px'>`);
     const browser = await this.playwrightBrowserService.launch();
     try {
       const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: dsf });
@@ -400,6 +407,7 @@ export class MiniatureService {
     modele = 'nano2',
     style = 'photo',
     refUrl?: string | null,
+    suffixe = '',
   ): Promise<string> {
     const g = PAR_ID.get(gabaritId) || GABARITS[0];
     const u = await this.marqueService.chargerMarque(telegramId);
@@ -429,7 +437,7 @@ export class MiniatureService {
       !st.photo,
       ratio === '16:9' ? '16:9' : '9:16',
       refUrl ? [refUrl] : undefined,
-      `miniatures/${telegramId}/${contenu.id}-fond-${Math.floor(Date.now() / 1000)}`,
+      `miniatures/${telegramId}/${contenu.id}-fond-${Math.floor(Date.now() / 1000)}${suffixe}`,
       !st.photo,
     );
     if ('error' in res) throw new Error(res.error);
@@ -560,6 +568,61 @@ export class MiniatureService {
     }
   }
 
+  /**
+   * Trois propositions d'un coup : les fonds sont déjà générés ; chacun est composé avec les
+   * textes et déposé à part (miniatures/<compte>/<contenu>-choix-<n>) pour que le client choisisse.
+   * Les fonds proposés sont notés sur le reel : seul l'un d'eux peut ensuite être choisi.
+   */
+  async composerVariantes(
+    telegramId: string,
+    contenu: { id: string; reel_data?: unknown },
+    fonds: string[],
+    params: { gabarit: string; textes: MiniatureTextes; ratio: string; style: string; police?: string | null; ref?: string | null; couleur?: string | null },
+  ): Promise<Array<{ fond: string; url: string }>> {
+    const g = PAR_ID.get(params.gabarit) || GABARITS[0];
+    const u = await this.marqueService.chargerMarque(telegramId);
+    const policeEff = params.police && params.police in POLICES ? params.police : POLICE_DEFAUT[g.id] || 'impact';
+    const sorties: Array<{ fond: string; url: string }> = [];
+    for (const [n, fond] of fonds.entries()) {
+      try {
+        const png = await this.composer(fond, g.layout, params.textes, this.brand(u), params.ratio, policeEff, params.couleur);
+        const up = await this.imageService.uploadAvecReprise(`data:image/png;base64,${png.toString('base64')}`, {
+          resource_type: 'image',
+          public_id: `miniatures/${telegramId}/${contenu.id}-choix-${n + 1}`,
+          overwrite: true,
+          invalidate: true,
+        });
+        sorties.push({ fond, url: up.secure_url.replace('/upload/', '/upload/q_auto,f_auto/') });
+      } catch (e) {
+        this.logger.warn(`miniature variante ${n + 1} non composée : ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    const rd = { ...((contenu.reel_data as Record<string, unknown>) || {}) };
+    rd.miniature_variantes = { fonds: sorties.map((s) => s.fond), params: { ...params, police: policeEff } };
+    await this.prisma.contenu.update({ where: { id: contenu.id }, data: { reel_data: rd } as never });
+    return sorties;
+  }
+
+  /** Le client a choisi une proposition : elle devient la miniature ; les autres fonds et les aperçus sont supprimés. */
+  async choisirVariante(telegramId: string, contenu: { id: string; reel_data?: unknown }, fond: string): Promise<Miniature> {
+    const rd = (contenu.reel_data as Record<string, unknown>) || {};
+    const v = rd.miniature_variantes as { fonds?: string[]; params?: Record<string, unknown> } | undefined;
+    if (!v?.fonds?.includes(fond) || !v.params) throw new Error('Proposition introuvable : relance les propositions.');
+    const p = v.params as { gabarit: string; textes: MiniatureTextes; ratio: string; style: string; police?: string | null; ref?: string | null; couleur?: string | null };
+    const sansVariantes = { ...rd };
+    delete sansVariantes.miniature_variantes;
+    const mini = await this.finaliser(telegramId, { ...contenu, reel_data: sansVariantes }, fond, p.gabarit, p.textes, p.ratio, p.style, p.police, p.ref, p.couleur);
+    for (const f of v.fonds) if (f !== fond) await this.supprimerFond(telegramId, f);
+    for (let n = 1; n <= v.fonds.length; n++) {
+      try {
+        await cloudinary.uploader.destroy(`miniatures/${telegramId}/${contenu.id}-choix-${n}`, { resource_type: 'image', invalidate: true });
+      } catch {
+        // aperçu déjà absent
+      }
+    }
+    return mini;
+  }
+
   /** Compose le texte, dépose la miniature, en fait la couverture du reel. */
   async finaliser(
     telegramId: string,
@@ -571,11 +634,14 @@ export class MiniatureService {
     style = 'photo',
     police?: string | null,
     ref?: string | null,
+    couleur?: string | null,
+    opts: { restaurer?: number; garderFonds?: string[] } = {},
   ): Promise<Miniature> {
     const g = PAR_ID.get(gabaritId) || GABARITS[0];
     const u = await this.marqueService.chargerMarque(telegramId);
     const policeEff = police && police in POLICES ? police : POLICE_DEFAUT[g.id] || 'impact';
-    const png = await this.composer(fondUrl, g.layout, textes, this.brand(u), ratio, policeEff);
+    const couleurEff = couleur && COULEUR.test(couleur) ? couleur.toLowerCase() : null;
+    const png = await this.composer(fondUrl, g.layout, textes, this.brand(u), ratio, policeEff, couleurEff);
     const up = await this.imageService.uploadAvecReprise(`data:image/png;base64,${png.toString('base64')}`, {
       resource_type: 'image',
       public_id: `miniatures/${telegramId}/${contenu.id}`,
@@ -584,17 +650,16 @@ export class MiniatureService {
     });
     const url = up.secure_url.replace('/upload/', '/upload/q_auto,f_auto/');
     const rd = { ...((contenu.reel_data as Record<string, unknown>) || {}) };
-    const ancien = ((rd.miniature as { fond?: string } | undefined) || {}).fond;
-    if (ancien && ancien !== fondUrl) {
-      const m = /\/upload\/(?:v\d+\/)?(.+)\.[a-z0-9]+$/i.exec(ancien);
-      if (m) {
-        try {
-          await cloudinary.uploader.destroy(m[1], { resource_type: 'image', invalidate: true });
-        } catch (e) {
-          this.logger.warn(`miniature: ancien fond non supprimé: ${e instanceof Error ? e.message : e}`);
-        }
-      }
-    }
+    // Historique : la version remplacée passe en tête ; une version restaurée en sort.
+    const precedente = rd.miniature as Miniature | undefined;
+    const avant = Array.isArray(rd.miniature_historique) ? (rd.miniature_historique as Miniature[]) : [];
+    const historique = avant.filter((_, i) => i !== opts.restaurer);
+    if (precedente?.fond) historique.unshift(precedente);
+    rd.miniature_historique = historique.slice(0, HISTORIQUE_MAX);
+    // Un fond n'est supprimé que s'il ne sert plus à rien : ni la version actuelle, ni l'historique.
+    const gardes = new Set([fondUrl, ...(rd.miniature_historique as Miniature[]).map((m) => m.fond), ...(opts.garderFonds || [])]);
+    const candidats = new Set([...(precedente?.fond ? [precedente.fond] : []), ...avant.map((m) => m.fond)]);
+    for (const f of candidats) if (f && !gardes.has(f)) await this.supprimerFond(telegramId, f);
     const mini: Miniature = {
       url,
       fond: fondUrl,
@@ -604,6 +669,7 @@ export class MiniatureService {
       style: style in STYLES ? style : 'photo',
       police: policeEff,
       ref: ref ?? null,
+      couleur: couleurEff,
       date: new Date().toISOString(),
     };
     rd.miniature = mini;

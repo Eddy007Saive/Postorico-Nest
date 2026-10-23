@@ -1,4 +1,4 @@
-import { IsBoolean, IsObject, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsObject, IsOptional, IsString, Matches } from 'class-validator';
 
 export class MiniatureRequestDto {
   @IsOptional()
@@ -33,4 +33,9 @@ export class MiniatureRequestDto {
   @IsOptional()
   @IsString()
   ref?: string | null;
+
+  /** Couleur du titre (#rrggbb) ; « » = revenir à celle du gabarit. */
+  @IsOptional()
+  @Matches(/^(#[0-9a-fA-F]{6})?$/)
+  couleur?: string | null;
 }
