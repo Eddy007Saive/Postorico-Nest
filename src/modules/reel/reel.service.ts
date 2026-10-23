@@ -61,6 +61,8 @@ export interface ReelScenario {
   segments: ReelSegment[];
   style?: string;
   montage_ia?: boolean;
+  /** Plans vidéo de banque (Pexels, Pixabay) autorisés quand le client ne fournit pas de visuel. */
+  plans_video?: boolean;
   musique?: string | null;
   voix?: string | null;
   angle?: string;
@@ -847,6 +849,7 @@ export class ReelService {
     }
     scenario.style = st;
     scenario.montage_ia = Boolean(opts.montageIa);
+    scenario.plans_video = opts.plansVideo !== false;
     scenario.musique = (await this.musicLibraryService.urlDe(opts.musique, telegramId)) ? opts.musique : null;
     scenario.voix = opts.voix || null;
     const props = await this.propsSequence(u, scenario, telegramId);
@@ -908,6 +911,7 @@ export class ReelService {
     if (voix === 'none') voix = null;
     let montageIa = opts.montageIa;
     if (montageIa === undefined || montageIa === null) montageIa = Boolean(oldSc.montage_ia);
+    const plansVideo = typeof opts.plansVideo === 'boolean' ? opts.plansVideo : oldSc.plans_video !== false;
 
     let images = opts.images;
     if (images === undefined || images === null) {
@@ -938,12 +942,13 @@ export class ReelService {
       scenario = await this.scenariser(texte, u, pool, { brief, imposees: true, style: st, avecVoix: Boolean(voix), montageIa, depuisScript });
     } else {
       const pool = await this.poolVisuels(telegramId, cur);
-      if (opts.plansVideo !== false) pool.push(...(await this.stockVideoService.pool(`${brief || ''}
+      if (plansVideo) pool.push(...(await this.stockVideoService.pool(`${brief || ''}
 ${texte}`, 3)));
       scenario = await this.scenariser(texte, u, pool, { brief, style: st, avecVoix: Boolean(voix), montageIa, depuisScript });
     }
     scenario.style = st;
     scenario.montage_ia = Boolean(montageIa);
+    scenario.plans_video = plansVideo;
     scenario.musique = (await this.musicLibraryService.urlDe(musique, telegramId)) ? musique : null;
     scenario.voix = voix || null;
     const props = await this.propsSequence(u, scenario, telegramId);
@@ -1040,6 +1045,7 @@ ${texte}`, 3)));
       }
       scenario.style = st;
       scenario.montage_ia = Boolean(opts.montageIa);
+      scenario.plans_video = opts.plansVideo !== false;
       scenario.musique = (await this.musicLibraryService.urlDe(opts.musique, telegramId)) ? opts.musique : null;
       scenario.voix = opts.voix || null;
       script = { hook: (scenario.segments[0]?.texte || '').slice(0, 80) };

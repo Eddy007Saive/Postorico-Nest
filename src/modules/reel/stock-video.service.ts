@@ -170,6 +170,30 @@ export class StockVideoService {
     }
   }
 
+  /** Clé banque d'une URL Cloudinary de plan (« …/stock/pexels-12.mp4 » -> « pexels-12 »), sinon null. */
+  static cleDepuisUrl(url: string): string | null {
+    const m = /\/stock\/((?:pexels|pixabay)-\d+)/.exec(url || '');
+    return m ? m[1] : null;
+  }
+
+  /**
+   * Un autre plan pour un passage du reel (« Autre plan » dans le Studio Reel) : nouvelles
+   * recherches sur le texte du passage, en écartant les plans déjà utilisés. null si rien.
+   */
+  async autrePlan(texte: string, exclure: string[] = []): Promise<{ url: string; desc: string } | null> {
+    if (!this.actif || !texte.trim()) return null;
+    const deja = new Set(exclure.map((u) => StockVideoService.cleDepuisUrl(u)).filter((c): c is string => Boolean(c)));
+    const requetes = await this.requetes(texte, 2);
+    for (const requete of requetes) {
+      const v = await this.chercher(requete, deja);
+      if (!v) continue;
+      const url = await avecDelai(this.importer(v), 25_000);
+      if (url) return { url, desc: `Real stock footage (${v.source}): ${requete}` };
+      deja.add(v.cle);
+    }
+    return null;
+  }
+
   /** Les plans vidéo prêts pour le scénariste (VisuelPool), dans l'ordre des passages. */
   async pool(texte: string, n = 3): Promise<VisuelPool[]> {
     if (!this.actif || !texte.trim()) return [];

@@ -33,6 +33,7 @@ import { MiniatureRequestDto } from './dto/miniature-request.dto';
 import { MiniatureSujetDto } from './dto/miniature-sujet.dto';
 import { MiniatureRetoucheDto } from './dto/miniature-retouche.dto';
 import { InspirationScriptDto } from './dto/inspiration-script.dto';
+import { StockVideoService } from './stock-video.service';
 import { InspirationReelService, normaliserAnalyse } from './inspiration-reel.service';
 import { ReelCreerDto } from './dto/reel-creer.dto';
 import { ReelGenererDto } from './dto/reel-generer.dto';
@@ -74,6 +75,7 @@ export class ReelController {
     private readonly demarrageService: DemarrageService,
     private readonly imageService: ImageService,
     private readonly rateLimitService: RateLimitService,
+    private readonly stockVideoService: StockVideoService,
   ) {}
 
   /** Voix off demandée : valide le choix, puis consomme 1 « voix ». En cas de refus, le
@@ -471,6 +473,27 @@ export class ReelController {
       this.logger.error(`inspiration script: ${e instanceof Error ? e.message : e}`);
       throw new HttpException("Le script n'a pas pu être écrit. Réessaie.", HttpStatus.BAD_GATEWAY);
     }
+  }
+
+  /** « Autre plan » : un nouveau plan vidéo de banque pour un passage du reel (gratuit, 20/h). */
+  @Post('plan-stock')
+  async planStock(@Body() body: Record<string, unknown>, @Req() req: AuthedRequest) {
+    const telegramId = requireTelegramId(req);
+    const texte = typeof body.texte === 'string' ? body.texte.trim().slice(0, 1000) : '';
+    if (!texte) throw new BadRequestException('texte requis');
+    if (!this.stockVideoService.actif) throw new HttpException('Les plans vidéo ne sont pas disponibles pour le moment.', HttpStatus.SERVICE_UNAVAILABLE);
+    const exclure = Array.isArray(body.exclure) ? body.exclure.filter((u): u is string => typeof u === 'string').slice(0, 20) : [];
+    const cle = `plan-stock:${telegramId}`;
+    if (this.rateLimitService.lockedFor(cle) > 0) {
+      throw new HttpException('Tu as beaucoup cherché de plans. Réessaie dans quelques minutes.', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    this.rateLimitService.fail(cle, 20, 3600, 600);
+    const plan = await this.stockVideoService.autrePlan(texte, exclure).catch((e) => {
+      this.logger.warn(`plan-stock: ${e instanceof Error ? e.message : e}`);
+      return null;
+    });
+    if (!plan) throw new NotFoundException('Aucun autre plan trouvé pour ce passage.');
+    return plan;
   }
 
   @Get('miniature/gabarits')

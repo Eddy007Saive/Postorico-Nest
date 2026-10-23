@@ -128,3 +128,42 @@ describe('StockVideoService', () => {
     expect(await s.pool('texte')).toEqual([]);
   });
 });
+
+describe('StockVideoService.autrePlan', () => {
+  const messagesCreate = jest.fn().mockResolvedValue({});
+  const texte = jest.fn();
+  const fetchMock = jest.fn();
+  const s = new StockVideoService({ messagesCreate, texte } as never, { get: (k: string) => (k === 'app.pexelsApiKey' ? 'cle' : 'x') } as never);
+  beforeEach(() => {
+    jest.clearAllMocks();
+    global.fetch = fetchMock as unknown as typeof fetch;
+  });
+
+  it('lit la clé banque d’une URL de plan', () => {
+    expect(StockVideoService.cleDepuisUrl('https://res.cloudinary.com/n/video/upload/v1/stock/pexels-42.mp4')).toBe('pexels-42');
+    expect(StockVideoService.cleDepuisUrl('https://res.cloudinary.com/n/video/upload/v1/clients/x.mp4')).toBeNull();
+  });
+
+  it('écarte le plan actuel et renvoie le suivant, importé dans Cloudinary', async () => {
+    texte.mockReturnValueOnce('{"queries": ["keys handover"]}');
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ videos: [
+        { id: 42, duration: 8, width: 1080, height: 1920, video_files: [fichier(1080, 1920, 'actuel')] },
+        { id: 43, duration: 8, width: 1080, height: 1920, video_files: [fichier(1080, 1920, 'nouveau')] },
+      ] }),
+    });
+    (cloudinary.api.resource as jest.Mock).mockRejectedValue(new Error('not found'));
+    (cloudinary.uploader.upload as jest.Mock).mockResolvedValue({ secure_url: 'https://res.cloudinary.com/n/video/upload/v1/stock/pexels-43.mp4' });
+    expect(await s.autrePlan('Remise des clés', ['https://res.cloudinary.com/n/video/upload/v1/stock/pexels-42.mp4'])).toEqual({
+      url: 'https://res.cloudinary.com/n/video/upload/v1/stock/pexels-43.mp4',
+      desc: 'Real stock footage (Pexels): keys handover',
+    });
+    expect(cloudinary.uploader.upload).toHaveBeenCalledWith('nouveau', expect.objectContaining({ public_id: 'stock/pexels-43' }));
+  });
+
+  it('rien de filmable : null', async () => {
+    texte.mockReturnValueOnce('{"queries": []}');
+    expect(await s.autrePlan('Une idée abstraite')).toBeNull();
+  });
+});
