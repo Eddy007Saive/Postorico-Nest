@@ -663,6 +663,8 @@ model plans_mensuels {
   version         Int      @default(1)
   modele          String?
   calcule_le      DateTime @default(now()) @db.Timestamptz(6)
+  /// Copie figée du diagnostic qui a produit le plan (migration plans_mensuels_diagnostic.sql)
+  diagnostic      Json?
 
   @@unique([telegram_id, mois], map: "plans_mensuels_unique")
 }

@@ -232,10 +232,20 @@ export class PlanService {
   async ecran(telegramId: string, nbMois = 7) {
     const plan = await this.dernier(telegramId);
     if (!plan) return { plan: null, diagnostic: null, serie: [] };
-    const diag = await this.prisma.diagnostics_mensuels.findUnique({
-      where: { telegram_id_mois: { telegram_id: telegramId, mois: plan.diagnostic_mois } },
-      select: { constats: true, calcule_le: true },
-    });
+    const { diagnostic: fige, ...planSeul } = plan as typeof plan & { diagnostic?: unknown };
+    let diagnostic: Record<string, unknown> | null = fige && typeof fige === 'object' ? (fige as Record<string, unknown>) : null;
+    if (!diagnostic) {
+      // Plan antérieur à la copie figée : diagnostic de la table ; s'il a été recalculé après le
+      // plan, ses créneaux peuvent contredire le plan et ne sont pas montrés.
+      const diag = await this.prisma.diagnostics_mensuels.findUnique({
+        where: { telegram_id_mois: { telegram_id: telegramId, mois: plan.diagnostic_mois } },
+        select: { constats: true, calcule_le: true },
+      });
+      if (diag) {
+        diagnostic = { ...(diag.constats as object), calcule_le: diag.calcule_le };
+        if (plan.calcule_le && diag.calcule_le > plan.calcule_le) delete diagnostic.creneaux;
+      }
+    }
     const fin = plan.diagnostic_mois.toISOString().slice(0, 10);
     const debut = decalerMois(fin, -(nbMois - 1));
     const lignes = await this.prisma.stats_mensuelles.findMany({
@@ -251,7 +261,7 @@ export class PlanService {
       impressions: l.impressions || l.vues,
       abonnes: l.abonnes,
     }));
-    return { plan, diagnostic: diag ? { ...(diag.constats as object), calcule_le: diag.calcule_le } : null, serie };
+    return { plan: planSeul, diagnostic, serie };
   }
 
   /** Plan du mois en cours seulement s'il n'existe pas encore (cron quotidien). */
@@ -277,6 +287,7 @@ export class PlanService {
       where: { telegram_id_mois: { telegram_id: telegramId, mois: new Date(`${moisDiag}T00:00:00Z`) } },
     });
     let diagnostic = enBase?.constats as unknown as Diagnostic | undefined;
+    const diagCalculeLe = (enBase as { calcule_le?: Date } | null)?.calcule_le ?? new Date();
     if (!diagnostic) {
       const r = await this.diagnosticService.diagnostiquerClient(telegramId, { mois: moisDiag.slice(0, 7), ecrire });
       if (!r.diagnostic) return { ok: true, ignore: r.ignore || 'aucun_diagnostic' };
@@ -301,6 +312,8 @@ export class PlanService {
       const data = {
         telegram_id: telegramId, mois: moisDate, diagnostic_mois: new Date(`${moisDiag}T00:00:00Z`), intro,
         recommandations: recos as never, version: VERSION_PLAN, modele, calcule_le: new Date(),
+        // Le diagnostic tel qu'il était : l'écran l'affiche à côté du plan, même s'il est recalculé ensuite.
+        diagnostic: { ...(diagnostic as object), calcule_le: diagCalculeLe } as never,
       };
       await this.prisma.plans_mensuels.upsert({ where: { telegram_id_mois: { telegram_id: telegramId, mois: moisDate } }, create: data, update: data });
       this.logger.log(`plan ${telegramId} ${mois} : ${recos.length} recommandations`);

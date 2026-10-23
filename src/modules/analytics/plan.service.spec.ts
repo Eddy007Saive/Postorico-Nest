@@ -165,6 +165,36 @@ describe('PlanService.planifier', () => {
     expect(r.diagnostic).toMatchObject({ mois: '2026-09-01' });
   });
 
+  it('le plan écrit garde une copie du diagnostic qui l’a produit', async () => {
+    const { service, prisma } = make(diag({ volume: { posts: 1, posts_mois_precedent: 26 } }));
+    await service.planifier('u1', { mois: '2026-10', formuler: false });
+    const data = prisma.plans_mensuels.upsert.mock.calls[0][0].create;
+    expect(data.diagnostic).toMatchObject({ volume: { posts: 1 } });
+    expect(data.diagnostic.calcule_le).toBeInstanceOf(Date);
+  });
+
+  it('écran : le diagnostic figé du plan est montré, la table recalculée n’est pas lue', async () => {
+    const { service, prisma } = make(null);
+    const fige = { mois: '2026-09-01', creneaux: [{ jour: 2, heure: 9 }] };
+    prisma.plans_mensuels.findFirst.mockResolvedValue({ mois: new Date('2026-10-01T00:00:00Z'), diagnostic_mois: new Date('2026-09-01T00:00:00Z'), diagnostic: fige });
+    (prisma.diagnostics_mensuels as Record<string, jest.Mock>).findUnique = jest.fn();
+    (prisma as Record<string, unknown>).stats_mensuelles = { findMany: jest.fn().mockResolvedValue([]) };
+    const r = await service.ecran('u1');
+    expect(r.diagnostic).toEqual(fige);
+    expect(r.plan).not.toHaveProperty('diagnostic');
+    expect(prisma.diagnostics_mensuels.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('écran : ancien plan sans copie, diagnostic recalculé après lui → ses créneaux ne sont pas montrés', async () => {
+    const { service, prisma } = make(null);
+    prisma.plans_mensuels.findFirst.mockResolvedValue({ mois: new Date('2026-10-01T00:00:00Z'), diagnostic_mois: new Date('2026-09-01T00:00:00Z'), calcule_le: new Date('2026-10-01T06:00:00Z'), diagnostic: null });
+    (prisma.diagnostics_mensuels as Record<string, jest.Mock>).findUnique = jest.fn().mockResolvedValue({ constats: { mois: '2026-09-01', creneaux: [{ jour: 4, heure: 18 }] }, calcule_le: new Date('2026-10-15T00:00:00Z') });
+    (prisma as Record<string, unknown>).stats_mensuelles = { findMany: jest.fn().mockResolvedValue([]) };
+    const r = await service.ecran('u1');
+    expect(r.diagnostic).toMatchObject({ mois: '2026-09-01' });
+    expect(r.diagnostic).not.toHaveProperty('creneaux');
+  });
+
   it('sans diagnostic ni stats : ignoré', async () => {
     const { service, prisma } = make(null);
     expect(await service.planifier('u1', { mois: '2026-10' })).toEqual({ ok: true, ignore: 'aucune_stat_collectee' });
