@@ -255,4 +255,82 @@ export class SujetsService {
     }
     return { sujets: uniques.slice(0, nombre), usage: this.claude.usage(resp) };
   }
+
+  /**
+   * Matrice « piliers × formats » du Plan éditorial : l'IA tire 3 à 6 piliers courts de la fiche
+   * de marque (texte libre), puis écrit UNE idée par case pilier × format. Les formats sont ceux
+   * des réseaux connectés (Article est un Post : écarté), 5 au plus. Rien n'est enregistré ici :
+   * le client coche les idées qu'il garde (ajouterSujets).
+   */
+  async genererMatrice(telegramId: string): Promise<
+    { piliers: string[]; formats: string[]; idees: Array<SujetGenere & { pilier: string }>; usage: LlmUsage } | { error: string }
+  > {
+    if (!this.claude.isConfigured) return { error: 'no_api_key' };
+    const u = await this.marqueService.chargerMarque(telegramId);
+    if (!String(u.secteur ?? '').trim()) return { error: 'profil_incomplet' };
+    const contexte = this.marqueService.contexteMarque(u);
+    const formats = (await this.dimensionsService.formatsDisponibles(telegramId)).filter((f) => f !== 'Article').slice(0, 5);
+    const historique = await this.sujetsHistorique(telegramId);
+    const deja = historique.slice(0, 20).map((t) => `- ${t}`).join('\n');
+
+    const resp = await this.claude.messagesCreate({
+      model: SUJETS_MODEL,
+      max_tokens: 6000,
+      system: ROLE_SUJETS + contexte,
+      messages: [
+        {
+          role: 'user',
+          content:
+            'Build a content matrix for this brand.\n' +
+            '1) From the brand information (especially its content pillars / themes, written freely), name 3 to 6 ' +
+            'distinct CONTENT PILLARS, 1 to 4 words each. If no pillars are given, infer them from the sector, offers and audience.\n' +
+            `2) For EVERY pillar and EVERY format in [${formats.join(', ')}], write ONE topic idea that fits both the pillar ` +
+            'and the format (a carousel idea is a list or a step-by-step, a reel idea is visual and short, a story is quick and casual...). ' +
+            'Vary objectives and angles across the matrix.\n' +
+            `Objectives: [${DIMENSIONS.objectif.join(', ')}]. Angles: [${DIMENSIONS.angle.join(', ')}].\n` +
+            'Answer ONLY with JSON: {"piliers": ["..."], "idees": [{"pilier": "<exact pillar name>", "format": "<exact format>", ' +
+            '"sujet": "<concrete, catchy hook, not a vague theme>", "objectif": "...", "angle": "..."}]}' +
+            (deja ? `\n\nTopics already proposed or published (do NOT repeat or rephrase them):\n${deja}` : '') +
+            `\n\nWrite the pillar names and every "sujet" in ${this.marqueService.langueSortie(u)}.`,
+        },
+      ],
+    });
+
+    const texte = this.claude.texte(resp);
+    let d: { piliers?: unknown; idees?: unknown } = {};
+    try {
+      const m = /\{[\s\S]*\}/.exec(texte);
+      d = JSON.parse(m ? m[0] : texte);
+    } catch {
+      this.logger.warn(`matrice JSON illisible (stop_reason=${resp.stop_reason})`);
+      return { error: 'reponse_illisible' };
+    }
+    const piliers = (Array.isArray(d.piliers) ? d.piliers : [])
+      .map((p) => this.sansTiret(String(p ?? '').trim()).slice(0, 60))
+      .filter(Boolean)
+      .slice(0, 6);
+    const existants = new Set(historique.map((t) => this.norm(t)));
+    const vus = new Set<string>();
+    const cases = new Set<string>();
+    const idees: Array<SujetGenere & { pilier: string }> = [];
+    for (const o of Array.isArray(d.idees) ? (d.idees as Array<Record<string, unknown>>) : []) {
+      const pilier = this.sansTiret(String(o?.pilier ?? '').trim());
+      const format = this.dimensionsService.validerFormat(o?.format, formats);
+      const sujet = this.sansTiret(String(o?.sujet ?? '').trim()).slice(0, 200);
+      const k = this.norm(sujet);
+      const caseCle = `${pilier}|${format}`;
+      if (!piliers.includes(pilier) || !formats.includes(format) || !k || existants.has(k) || vus.has(k) || cases.has(caseCle)) continue;
+      vus.add(k);
+      cases.add(caseCle);
+      idees.push({
+        pilier,
+        sujet,
+        format,
+        objectif: this.dimensionsService.validerDimension('objectif', o.objectif),
+        angle: this.dimensionsService.validerDimension('angle', o.angle),
+      });
+    }
+    if (!piliers.length || !idees.length) return { error: 'reponse_illisible' };
+    return { piliers, formats, idees, usage: this.claude.usage(resp) };
+  }
 }

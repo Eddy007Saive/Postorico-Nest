@@ -20,6 +20,7 @@ import { DemarrageService } from '../demarrage/demarrage.service';
 import { DimensionsService } from '../dimensions/dimensions.service';
 import { QuotaService } from '../quota/quota.service';
 import { UsageService } from '../usage/usage.service';
+import { AjouterSujetsDto } from './dto/ajouter-sujets.dto';
 import { GenererSujetsDto } from './dto/generer-sujets.dto';
 import { MajSujetDto } from './dto/maj-sujet.dto';
 import { SujetGenere } from './interfaces/sujet-genere.interface';
@@ -98,6 +99,61 @@ export class SujetsController {
       }
     }
     return { sujets: saved, quota: { action: 'subject', used: q.used, limit: q.limit } };
+  }
+
+  /** Matrice « piliers × formats » : une idée par case, en un seul appel (compte 1 génération de sujets). */
+  @Post('matrice')
+  async matrice(@Req() req: AuthedRequest) {
+    const telegramId = req.user.telegram_id;
+    await this.demarrageService.exigerProfil(telegramId);
+    const q = await this.quotaService.consume(telegramId, 'subject');
+    if (!q.ok) throw refusQuota(q);
+    let result: Awaited<ReturnType<SujetsService['genererMatrice']>>;
+    try {
+      result = await this.sujetsService.genererMatrice(telegramId);
+    } catch (e: unknown) {
+      await this.quotaService.refund(q);
+      this.logger.error(`Agent matrice error: ${e instanceof Error ? e.message : e}`);
+      throw new InternalServerErrorException("La matrice n'a pas pu être remplie. Réessaie.");
+    }
+    if ('error' in result) {
+      await this.quotaService.refund(q);
+      if (result.error === 'reponse_illisible') throw new InternalServerErrorException("La matrice n'a pas pu être remplie. Réessaie.");
+      mapAgentError(result.error);
+    }
+    await this.quotaService.confirm(q);
+    await this.usageService.log(telegramId, 'matrice', SUJETS_MODEL, result.usage, q.unit_cost ?? 0);
+    const { usage: _usage, ...matrice } = result;
+    return { ...matrice, quota: { action: 'subject', used: q.used, limit: q.limit } };
+  }
+
+  /** Idées de la matrice gardées : enregistrées comme sujets (brouillons), sans quota. */
+  @Post('sujets/ajouter')
+  async ajouterSujets(@Body() dto: AjouterSujetsDto, @Req() req: AuthedRequest) {
+    const telegramId = req.user.telegram_id;
+    const lignes = dto.sujets
+      .map((s) => {
+        const dims: Record<string, string> = {};
+        const format = this.dimensionsService.validerDimension('format', s.format);
+        const objectif = this.dimensionsService.validerDimension('objectif', s.objectif);
+        const angle = this.dimensionsService.validerDimension('angle', s.angle);
+        if (format) dims.format = format;
+        if (objectif) dims.objectif = objectif;
+        if (angle) dims.angle = angle;
+        if (s.pilier?.trim()) dims.pilier = s.pilier.trim().slice(0, 60);
+        return { titre: s.sujet.trim().slice(0, 200), dims };
+      })
+      .filter((l) => l.titre);
+    const rows = await this.prisma.brouillons.createManyAndReturn({
+      data: lignes.map((l) => ({
+        telegram_id: telegramId,
+        titre: l.titre,
+        statut: 'Brouillon' as const,
+        dimensions: Object.keys(l.dims).length ? l.dims : undefined,
+        dimensions_reco: Object.keys(l.dims).length ? l.dims : undefined,
+      })),
+    });
+    return { sujets: rows.map((r) => ({ id: r.id, titre: r.titre ?? '', dimensions: r.dimensions, dimensions_reco: r.dimensions_reco })) };
   }
 
   /** Les listes de valeurs des 4 dimensions d'un sujet (objectif/angle/cible/format).
