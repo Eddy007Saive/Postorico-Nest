@@ -342,16 +342,31 @@ export class MiniatureService {
           const titre = box.querySelector('.titre');
           if (titre) {
             const mots = titre.textContent.trim().split(/\\s+/).length;
-            const lignesMax = mots >= 5 ? 3 : 2;
             const W = titre.clientWidth;
-            let s = window.innerWidth * (lignesMax === 3 ? 0.26 : 0.30);
-            for (let i = 0; i < 60; i++) {
-              titre.style.fontSize = s + 'px';
-              const lh = parseFloat(getComputedStyle(titre).lineHeight) || s;
-              const lignes = Math.round(titre.scrollHeight / lh);
-              if (lignes <= lignesMax && titre.scrollWidth <= W + 1) break;
-              s *= 0.95;
+            // Des mots longs (ex. « STAGIAIRE », « FORMATION ») forcent une police plus petite
+            // à 2 lignes qu'à 3 : on essaie les deux découpages possibles et on garde le plus
+            // grand résultat, plutôt que de figer le nombre de lignes sur le seul compte de mots.
+            const essayer = (lignesMax) => {
+              let s = window.innerWidth * 0.34;
+              for (let i = 0; i < 60; i++) {
+                titre.style.fontSize = s + 'px';
+                const lh = parseFloat(getComputedStyle(titre).lineHeight) || s;
+                const lignes = Math.round(titre.scrollHeight / lh);
+                if (lignes <= lignesMax && titre.scrollWidth <= W + 1) return s;
+                s *= 0.95;
+              }
+              return s;
+            };
+            const maxLignes = mots >= 5 ? 3 : Math.min(mots, 3);
+            const s2 = essayer(2);
+            let meilleure = s2;
+            for (let lm = 3; lm <= maxLignes; lm++) {
+              const s = essayer(lm);
+              // Une ligne de plus ne vaut le coup que si le gain est net (≥ 15 %) : sinon
+              // on préfère la coupe à 2 lignes, plus équilibrée (évite un mot isolé seul en haut).
+              if (s > meilleure * 1.15) meilleure = s;
             }
+            titre.style.fontSize = meilleure + 'px';
           }
           const maxW = window.innerWidth * 0.92, maxH = window.innerHeight * 0.55;
           for (let i = 0; i < 40; i++) {
