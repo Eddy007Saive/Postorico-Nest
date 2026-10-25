@@ -470,16 +470,17 @@ export class PostsController {
     }
   }
 
-  /** Modifie le nom ou la note d'utilisation d'un template (avant : création et suppression seulement,
-   * la note ne se corrigeait plus une fois le template créé). */
+  /** Modifie le nom, les images ou la note d'utilisation d'un template (avant : création et
+   * suppression seulement, rien ne se corrigeait plus une fois le template créé). */
   @Patch('templates/:id')
   async updateTemplate(@Param('id') id: string, @Body() dto: UpdateTemplateDto, @Req() req: AuthedRequest) {
-    const data: { nom?: string; note?: string | null } = {};
+    const data: { nom?: string; images?: never; note?: string | null } = {};
     if (dto.nom !== undefined) {
       const nom = dto.nom.trim();
       if (!nom) throw new BadRequestException('Nom requis');
       data.nom = nom.slice(0, 80);
     }
+    if (dto.images !== undefined) data.images = dto.images as never;
     if (dto.note !== undefined) data.note = dto.note.trim() || null;
     if (!Object.keys(data).length) throw new BadRequestException('Rien à modifier');
     const r = await this.prisma.brand_templates.updateMany({ where: { id, telegram_id: req.user.telegram_id }, data });
