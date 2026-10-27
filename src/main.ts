@@ -1,6 +1,8 @@
+import './instrument';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { SentryGlobalFilter } from '@sentry/nestjs/setup';
 import { AppModule } from './app.module';
 import { LoggerSilencieux, niveauxLog } from './common/logger-silencieux';
 
@@ -18,6 +20,10 @@ async function bootstrap() {
   // Éditeur de carrousel : jusqu'à 10 slides exportées en JPEG (data URL) dans une requête
   app.useBodyParser('json', { limit: '40mb' });
   app.setGlobalPrefix('api');
+  // Sans effet si Sentry est inactif (pas de SENTRY_DSN) : le filtre ne fait que relayer.
+  // L'adaptateur HTTP est requis : sans lui, BaseExceptionFilter plante sur toute erreur
+  // (this.applicationRef resterait undefined).
+  app.useGlobalFilters(new SentryGlobalFilter(app.getHttpAdapter()));
   // whitelist: rejette les champs non déclarés dans le DTO — équivalent de Pydantic qui
   // ignore silencieusement les extra sauf configuration contraire ; ici on préfère strict.
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
