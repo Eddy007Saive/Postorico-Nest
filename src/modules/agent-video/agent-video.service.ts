@@ -31,11 +31,13 @@ import {
   motifSuspect,
 } from './consignes.util';
 import {
+  ClipClient,
   consigneMoments,
   contexte,
   Illustration,
   lireChoix,
   meilleurFichier,
+  placerClipsRestants,
 } from './illustrations.util';
 import { Mot, motsRecales, segmentsGardes } from './pretraitement.util';
 import { dureeEstimee, texteParle } from './texte-parle.util';
@@ -109,7 +111,8 @@ export interface ImageClient {
   description?: string | null;
 }
 
-/** Une image n'est acceptée que si elle vient de la banque du client sur le Cloudinary de Postorico. */
+/** Une image (ou une vidéo de plan de coupe) n'est acceptée que si elle vient de la banque du
+ * client sur le Cloudinary de Postorico. */
 export function imageAutorisee(
   url: string,
   cloud: string,
@@ -117,9 +120,15 @@ export function imageAutorisee(
 ): boolean {
   return (
     typeof url === 'string' &&
-    url.startsWith(`https://res.cloudinary.com/${cloud}/image/upload/`) &&
+    (url.startsWith(`https://res.cloudinary.com/${cloud}/image/upload/`) ||
+      url.startsWith(`https://res.cloudinary.com/${cloud}/video/upload/`)) &&
     url.includes(`/banque/${telegramId}/`)
   );
+}
+
+/** Une vidéo de la banque du client (plan de coupe), et non une photo. */
+export function estVideoBanque(url: unknown): boolean {
+  return typeof url === 'string' && url.includes('/video/upload/');
 }
 
 /** Corrections gratuites par montage ; au-delà, chacune compte comme un montage. */
@@ -534,19 +543,26 @@ export class AgentVideoService implements OnApplicationBootstrap {
         });
       }
 
+      const medias = ((brief.images as Array<{ url: string; description?: string }>) || []).filter((m) => m?.url);
+      const clipsClient: ClipClient[] = medias.filter((m) => estVideoBanque(m.url));
+      const photos = medias.filter((m) => !estVideoBanque(m.url));
       const illustrations: Illustration[] = [];
-      if (brief.illustrations !== false) {
+      if (brief.illustrations !== false || clipsClient.length) {
         await this.progression(id, "Recherche des plans d'illustration");
+        // Les vidéos du client sont placées une fois, dans le premier passage parlé.
+        let clipsAPlacer = clipsClient;
         for (const [i, tr] of transcriptions.entries()) {
-          if (tr.words.length)
-            illustrations.push(
-              ...(await this.illustrer(
-                i,
-                tr.words,
-                tr.language,
-                motion ? 7 : undefined,
-              )),
-            );
+          if (!tr.words.length) continue;
+          illustrations.push(
+            ...(await this.illustrer(
+              i,
+              tr.words,
+              tr.language,
+              motion ? 7 : undefined,
+              { stock: brief.illustrations !== false, clips: clipsAPlacer },
+            )),
+          );
+          clipsAPlacer = [];
         }
       }
       this.logger.log(
@@ -566,7 +582,7 @@ export class AgentVideoService implements OnApplicationBootstrap {
         coupes,
         transcriptions,
         illustrations,
-        images: (brief.images as unknown[]) || [],
+        images: photos,
         logo_url: (brief.logo_url as string) || '',
         musique_url: (brief.musique_url as string) || '',
         musique_volume: (brief.musique_volume as number) || 25,
@@ -632,19 +648,44 @@ export class AgentVideoService implements OnApplicationBootstrap {
     mots: Mot[],
     langue: string,
     max?: number,
+    opts: { stock?: boolean; clips?: ClipClient[] } = {},
   ): Promise<Illustration[]> {
+    const clips = opts.clips || [];
+    let choix: ReturnType<typeof lireChoix> = [];
     try {
       const rep = await this.claude.messagesCreate({
         model: MODELE_ILLUSTRATIONS,
-        max_tokens: 600,
+        max_tokens: 700,
         messages: [
-          { role: 'user', content: consigneMoments(mots, langue, max) },
+          { role: 'user', content: consigneMoments(mots, langue, max, { clips, stock: opts.stock }) },
         ],
       });
-      const choix = lireChoix(this.claude.texte(rep), mots, max);
+      choix = lireChoix(this.claude.texte(rep), mots, max, clips.length);
+    } catch (e) {
+      this.logger.warn(
+        `agent vidéo illustrations rush ${rush + 1}: ${e instanceof Error ? e.message : e}`,
+      );
+    }
+    // Aucune vidéo du client n'est oubliée, même si l'IA n'en a pas placé (ou n'a pas répondu).
+    choix = placerClipsRestants(choix, mots, clips.length);
+    try {
       const out: Illustration[] = [];
       for (const c of choix) {
         const passage = `« ${contexte(mots, c.i)} »`;
+        if (c.type === 'client') {
+          const clip = clips[(c.clip as number) - 1];
+          if (!clip) continue;
+          out.push({
+            type: 'broll',
+            url: clip.url,
+            rush,
+            debut: mots[c.i].start,
+            duree: 3,
+            description: `VIDÉO DU CLIENT (son propre plan de coupe, à utiliser) : ${c.query || clip.description || 'plan du client'} — ${passage}`,
+          });
+          continue;
+        }
+        if (opts.stock === false) continue;
         if (c.type === 'schema') {
           // Dessiné par l'agent : pas de fichier, juste ce qu'il doit montrer
           out.push({
@@ -1239,6 +1280,8 @@ export class AgentVideoService implements OnApplicationBootstrap {
           images: images.map((im) => ({
             url: im.url,
             description: String(im.description || '').slice(0, 200),
+            // Une vidéo de la banque : à monter en plan de coupe, pas en image fixe
+            type: estVideoBanque(im.url) ? 'video' : 'image',
           })),
         }),
       },

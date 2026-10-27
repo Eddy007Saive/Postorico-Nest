@@ -791,3 +791,25 @@ describe('agent vidéo : motion design (sans tournage)', () => {
     expect(prisma.travaux_agent_video.update.mock.calls.at(-1)[0].data.brief).toMatchObject({ rushs_coupes: ['videos_raw/t/agent_voix_x'] });
   });
 });
+
+describe('agent vidéo : illustrer avec les vidéos du client', () => {
+  const mots = Array.from({ length: 60 }, (_, k) => ({ text: `mot${k}`, start: k * 0.5, end: k * 0.5 + 0.4 }));
+  const clips = [{ url: 'https://res.cloudinary.com/demo/video/upload/v1/banque/u1/a.mp4', description: 'cuisine' }];
+
+  it('IA en panne : la vidéo du client est quand même posée, en plan de coupe', async () => {
+    const { service, claude } = make();
+    claude.messagesCreate.mockRejectedValueOnce(new Error('overloaded'));
+    const r = await service.illustrer(0, mots, 'fr', undefined, { stock: true, clips });
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ type: 'broll', url: clips[0].url, rush: 0, duree: 3 });
+    expect(r[0].description).toContain('VIDÉO DU CLIENT');
+  });
+
+  it('illustrations désactivées : seulement la vidéo du client, aucun plan Pexels ni schéma', async () => {
+    const { service, claude } = make({ pexels: 'cle' });
+    claude.messagesCreate.mockResolvedValueOnce({});
+    claude.texte.mockReturnValueOnce(JSON.stringify({ picks: [{ i: 20, type: 'client', clip: 1, query: 'la cuisine' }, { i: 40, type: 'schema', query: '3 étapes' }] }));
+    const r = await service.illustrer(0, mots, 'fr', undefined, { stock: false, clips });
+    expect(r.map((x) => x.url)).toEqual([clips[0].url]);
+  });
+});
