@@ -596,6 +596,22 @@ export class BillingService {
     }
   }
 
+  /** Pack Fondations payé : le studio du compte passe aux mains de l'équipe (message « en cours
+   * de configuration » côté client), sauf s'il est déjà livré. Par l'email si le Pack est payé
+   * avant l'inscription ; sinon le client le déclare lui-même à l'arrivée. */
+  private async studioEnConfiguration(telegramId: string | null | undefined, email: string | null | undefined): Promise<void> {
+    const qui = telegramId ? { telegram_id: telegramId } : email ? { email: email.toLowerCase() } : null;
+    if (!qui) return;
+    try {
+      await this.prisma.users.updateMany({
+        where: { ...qui, OR: [{ studio_config: null }, { studio_config: 'seul' }] },
+        data: { studio_config: 'equipe', studio_config_le: new Date() },
+      });
+    } catch (e) {
+      this.logger.warn(`studio en configuration: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
   /** Ce que le back-office a besoin de savoir avant de déclencher l'abonnement. */
   async carteEnregistree(telegramId: string): Promise<CarteEnregistreeResult> {
     if (!this.ready) return { ok: false, error: 'Stripe non configuré.' };
@@ -1119,6 +1135,7 @@ export class BillingService {
           // Commission setup (25%) : code de l'affilié déposé dans la metadata du lien.
           this.commission('setup', session.id, session.amount_total, session.currency, meta.telegram_id, custEmail, 'Pack Fondations', meta.affilie);
           await this.lierClientStripe(meta.telegram_id, custEmail, custId);
+          await this.studioEnConfiguration(meta.telegram_id, custEmail);
           await this.abonnementApresPack(custId, meta.telegram_id, custEmail);
           facture = await this.facturePayload(meta.telegram_id, session.amount_total, session.currency, 'Pack Fondations');
         } else if (session.subscription) {

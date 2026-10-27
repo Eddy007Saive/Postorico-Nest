@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { SentryModule } from '@sentry/nestjs/setup';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import appConfig from './config/app.config';
@@ -33,6 +34,7 @@ import { MemoireModule } from './modules/memoire/memoire.module';
 import { NewsletterModule } from './modules/newsletter/newsletter.module';
 import { OffersModule } from './modules/offers/offers.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
+import { ConfigurationModule } from './modules/configuration/configuration.module';
 import { PostsModule } from './modules/posts/posts.module';
 import { QuotaModule } from './modules/quota/quota.module';
 import { ReelModule } from './modules/reel/reel.module';
@@ -47,6 +49,7 @@ import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
+    SentryModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
       load: [appConfig],
@@ -91,6 +94,7 @@ import { UsersModule } from './modules/users/users.module';
     TurnstileModule,
     NewsletterModule,
     OnboardingModule,
+    ConfigurationModule,
     SiteModule,
     WorkflowsModule,
   ],
