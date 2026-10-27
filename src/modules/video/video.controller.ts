@@ -10,6 +10,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  Put,
   Req,
   UploadedFile,
   UseGuards,
@@ -28,6 +29,7 @@ import { VideoRerenderDto } from './dto/video-rerender.dto';
 import { MontagePocService, PRESETS } from './montage-poc.service';
 import { VideoService } from './video.service';
 import { DescriptionVideoService } from './description-video.service';
+import { CLES_REGLAGES, CleReglage, ReglagesVideoService } from './reglages-video.service';
 import { VideoTropLongue } from '../transcodage/transcodage.service';
 
 type AuthedRequest = Request & { user: JwtPayload };
@@ -45,7 +47,22 @@ export class VideoController {
     private readonly montagePoc: MontagePocService,
     private readonly quotaService: QuotaService,
     private readonly descriptionVideo: DescriptionVideoService,
+    private readonly reglagesVideo: ReglagesVideoService,
   ) {}
+
+  /** Réglages par défaut du Studio Vidéo de ce compte (Montage IA, consignes de l'agent IA). */
+  @Get('reglages')
+  async reglages(@Req() req: AuthedRequest) {
+    return this.reglagesVideo.lire(req.user.telegram_id);
+  }
+
+  /** Enregistre un réglage par défaut : { cle: montage | consigne_video | consigne_motion, valeur } (null = effacer). */
+  @Put('reglages')
+  async ecrireReglage(@Body() body: Record<string, unknown>, @Req() req: AuthedRequest) {
+    const cle = body.cle as CleReglage;
+    if (!CLES_REGLAGES.includes(cle)) throw new BadRequestException('Réglage inconnu.');
+    return this.reglagesVideo.ecrire(req.user.telegram_id, cle, body.valeur ?? null);
+  }
 
   /** Presets de sous-titres (fixes, Studio Montage) + bibliothèque de sons. */
   @Get('options')

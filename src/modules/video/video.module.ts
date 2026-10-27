@@ -12,10 +12,12 @@ import { ClaudeModule } from '../claude/claude.module';
 import { MarqueModule } from '../marque/marque.module';
 import { DescriptionVideoService } from './description-video.service';
 
+import { ReglagesVideoService } from './reglages-video.service';
+
 @Module({
   imports: [PrismaModule, AuthModule, QuotaModule, MusicLibraryModule, ContenuEvenementModule, TranscodageModule, ClaudeModule, MarqueModule],
   controllers: [VideoController],
-  providers: [VideoService, MontagePocService, DescriptionVideoService],
+  providers: [VideoService, MontagePocService, DescriptionVideoService, ReglagesVideoService],
   exports: [VideoService, MontagePocService, DescriptionVideoService],
 })
 export class VideoModule {}

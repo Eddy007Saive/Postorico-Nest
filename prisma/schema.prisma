@@ -831,6 +831,8 @@ model users {
   /// Configuration du studio : null = pas encore choisi, seul, equipe (en cours par nos équipes), livre
   studio_config         String?
   studio_config_le      DateTime?               @db.Timestamptz(6)
+  /// Réglages par défaut du Studio Vidéo (Montage IA, consignes de l'agent IA par onglet)
+  reglages_video        Json?
   nom                   String?
   username              String?
   email                 String?
