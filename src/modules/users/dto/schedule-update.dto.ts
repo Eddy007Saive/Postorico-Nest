@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsInt, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator';
 
 class ScheduleItemDto {
   @IsString()
@@ -17,6 +17,12 @@ class ScheduleItemDto {
   @IsOptional()
   @IsString()
   preferred_time?: string;
+
+  // Validation fine (jour 0-6 présent dans days_of_week, format HH:MM) faite côté service,
+  // comme days_of_week déjà — ici on ne vérifie que la forme générale.
+  @IsOptional()
+  @IsObject()
+  preferred_times?: Record<string, string>;
 
   @IsOptional()
   @IsBoolean()

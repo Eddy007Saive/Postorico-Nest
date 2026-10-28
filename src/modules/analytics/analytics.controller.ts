@@ -51,4 +51,16 @@ export class AnalyticsController {
     if (isDefault && data.ok && data.connected) await this.analyticsService.storeCache(telegramId, data);
     return data;
   }
+
+  /** Meilleurs créneaux calculés depuis NOTRE historique (pas la recommandation Zernio) —
+   * requête directe, sans appel réseau, pas besoin du cache d'insights. */
+  @Get('creneaux-reels')
+  async getCreneauxReels(@Query('platform') platform: string | undefined, @Req() req: AuthedRequest) {
+    try {
+      return { creneaux: await this.analyticsService.creneauxReels(req.user.telegram_id, platform) };
+    } catch (e) {
+      this.logger.error(`Get creneaux reels error: ${e instanceof Error ? e.message : e}`);
+      throw new InternalServerErrorException(e instanceof Error ? e.message : String(e));
+    }
+  }
 }

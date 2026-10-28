@@ -66,6 +66,42 @@ export function creneauxLocaux(slots: unknown[], timeZone: string): Creneau[] {
   return out.sort((a, b) => b.engagement - a.engagement);
 }
 
+/** Mêmes créneaux que creneauxLocaux (Lun=0…Dim=6, heure locale du client), mais calculés
+ * à partir de NOS propres publications (`analytics_performance.publie_le` + taux_engagement)
+ * plutôt que de la recommandation générique de Zernio — pour comparer, sur l'historique réel
+ * du client, quels jours/heures choisis dans sa planification ont le mieux marché. */
+export function calculerCreneauxReels(
+  rows: Array<{ publie_le: Date | null; taux_engagement: unknown }>,
+  timeZone: string,
+): Creneau[] {
+  const JOURS: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+  let fmt: Intl.DateTimeFormat;
+  try {
+    fmt = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short', hour: 'numeric', hourCycle: 'h23' });
+  } catch {
+    fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Paris', weekday: 'short', hour: 'numeric', hourCycle: 'h23' });
+  }
+  const buckets = new Map<string, { eng: number; n: number }>();
+  for (const r of rows) {
+    if (!r.publie_le) continue;
+    const parts = Object.fromEntries(fmt.formatToParts(r.publie_le).map((x) => [x.type, x.value]));
+    const jour = JOURS[parts.weekday];
+    const heure = Number(parts.hour) % 24;
+    if (jour === undefined || !Number.isFinite(heure)) continue;
+    const key = `${jour}-${heure}`;
+    const cur = buckets.get(key) || { eng: 0, n: 0 };
+    cur.eng += Number(r.taux_engagement || 0);
+    cur.n += 1;
+    buckets.set(key, cur);
+  }
+  return Array.from(buckets.entries())
+    .map(([key, v]) => {
+      const [jour, heure] = key.split('-').map(Number);
+      return { jour, heure, engagement: Math.round((v.eng / v.n) * 10) / 10, posts: v.n };
+    })
+    .sort((a, b) => b.engagement - a.engagement);
+}
+
 /** Une série par compte : `stats` de Zernio est indexé par id de compte. */
 export function seriesAbonnes(
   rep: { accounts?: Record<string, unknown>[]; stats?: Record<string, Array<{ date: string; followers: number }>> },
@@ -374,6 +410,17 @@ export class AnalyticsService implements OnApplicationBootstrap {
       nouveaux_commentaires: nouveauxCommentaires,
       posts_performants: postsPerformants,
     };
+  }
+
+  /** Meilleurs créneaux calculés depuis NOTRE historique (analytics_performance), à
+   * comparer avec la recommandation générique de Zernio (performance().creneaux). */
+  async creneauxReels(telegramId: string, platform?: string | null): Promise<Creneau[]> {
+    const u = await this.prisma.users.findUnique({ where: { telegram_id: telegramId }, select: { timezone: true } });
+    const rows = await this.prisma.analytics_performance.findMany({
+      where: { telegram_id: telegramId, publie_le: { not: null }, ...(platform ? { reseau: platform.toLowerCase() } : {}) },
+      select: { publie_le: true, taux_engagement: true },
+    });
+    return calculerCreneauxReels(rows, u?.timezone || 'Europe/Paris');
   }
 
   async getPerformance(telegramId: string) {

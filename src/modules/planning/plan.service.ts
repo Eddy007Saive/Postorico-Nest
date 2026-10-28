@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
-import { PlanningService, RESEAU_TO_PLATFORM } from './planning.service';
+import { PlanningService, RESEAU_TO_PLATFORM, timeForDay } from './planning.service';
 
 /**
  * Plan éditorial par MOIS (calendrier) — port direct de backend/services/plan_service.py.
@@ -21,6 +21,7 @@ export interface ScheduleRow {
   is_active: boolean | null;
   format: string | null;
   preferred_time: Date | null;
+  preferred_times: unknown;
   carrousel_template: string | null;
 }
 
@@ -59,7 +60,7 @@ export class PlanService {
     try {
       return await this.prisma.publication_schedules.findMany({
         where: { telegram_id: telegramId },
-        select: { platform: true, days_of_week: true, frequency: true, is_active: true, format: true, preferred_time: true, carrousel_template: true },
+        select: { platform: true, days_of_week: true, frequency: true, is_active: true, format: true, preferred_time: true, preferred_times: true, carrousel_template: true },
       });
     } catch (e) {
       this.logger.error(`plan schedules error: ${e instanceof Error ? e.message : e}`);
@@ -162,7 +163,8 @@ export class PlanService {
       if (d < today) continue;
       const iso = d.toISOString().slice(0, 10);
       if (occupied.has(iso)) continue;
-      res.push(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), ptime.hour, ptime.minute)).toISOString());
+      const ptimeJour = timeForDay(d.getUTCDay(), ptime, sched?.preferred_times);
+      res.push(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), ptimeJour.hour, ptimeJour.minute)).toISOString());
     }
     return res;
   }

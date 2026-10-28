@@ -591,6 +591,9 @@ model publication_schedules {
   frequency          String    @default("weekly")
   days_of_week       Int[]     @default([])
   preferred_time     DateTime? @default(dbgenerated("'09:00:00'::time without time zone")) @db.Time(6)
+  // Override par jour de l'heure préférée : {"1":"09:00","3":"14:30"}, clé = jour (0=Dim..6=Sam,
+  // convention days_of_week) ; absence de clé pour un jour -> repli sur preferred_time.
+  preferred_times    Json?
   is_active          Boolean?  @default(true)
   created_at         DateTime? @default(now()) @db.Timestamptz(6)
   updated_at         DateTime? @default(now()) @db.Timestamptz(6)

@@ -75,6 +75,24 @@ function mod(n: number, m: number): number {
   return ((n % m) + m) % m;
 }
 
+/** Heure préférée pour UN jour donné : l'override de preferred_times s'il existe et est
+ * valide pour ce jour, sinon le repli (extractTime(preferred_time), ou DEFAULT_TIME).
+ * Fonction pure (pas une méthode) : réutilisée telle quelle par PlanService (créneauxLibres).
+ * Une ligne sans preferred_times (le cas de toutes les lignes existantes) retombe toujours
+ * sur `defaut`, donc son comportement ne change pas. */
+export function timeForDay(
+  jourNum: number,
+  defaut: { hour: number; minute: number },
+  overrides: unknown,
+): { hour: number; minute: number } {
+  const map = overrides && typeof overrides === 'object' ? (overrides as Record<string, string>) : null;
+  const raw = map?.[String(jourNum)];
+  if (!raw) return defaut;
+  const [h, m] = raw.split(':').map((x) => parseInt(x, 10));
+  if (!Number.isInteger(h) || !Number.isInteger(m) || h < 0 || h > 23 || m < 0 || m > 59) return defaut;
+  return { hour: h, minute: m };
+}
+
 @Injectable()
 export class PlanningService {
   private readonly logger = new Logger(PlanningService.name);
@@ -167,13 +185,14 @@ export class PlanningService {
     let row: {
       days_of_week: number[];
       preferred_time: Date | null;
+      preferred_times: unknown;
       is_active: boolean | null;
       mode_planification: string;
     } | null = null;
     try {
       row = await this.prisma.publication_schedules.findFirst({
         where: { telegram_id: telegramId, platform },
-        select: { days_of_week: true, preferred_time: true, is_active: true, mode_planification: true },
+        select: { days_of_week: true, preferred_time: true, preferred_times: true, is_active: true, mode_planification: true },
       });
     } catch (e) {
       this.logger.error(`planning schedule lookup error: ${e instanceof Error ? e.message : e}`);
@@ -183,10 +202,6 @@ export class PlanningService {
     const famille = this.familleDe(typeContenu, mode);
     const ptime = this.extractTime(row?.preferred_time);
     const days = new Set(row?.days_of_week || []);
-
-    // « cumulé » : heure décalée par famille pour éviter deux publications à la même
-    // minute. « à la suite » : un seul contenu par jour, donc l'heure préférée suffit.
-    const heure = mod(ptime.hour + (FAMILLE_OFFSET_H[famille] ?? 0), 24);
 
     const occ = await this.joursOccupes(telegramId, reseauCible, famille, mode);
     const today = new Date();
@@ -204,7 +219,11 @@ export class PlanningService {
       }
       const dateStr = d.toISOString().slice(0, 10);
       if (occ.has(dateStr)) continue;
-      const [h, m, s] = this.heureHumanisee(heure, ptime.minute, [telegramId, platform, famille, dateStr]);
+      // « cumulé » : heure décalée par famille pour éviter deux publications à la même
+      // minute. « à la suite » : un seul contenu par jour, donc l'heure préférée suffit.
+      const ptimeJour = timeForDay(jourNum, ptime, row?.preferred_times);
+      const heureJour = mod(ptimeJour.hour + (FAMILLE_OFFSET_H[famille] ?? 0), 24);
+      const [h, m, s] = this.heureHumanisee(heureJour, ptimeJour.minute, [telegramId, platform, famille, dateStr]);
       const dt = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h, m, s));
       return dt.toISOString();
     }
