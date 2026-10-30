@@ -226,7 +226,7 @@ export class UsersController {
     if (!VALID_PLATFORMS.has(dto.platform)) throw new BadRequestException('Invalid platform');
     await this.quotaService.exigerAbonnement(telegramId); // sans carte -> popup mur de paiement (au lieu d'un toast)
     try {
-      return await this.socialService.connectPlatform(telegramId, dto.platform);
+      return await this.socialService.connectPlatform(telegramId, dto.platform, dto.source);
     } catch (e) {
       this.logger.error(`Social connect error: ${e instanceof Error ? e.message : e}`);
       return { success: false, error: 'Une erreur est survenue lors de la connexion. Réessaie dans un instant.' };

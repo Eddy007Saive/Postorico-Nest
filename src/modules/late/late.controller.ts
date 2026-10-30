@@ -40,6 +40,7 @@ export class LateController {
     @Query('telegram_id') telegramId: string,
     @Query('platform') platform: string,
     @Query('accountId') accountId: string | undefined,
+    @Query('source') source: string | undefined,
     @Res() res: Response,
   ) {
     let ok = false;
@@ -50,6 +51,13 @@ export class LateController {
       // (indicateur levé par finalizeConnection, lu par GET /late/a-reprogrammer).
     } catch (e) {
       this.logger.error(`oauth-callback error ${telegramId}/${platform}: ${e instanceof Error ? e.message : e}`);
+    }
+    if (source === 'mobile') {
+      // App Capacitor : pas de popup à fermer, on relance l'app via le schéma natif.
+      // L'intent-filter Android (AndroidManifest.xml) intercepte ce lien avant qu'il ne
+      // tente de charger quoi que ce soit.
+      res.redirect(`postorico://oauth-callback?ok=${ok ? '1' : '0'}`);
+      return;
     }
     const titre = ok ? 'Compte connecté ✅' : 'Connexion échouée';
     const detail = ok ? 'Tu peux fermer cette fenêtre.' : "Réessaie depuis l'application.";

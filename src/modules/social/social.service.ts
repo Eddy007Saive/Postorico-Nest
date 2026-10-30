@@ -390,7 +390,7 @@ export class SocialService {
 
   /** Génère l'URL OAuth via le SDK Zernio. Zernio héberge l'OAuth puis redirige vers notre
    * callback backend qui enregistre le compte (voir LateController.oauthCallback). */
-  async connectPlatform(telegramId: string, platform: string): Promise<ConnectPlatformResult> {
+  async connectPlatform(telegramId: string, platform: string, source?: string): Promise<ConnectPlatformResult> {
     // Connexion de réseau : abonnement actif OU essai en cours (quelqu'un en essai a déjà
     // donné sa carte — l'exclure priverait de voir le produit avant le premier prélèvement).
     if (!(await this.quotaService.peutPublier(telegramId))) {
@@ -422,7 +422,9 @@ export class SocialService {
     const profileId = user?.late_profile_id;
     if (!profileId) return { success: false, error: 'Profil de publication introuvable. Réessaie.' };
 
-    const redirectUrl = `${this.backendUrl}/api/late/oauth-callback?telegram_id=${telegramId}&platform=${platform}`;
+    const redirectUrl =
+      `${this.backendUrl}/api/late/oauth-callback?telegram_id=${telegramId}&platform=${platform}` +
+      (source === 'mobile' ? '&source=mobile' : '');
     try {
       const r = await this.zernio.getConnectUrl(platform, profileId, redirectUrl);
       const url = r.authUrl || r.url || r.connectUrl;
