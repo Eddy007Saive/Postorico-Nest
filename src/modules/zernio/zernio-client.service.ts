@@ -200,9 +200,10 @@ export class ZernioClientService {
     platform: string,
     profileId: string,
     redirectUrl: string,
+    extra: Record<string, string | undefined> = {},
   ): Promise<ZernioConnectUrlResponse> {
     return this.request('GET', `/v1/connect/${platform}`, {
-      params: { profileId, redirectUrl },
+      params: { profileId, redirectUrl, ...extra },
     });
   }
 
@@ -765,5 +766,66 @@ export class ZernioClientService {
     limit?: number;
   }): Promise<Record<string, unknown>> {
     return this.request('GET', '/v1/ads/targeting/search', { params });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Email : boîte Google ou Microsoft connectée avec scopes=email. Envoi un à un
+  // (plafond quotidien de la boîte, pause si le même corps part à plus de 50
+  // destinataires en une heure) : pas un outil d'envoi en masse.
+  // ---------------------------------------------------------------------------
+
+  async listEmailThreads(params: {
+    accountId: string;
+    folder?: string;
+    cursor?: string;
+    limit?: number;
+    anyEmail?: string;
+  }): Promise<Record<string, unknown>> {
+    return this.request('GET', '/v1/email/threads', { params });
+  }
+
+  async getEmailThread(
+    threadId: string,
+    accountId: string,
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      'GET',
+      `/v1/email/threads/${encodeURIComponent(threadId)}`,
+      {
+        params: { accountId },
+      },
+    );
+  }
+
+  async sendEmail(
+    body: Record<string, unknown>,
+  ): Promise<{ data?: Record<string, unknown> }> {
+    return this.request('POST', '/v1/email/messages', { body });
+  }
+
+  async replyEmail(
+    messageId: string,
+    body: Record<string, unknown>,
+  ): Promise<{ data?: Record<string, unknown> }> {
+    return this.request(
+      'POST',
+      `/v1/email/messages/${encodeURIComponent(messageId)}/reply`,
+      { body },
+    );
+  }
+
+  async markEmailThread(
+    threadId: string,
+    accountId: string,
+    body: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      'PATCH',
+      `/v1/email/threads/${encodeURIComponent(threadId)}`,
+      {
+        params: { accountId },
+        body,
+      },
+    );
   }
 }

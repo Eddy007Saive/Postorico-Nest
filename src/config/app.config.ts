@@ -126,6 +126,9 @@ export default registerAs('app', () => {
   // cette instance tant qu'un autre backend (le Python en prod) le fait déjà — sinon un même
   // contenu peut être poussé deux fois chez Zernio.
   publishSweepActive: (process.env.PUBLISH_SWEEP_ACTIVE || '1') !== '0',
+  // CAMPAGNES_EMAIL_ACTIVE=0 coupe l'envoi planifié des campagnes email sur une instance (les
+  // mails sont réservés avant envoi : deux instances actives n'envoient jamais un mail deux fois).
+  campagnesEmailActive: (process.env.CAMPAGNES_EMAIL_ACTIVE || '1') !== '0',
   newsletterPerplexityModel: process.env.NEWSLETTER_PERPLEXITY_MODEL || 'perplexity/sonar-pro',
   newsletterJour: parseInt(process.env.NEWSLETTER_JOUR || '1', 10), // 0=lundi … 6=dimanche (défaut mardi)
   newsletterHeure: parseInt(process.env.NEWSLETTER_HEURE || '9', 10),

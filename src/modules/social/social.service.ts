@@ -388,6 +388,14 @@ export class SocialService {
     return { ok: false, error: cr.error || 'Impossible de créer le profil de publication.' };
   }
 
+  /** Le profil Zernio du compte (créé au besoin) : réutilisé pour connecter la boîte mail. */
+  async profilPublication(telegramId: string): Promise<{ profileId?: string; error?: string }> {
+    const ensured = await this.ensureLateProfile(telegramId);
+    if (!ensured.ok) return { error: ensured.error };
+    const user = await this.prisma.users.findUnique({ where: { telegram_id: telegramId }, select: { late_profile_id: true } });
+    return user?.late_profile_id ? { profileId: user.late_profile_id } : { error: 'Profil de publication introuvable. Réessaie.' };
+  }
+
   /** Génère l'URL OAuth via le SDK Zernio. Zernio héberge l'OAuth puis redirige vers notre
    * callback backend qui enregistre le compte (voir LateController.oauthCallback). */
   async connectPlatform(telegramId: string, platform: string, source?: string): Promise<ConnectPlatformResult> {

@@ -870,6 +870,8 @@ model users {
   codes_connexion       codes_connexion[]
   commentaires          commentaires[]
   comptes_sociaux       comptes_sociaux[]
+  boites_mail           boites_mail?
+  campagnes_email       campagnes_email[]
   contenu               contenu[]
   device_tokens         device_tokens[]
   heygen_avatars        heygen_avatars?
@@ -1009,4 +1011,57 @@ enum type_video {
   Reel
   Video
   Short
+}
+
+/// Boîte mail du client (Google ou Microsoft) connectée via Zernio, pour ses campagnes email.
+model boites_mail {
+  telegram_id String   @id @db.Uuid
+  account_id  String
+  fournisseur String
+  adresse     String?
+  connecte_le DateTime @default(now()) @db.Timestamptz(6)
+  users       users    @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// Petite campagne email personnalisée, envoyée depuis la boîte du client à un rythme étalé.
+model campagnes_email {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  telegram_id     String    @db.Uuid
+  nom             String
+  consigne        String    @default("")
+  /// brouillon | en_cours | en_pause | terminee
+  statut          String    @default("brouillon")
+  par_heure       Int       @default(30)
+  pause_jusqu_a   DateTime? @db.Timestamptz(6)
+  derniere_erreur String?
+  lancee_le       DateTime? @db.Timestamptz(6)
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  users           users     @relation(fields: [telegram_id], references: [telegram_id], onDelete: Cascade, onUpdate: NoAction)
+  destinataires   campagnes_email_destinataires[]
+
+  @@index([telegram_id], map: "campagnes_email_user_idx")
+  @@index([statut], map: "campagnes_email_statut_idx")
+}
+
+model campagnes_email_destinataires {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  campagne_id String          @db.Uuid
+  email       String
+  prenom      String?
+  entreprise  String?
+  note        String?
+  objet       String?
+  corps       String?
+  /// a_rediger | pret | envoi | envoye | repondu | erreur
+  statut      String          @default("a_rediger")
+  message_id  String?
+  thread_id   String?
+  envoye_le   DateTime?       @db.Timestamptz(6)
+  verifie_le  DateTime?       @db.Timestamptz(6)
+  erreur      String?
+  created_at  DateTime        @default(now()) @db.Timestamptz(6)
+  campagne    campagnes_email @relation(fields: [campagne_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([campagne_id, email], map: "campagnes_email_dest_unique")
+  @@index([campagne_id, statut], map: "campagnes_email_dest_campagne_idx")
 }
