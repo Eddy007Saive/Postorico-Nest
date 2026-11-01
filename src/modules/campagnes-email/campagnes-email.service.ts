@@ -153,9 +153,18 @@ export class CampagnesEmailService implements OnApplicationBootstrap {
       return { authUrl: url };
     } catch (e) {
       if (e instanceof ErreurCampagne) throw e;
-      this.logger.error(
-        `connecter boîte ${telegramId}/${fournisseur}: ${e instanceof Error ? e.message : e}`,
-      );
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.error(`connecter boîte ${telegramId}/${fournisseur}: ${msg}`);
+      // Même cas que pour les réseaux (social.service) : le compte Zernio de Postorico est plein.
+      if (
+        (e instanceof ZernioError && e.statusCode === 402) ||
+        /payment|more than 2/i.test(msg)
+      ) {
+        throw new ErreurCampagne(
+          'Limite de comptes connectés atteinte sur le compte de publication. Ajoute un moyen de paiement sur Zernio pour connecter ta boîte mail.',
+          402,
+        );
+      }
       throw new ErreurCampagne(
         'Impossible de démarrer la connexion. Réessaie.',
         502,
