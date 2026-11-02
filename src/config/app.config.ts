@@ -25,6 +25,9 @@ export default registerAs('app', () => {
   // n'est qu'un défaut jamais réellement utilisé (l'env var le fixe à 8 en prod comme en tests).
   adminSessionHeures: parseInt(process.env.ADMIN_SESSION_HEURES || '8', 10),
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
+  // Sites autorisés à appeler l'API depuis un navigateur, séparés par des virgules (FRONTEND_URL
+  // et l'appli mobile s'y ajoutent d'office). Vide = API ouverte à tous (voir cors.util.ts).
+  corsOrigins: process.env.CORS_ORIGINS || '',
   backendUrl: (process.env.BACKEND_URL || 'http://localhost:3000').replace(/\/$/, ''),
   resendApiKey: process.env.RESEND_API_KEY || '',
   resendFrom: process.env.RESEND_FROM || 'Postorico <onboarding@resend.dev>',

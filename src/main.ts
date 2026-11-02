@@ -1,10 +1,12 @@
 import './instrument';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { SentryGlobalFilter } from '@sentry/nestjs/setup';
 import { AppModule } from './app.module';
 import { LoggerSilencieux, niveauxLog } from './common/logger-silencieux';
+import { origineAcceptee, originesAutorisees } from './common/utils/cors.util';
 
 async function bootstrap() {
   // rawBody: true expose req.rawBody (Buffer) — nécessaire pour les webhooks signés
@@ -27,7 +29,20 @@ async function bootstrap() {
   // whitelist: rejette les champs non déclarés dans le DTO — équivalent de Pydantic qui
   // ignore silencieusement les extra sauf configuration contraire ; ici on préfère strict.
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  app.enableCors();
+  const config = app.get(ConfigService);
+  const autorisees = originesAutorisees(
+    config.get<string>('app.corsOrigins') || '',
+    config.get<string>('app.frontendUrl') || '',
+  );
+  if (!autorisees.size)
+    Logger.warn(
+      'CORS_ORIGINS vide : l’API accepte les appels de tous les sites.',
+      'Cors',
+    );
+  app.enableCors({
+    origin: (origin, rappel) =>
+      rappel(null, origineAcceptee(origin, autorisees)),
+  });
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();
