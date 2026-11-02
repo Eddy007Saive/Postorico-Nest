@@ -3,12 +3,11 @@ import { PrismaService } from '../../config/prisma.service';
 import { JwtPayload } from '../auth/auth.service';
 import { DemarrageService } from '../demarrage/demarrage.service';
 import { GabaritComposeService } from '../gabarit/gabarit-compose.service';
-import { LateService } from '../late/late.service';
-import { PlanningService } from '../planning/planning.service';
 import { QuotaService } from '../quota/quota.service';
 import { UsageService } from '../usage/usage.service';
 import { ImageController } from './image.controller';
 import { ImageService } from './image.service';
+import { VisuelAutoService } from './visuel-auto.service';
 
 // Port de POST /agent/image (backend/routes/agent.py) : en mode template, le texte affiché
 // vient TOUJOURS du post via l'accroche composée par Claude (composer_gabarit), pas du
@@ -24,7 +23,6 @@ describe('ImageController.image — auto-accroche en mode template', () => {
       genererImage: jest.fn().mockResolvedValue({ lien_visuel: 'https://cdn/x.png' }),
     } as unknown as ImageService;
     const demarrageService = { exigerProfil: jest.fn().mockResolvedValue(undefined) } as unknown as DemarrageService;
-    const planningService = { prochainCreneau: jest.fn().mockResolvedValue(null) } as unknown as PlanningService;
     const quotaService = {
       consume: jest.fn().mockResolvedValue({ ok: true, used: 1, limit: 10 }),
       confirm: jest.fn().mockResolvedValue(undefined),
@@ -38,7 +36,9 @@ describe('ImageController.image — auto-accroche en mode template', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
     } as unknown as PrismaService;
-    const lateService = {} as unknown as LateService;
+    const visuelAutoService = {
+      appliquerVisuel: jest.fn().mockResolvedValue({ statut: 'A valider', date_publication: null }),
+    } as unknown as VisuelAutoService;
     const gabaritComposeService = {
       composerGabarit: jest.fn().mockResolvedValue(opts.composerResult),
     } as unknown as GabaritComposeService;
@@ -46,12 +46,11 @@ describe('ImageController.image — auto-accroche en mode template', () => {
     const controller = new ImageController(
       imageService,
       demarrageService,
-      planningService,
       quotaService,
       usageService,
       prisma,
-      lateService,
       gabaritComposeService,
+      visuelAutoService,
     );
     const req = { user: { telegram_id: 'u1' } as JwtPayload } as Request & { user: JwtPayload };
     return { controller, imageService, gabaritComposeService, req };

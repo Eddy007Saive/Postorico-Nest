@@ -136,6 +136,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Version réduite d'une image Cloudinary (les PNG d'inspiration font souvent 2 Mo) ; les autres
+ * URLs passent telles quelles. PNG pour ce qui doit garder sa transparence (logo, mascotte). */
+export function vignette(url: string, largeur: number, format: 'jpg' | 'png' = 'jpg'): string {
+  if (!url.includes('res.cloudinary.com') || !url.includes('/image/upload/')) return url;
+  return url.replace('/image/upload/', `/image/upload/w_${largeur},c_limit,q_auto,f_${format}/`);
+}
+
 @Injectable()
 export class ImageService {
   private readonly logger = new Logger(ImageService.name);
@@ -353,6 +360,87 @@ export class ImageService {
       this.logger.warn(`list inspirations error: ${e instanceof Error ? e.message : e}`);
       return [];
     }
+  }
+
+  /** Inspirations du compte avec leur rôle : « integrate » (à intégrer telle quelle, ex. la
+   * mascotte), « ecran » (capture à reproduire) ou « style ». Le rôle vit dans le contexte
+   * Cloudinary de l'asset (UsersService.setRole). */
+  async inspirationsAvecRoles(telegramId: string): Promise<Array<{ url: string; role: 'style' | 'integrate' | 'ecran' }>> {
+    try {
+      const res = await cloudinary.api.resources({
+        type: 'upload',
+        prefix: `inspirations/${telegramId}/`,
+        max_results: 30,
+        context: true,
+      });
+      const resources = (res.resources ?? []) as Array<{ secure_url?: string; context?: { custom?: Record<string, string> } }>;
+      return resources
+        .filter((r) => r.secure_url)
+        .map((r) => {
+          const c = r.context?.custom || {};
+          const role = c.ecran === '1' ? 'ecran' : c.integrate === '1' ? 'integrate' : 'style';
+          return { url: r.secure_url as string, role };
+        });
+    } catch (e) {
+      this.logger.warn(`inspirations avec rôles: ${e instanceof Error ? e.message : e}`);
+      return [];
+    }
+  }
+
+  /** Génère un nouveau visuel À PARTIR D'UN GABARIT DE MARQUE du client (brand_templates) :
+   * le gabarit est le modèle à suivre (mise en page, typographies, bandeaux, ambiance), sa note
+   * dit ce qui est fixe et ce qui change, la commande décrit la nouvelle publication. */
+  async genererDepuisGabarit(
+    telegramId: string,
+    p: {
+      gabaritUrls: string[];
+      note: string;
+      commande: string;
+      integrateUrls?: string[];
+      styleUrls?: string[];
+      model?: string;
+      contenuId?: string | null;
+      ratio?: string;
+    },
+  ): Promise<GenererImageResult | { error: string }> {
+    if (!this.openrouterApiKey) return { error: 'no_openrouter_key' };
+    const gabarits = await this.prepRefs(p.gabaritUrls.slice(0, 2).map((u) => vignette(u, 1536)));
+    if (!gabarits.length) return { error: 'gabarit_illisible' };
+    const integrate = await this.prepRefs((p.integrateUrls || []).slice(0, 2).map((u) => vignette(u, 1024, 'png')));
+    const styles = await this.prepRefs((p.styleUrls || []).slice(0, 2).map((u) => vignette(u, 1024)));
+    const n = gabarits.length;
+    let texte =
+      `${n > 1 ? `Les ${n} PREMIÈRES images sont` : 'La PREMIÈRE image est'} le GABARIT DE MARQUE du client : ` +
+      "c'est le modèle à suivre. Crée une NOUVELLE publication qui garde son identité à l'identique : même " +
+      'mise en page, même hiérarchie et mêmes emplacements de texte, mêmes typographies, mêmes couleurs, ' +
+      'mêmes bandeaux, logo et éléments graphiques, même ambiance et même qualité photo. Seul change ce que ' +
+      'la commande ci-dessous demande (produit, scène, textes). Ne recopie pas l\'ancien contenu du gabarit ' +
+      'quand la commande le remplace : l\'ancien texte disparaît.';
+    if (p.note.trim()) {
+      texte += `\n\nRÈGLES DU GABARIT, écrites par le client (elles priment) :\n${p.note.trim().slice(0, 6000)}`;
+    }
+    if (integrate.length) {
+      texte +=
+        '\n\nLes images suivantes sont à INTÉGRER telles quelles dans la publication (logo, mascotte, ' +
+        'produit réel…) : leur contenu doit être clairement visible et fidèle.';
+    }
+    if (styles.length) {
+      texte +=
+        '\n\nLes dernières images sont des références de STYLE du client : inspire-toi de leur ambiance ' +
+        'sans copier leur contenu.';
+    }
+    texte +=
+      `\n\nCOMMANDE :\n${p.commande.trim()}\n\n` +
+      'Textes parfaitement lisibles, sans faute, accents corrects. N\'ajoute aucun texte, prix, promotion, ' +
+      'logo ou badge que la commande ou les règles ne demandent pas.';
+    if (p.ratio === '9:16') {
+      texte += '\n\nFormat VERTICAL 9:16 (story) : adapte la composition du gabarit à la hauteur.';
+    }
+    const content: ChatContent = [
+      { type: 'text', text: texte },
+      ...[...gabarits, ...integrate, ...styles].map((url) => ({ type: 'image_url' as const, image_url: { url } })),
+    ];
+    return this.appelerEtUploader(content, p.model, telegramId, p.contenuId, null, p.ratio || '4:5');
   }
 
   /** Convertit un lien Google Drive (page /view) en lien de téléchargement direct. */

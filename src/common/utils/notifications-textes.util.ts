@@ -139,6 +139,37 @@ const NOTIFS = {
       () => 'Lista para validar en Contenidos.',
     ],
   },
+  // Visuel créé automatiquement à la validation d'un post
+  visuelPret: {
+    fr: [
+      () => 'Ton visuel est prêt 🎨',
+      (v) => `${v.titre} : à vérifier dans Contenus, tu peux le modifier.`,
+    ],
+    en: [
+      () => 'Your visual is ready 🎨',
+      (v) => `${v.titre}: check it in Contents, you can still edit it.`,
+    ],
+    es: [
+      () => 'Tu visual está listo 🎨',
+      (v) => `${v.titre}: revísalo en Contenidos, puedes modificarlo.`,
+    ],
+  },
+  visuelEchec: {
+    fr: [
+      () => 'Visuel : création échouée ❌',
+      (v) =>
+        `${v.titre} : crée le visuel depuis Contenus (quota non décompté).`,
+    ],
+    en: [
+      () => 'Visual: creation failed ❌',
+      (v) => `${v.titre}: create the visual from Contents (quota not used).`,
+    ],
+    es: [
+      () => 'Visual: creación fallida ❌',
+      (v) =>
+        `${v.titre}: crea el visual desde Contenidos (cuota no descontada).`,
+    ],
+  },
   // Montage par l'agent IA
   montagePret: {
     fr: [
@@ -410,12 +441,22 @@ export function motNotif(langue: unknown, cle: keyof typeof MOTS): string {
 
 /** Langue du compte rattaché à cet email (emails envoyés à une adresse) ; français sinon. */
 export async function langueParEmail(
-  prisma: { users: { findFirst: (a: { where: { email: string }; select: { langue: true } }) => Promise<{ langue: string | null } | null> } },
+  prisma: {
+    users: {
+      findFirst: (a: {
+        where: { email: string };
+        select: { langue: true };
+      }) => Promise<{ langue: string | null } | null>;
+    };
+  },
   email: string | null | undefined,
 ): Promise<Langue> {
   if (!email) return 'fr';
   try {
-    const u = await prisma.users.findFirst({ where: { email }, select: { langue: true } });
+    const u = await prisma.users.findFirst({
+      where: { email },
+      select: { langue: true },
+    });
     return langueCode(u?.langue);
   } catch {
     return 'fr';

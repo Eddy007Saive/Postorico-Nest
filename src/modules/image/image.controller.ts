@@ -2,6 +2,8 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
+  HttpCode,
   HttpException,
   HttpStatus,
   InternalServerErrorException,
@@ -12,21 +14,20 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { refusQuota } from '../../common/utils/agent-http-errors';
-import { labelStatutContenu } from '../../common/utils/contenu-enum.util';
 import { PrismaService } from '../../config/prisma.service';
 import { JwtPayload } from '../auth/auth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { DemarrageService } from '../demarrage/demarrage.service';
 import { GabaritComposeService } from '../gabarit/gabarit-compose.service';
-import { LateService } from '../late/late.service';
-import { PlanningService } from '../planning/planning.service';
 import { imageAction, QuotaService } from '../quota/quota.service';
 import { IMAGE_PRICES, UsageService } from '../usage/usage.service';
 import { ImageEditerDto } from './dto/image-editer.dto';
 import { ImageDto } from './dto/image.dto';
 import { ImagePromptDto } from './dto/image-prompt.dto';
 import { PhotoDto } from './dto/photo.dto';
+import { VisuelAutoDto } from './dto/visuel-auto.dto';
 import { IMAGE_MODELS, ImageService } from './image.service';
+import { VisuelAutoService } from './visuel-auto.service';
 
 type AuthedRequest = Request & { user: JwtPayload };
 
@@ -79,12 +80,11 @@ export class ImageController {
   constructor(
     private readonly imageService: ImageService,
     private readonly demarrageService: DemarrageService,
-    private readonly planningService: PlanningService,
     private readonly quotaService: QuotaService,
     private readonly usageService: UsageService,
     private readonly prisma: PrismaService,
-    private readonly lateService: LateService,
     private readonly gabaritComposeService: GabaritComposeService,
+    private readonly visuelAutoService: VisuelAutoService,
   ) {}
 
   /** Claude écrit un prompt d'image à partir du post (gratuit, éditable). */
@@ -211,40 +211,8 @@ export class ImageController {
     if (dto.contenu_id) {
       // prompt_image = la DESCRIPTION du mode IA, mémorisée. En template, on n'y écrit plus les
       // instructions (elles se retrouvaient préremplies dans la description).
-      const upd: Record<string, unknown> = { lien_visuel: res.lien_visuel };
-      if (!dto.template_mode) {
-        upd.prompt_image = prompt;
-        upd.style_image = style;
-      }
-      // Le visuel est prêt -> on fixe la date puis on POUSSE vers Zernio. Le statut ne passe
-      // PLUS à "Planifié" ici : seul l'event webhook post.scheduled le confirme (source de
-      // vérité = Zernio ; fini les posts "Planifié" qui n'existent nulle part).
-      const cur = await this.prisma.contenu.findFirst({
-        where: { id: dto.contenu_id, telegram_id: telegramId },
-        select: { statut: true, reseau_cible: true, date_publication: true, type: true },
-      });
-      if (!cur?.date_publication) {
-        const creneau = await this.planningService.prochainCreneau(telegramId, cur?.reseau_cible, cur?.type);
-        if (creneau) upd.date_publication = creneau;
-      }
-      await this.prisma.contenu.updateMany({ where: { id: dto.contenu_id, telegram_id: telegramId }, data: upd });
-      // labelStatutContenu : Prisma renvoie le nom d'enum mappé (ex. "A_valider"), pas le
-      // libellé brut ("A valider") que compare le frontend — voir contenu-enum.util.ts.
-      out.statut = labelStatutContenu(cur?.statut);
-      const datePublication = upd.date_publication || cur?.date_publication;
-      out.date_publication = datePublication;
-      // BUG CORRIGÉ : "A_valider" ne doit JAMAIS pousser vers Zernio — sinon un brouillon
-      // part se programmer dès qu'on lui génère/régénère une image, avant toute validation
-      // explicite. Seul un contenu déjà "Valider" (posté par l'utilisateur) ou déjà "Planifie"
-      // (déjà poussé, on rafraîchit juste) déclenche l'auto-programmation ici.
-      if ((cur?.statut === 'Valider' || cur?.statut === 'Planifie') && datePublication) {
-        try {
-          const pub = await this.lateService.programmerContenu(telegramId, dto.contenu_id);
-          out.publish_status = pub.ok ? 'envoi' : pub.skipped ? 'ignoré' : 'échec';
-        } catch (e) {
-          this.logger.warn(`auto-programmation après visuel ${dto.contenu_id}: ${e instanceof Error ? e.message : e}`);
-        }
-      }
+      const extra = dto.template_mode ? {} : { prompt_image: prompt, style_image: style };
+      Object.assign(out, await this.visuelAutoService.appliquerVisuel(telegramId, dto.contenu_id, res.lien_visuel, extra));
     }
     await this.usageService.log(
       telegramId,
@@ -258,6 +226,20 @@ export class ImageController {
     );
     out.quota = { action: actionType, used: q.used, limit: q.limit };
     return out;
+  }
+
+  /** Crée le visuel d'un post tout seul, en arrière-plan, à partir des gabarits de marque et des
+   * inspirations du client. Répond tout de suite ; une notification prévient à la fin. */
+  @Post('visuel-auto')
+  @HttpCode(HttpStatus.ACCEPTED)
+  visuelAuto(@Body() dto: VisuelAutoDto, @Req() req: AuthedRequest) {
+    return this.visuelAutoService.lancer(req.user.telegram_id, dto.contenu_id);
+  }
+
+  /** Contenus dont le visuel automatique est en cours (l'écran Contenus affiche une attente). */
+  @Get('visuel-auto/en-cours')
+  visuelAutoEnCours(@Req() req: AuthedRequest) {
+    return { contenus: this.visuelAutoService.enCoursPour(req.user.telegram_id) };
   }
 
   /** Retouche une image DÉJÀ générée avec une instruction libre. Consomme un quota image. */
