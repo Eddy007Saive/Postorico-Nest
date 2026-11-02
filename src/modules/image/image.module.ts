@@ -30,6 +30,6 @@ import { VisuelAutoService } from './visuel-auto.service';
   ],
   controllers: [ImageController],
   providers: [ImageService, VisuelAutoService],
-  exports: [ImageService],
+  exports: [ImageService, VisuelAutoService],
 })
 export class ImageModule {}

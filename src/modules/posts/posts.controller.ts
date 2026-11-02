@@ -48,6 +48,7 @@ import { CreateTemplateDto } from './dto/create-template.dto';
 import { UpdateTemplateDto } from './dto/update-template.dto';
 import { PutDraftsDto } from './dto/put-drafts.dto';
 import { PostsService, MODELE_REDACTION } from './posts.service';
+import { VisuelAutoService } from '../image/visuel-auto.service';
 
 type AuthedRequest = Request & { user: JwtPayload };
 
@@ -89,6 +90,7 @@ export class PostsController {
     private readonly scriptService: ScriptService,
     private readonly contenuEvenement: ContenuEvenementService,
     private readonly rateLimitService: RateLimitService,
+    private readonly visuelAutoService: VisuelAutoService,
     config: ConfigService,
   ) {
     cloudinary.config({
@@ -416,17 +418,39 @@ export class PostsController {
             await this.contenuEvenement.logRetouche(dto.contenu_id, telegramId, contenu); // dernière retouche non sauvegardée
           }
           await this.contenuEvenement.log(dto.contenu_id, 'soumis', telegramId, contenu); // envoyé « A valider »
-          return { success: true, contenu_id: dto.contenu_id };
+          return { success: true, contenu_id: dto.contenu_id, ...(await this.visuelApresEnregistrement(telegramId, dto.contenu_id, dto.visuel_auto)) };
         }
       }
       if (contenuOriginal) row.contenu_original = contenuOriginal;
       const ins = await this.prisma.contenu.create({ data: row as never });
       await this.contenuEvenement.log(ins.id, 'genere', telegramId, contenuOriginal || contenu);
-      return { success: true, contenu_id: ins.id };
+      return { success: true, contenu_id: ins.id, ...(await this.visuelApresEnregistrement(telegramId, ins.id, dto.visuel_auto)) };
     } catch (e) {
       if (e instanceof BadRequestException) throw e;
       this.logger.error(`Agent enregistrer error: ${e instanceof Error ? e.message : e}`);
       throw new InternalServerErrorException(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /** « Valider et créer le visuel » : lancé ici, côté serveur, pour que le client puisse changer
+   * de page aussitôt. Un refus (quota, format) n'annule jamais l'enregistrement du post. */
+  private async visuelApresEnregistrement(
+    telegramId: string,
+    contenuId: string,
+    demande?: boolean,
+  ): Promise<{ visuel_auto?: { en_cours: boolean; message?: string } }> {
+    if (!demande) return {};
+    try {
+      await this.visuelAutoService.lancer(telegramId, contenuId);
+      return { visuel_auto: { en_cours: true } };
+    } catch (e) {
+      const corps = e instanceof HttpException ? e.getResponse() : null;
+      const message =
+        (corps && typeof corps === 'object' && typeof (corps as { message?: unknown }).message === 'string'
+          ? (corps as { message: string }).message
+          : null) || (e instanceof Error ? e.message : String(e));
+      this.logger.warn(`visuel auto après enregistrement ${contenuId}: ${message}`);
+      return { visuel_auto: { en_cours: false, message } };
     }
   }
 

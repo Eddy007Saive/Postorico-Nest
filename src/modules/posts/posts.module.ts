@@ -4,6 +4,7 @@ import { AuthModule } from '../auth/auth.module';
 import { CarrouselModule } from '../carrousel/carrousel.module';
 import { ClaudeModule } from '../claude/claude.module';
 import { ContenuEvenementModule } from '../contenus/contenu-evenement.module';
+import { ImageModule } from '../image/image.module';
 import { DemarrageModule } from '../demarrage/demarrage.module';
 import { DimensionsModule } from '../dimensions/dimensions.module';
 import { MarqueModule } from '../marque/marque.module';
@@ -35,6 +36,7 @@ import { RateLimitModule } from '../../common/utils/rate-limit.module';
     ScriptModule,
     ContenuEvenementModule,
     RateLimitModule,
+    ImageModule,
   ],
   controllers: [PostsController],
   providers: [PostsService],

@@ -1,4 +1,4 @@
-import { IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsOptional, IsString } from 'class-validator';
 
 export class EnregistrerDto {
   @IsString()
@@ -25,4 +25,9 @@ export class EnregistrerDto {
   @IsOptional()
   @IsString()
   contenu_id?: string;
+
+  /** « Valider et créer le visuel » : le serveur lance le visuel automatique juste après. */
+  @IsOptional()
+  @IsBoolean()
+  visuel_auto?: boolean;
 }
