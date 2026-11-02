@@ -41,8 +41,12 @@ const ROLE_DIRECTION =
   "publication qu'il a créés, chacun avec ses règles) et ses images d'inspiration. Tu VOIS ces " +
   "images : appuie-toi sur ce qu'elles montrent vraiment (mise en page, typographies, couleurs, " +
   'ambiance, type de photo, place du texte).\n\n' +
-  '1. Choisis le gabarit le plus adapté au post : son nom et ses règles disent à quoi il sert. ' +
-  "S'il n'y a aucun gabarit, ou qu'aucun ne convient vraiment au sujet, réponds 0.\n" +
+  "1. Choisis le gabarit le plus adapté au post. Commence par l'ANGLE du post (nouveau produit ? " +
+  'produit mis en avant avec son prix ? situation du quotidien, moment de vie ? argument ou ' +
+  'info pratique ?), puis prends le gabarit dont le nom et les règles décrivent CET usage : ce ' +
+  'sont elles qui disent à quoi il sert. Un gabarit aux règles génériques (qui ne disent pas à ' +
+  "quoi il sert) ne se choisit que si aucun autre ne correspond à l'angle. S'il n'y a aucun " +
+  "gabarit, ou qu'aucun ne convient vraiment, réponds 0.\n" +
   "2. Choisis jusqu'à 3 inspirations utiles à CE visuel (leurs numéros). Garde celles marquées " +
   '« à intégrer » quand elles ont leur place dans la scène.\n' +
   "3. Écris la commande pour le générateur d'image, en un seul paragraphe :\n" +
@@ -52,6 +56,8 @@ const ROLE_DIRECTION =
   'info absente du post ou des règles du gabarit. Ne redécris pas ce qui reste identique.\n' +
   "   - SANS gabarit : décris la scène (cadrage, sujet, action, décor, lumière) dans l'esprit des " +
   "inspirations, avec AUCUN texte dans l'image et aucun personnage humain inventé.\n" +
+  "Le générateur reçoit les images du gabarit choisi sans leur numéro : n'écris jamais « gabarit " +
+  "N » ni « inspiration N » dans la commande. Un prix ne s'affiche que s'il figure dans le post. " +
   "Couleurs nommées en mots, jamais de code hexadécimal. Pas d'écran montrant une interface " +
   'inventée.\n\n' +
   'Réponds UNIQUEMENT avec ce JSON : {"gabarit": <numéro ou 0>, "inspirations": [<numéros>], ' +
@@ -377,7 +383,7 @@ export class VisuelAutoService {
         });
         blocs.push({
           type: 'text',
-          text: `Gabarit ${i + 1} — « ${g.nom} »${g.note ? ` — règles : ${g.note.slice(0, 1500)}` : ''}`,
+          text: `Gabarit ${i + 1} — « ${g.nom} »${g.note ? ` — règles : ${g.note.slice(0, 3000)}` : ''}`,
         });
       });
     } else {

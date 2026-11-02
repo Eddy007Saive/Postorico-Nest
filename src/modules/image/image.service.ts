@@ -769,6 +769,9 @@ export class ImageService {
       model: model || this.openrouterImageModel,
       messages: [{ role: 'user', content }],
       modalities: ['image', 'text'],
+      // Composé directement au bon format : sans ça le modèle reprend celui des images reçues
+      // (souvent 3:4) et le recadrage 4:5 ci-dessous coupait le bas des gabarits (bandeau).
+      image_config: { aspect_ratio: ratio },
     };
     let resp: Response | undefined;
     for (const essai of [1, 2]) {
