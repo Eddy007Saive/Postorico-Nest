@@ -1,7 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
 import { ClaudeService } from '../claude/claude.service';
+import { AlerteAdminService } from '../mail/alerte-admin.service';
+import { erreurDeCompte } from '../../common/utils/erreur-compte.util';
 import { MarqueService } from '../marque/marque.service';
 import { normaliserUrl } from '../site/site.service';
 import { GenererImageResult, GenererPromptResult, ImageStyle } from './interfaces/image-result.interface';
@@ -154,6 +156,7 @@ export class ImageService {
     private readonly claude: ClaudeService,
     private readonly marqueService: MarqueService,
     config: ConfigService,
+    @Optional() private readonly alerte?: AlerteAdminService,
   ) {
     this.openrouterApiKey = config.get<string>('app.openrouterApiKey') || '';
     this.openrouterImageModel = config.get<string>('app.openrouterImageModel') || 'google/gemini-2.5-flash-image';
@@ -800,6 +803,8 @@ export class ImageService {
     if (!resp || resp.status !== 200) {
       const text = resp ? await resp.text().catch(() => '') : '';
       this.logger.error(`OpenRouter image error ${resp?.status}: ${text.slice(0, 400)}`);
+      const raison = erreurDeCompte(resp?.status, text);
+      if (raison) void this.alerte?.fournisseur('OpenRouter (images)', raison, text);
       return { error: `image_failed_${resp?.status ?? 'network'}` };
     }
 

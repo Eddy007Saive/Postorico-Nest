@@ -1,7 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
 import { LlmUsage } from '../usage/interfaces/llm-usage.interface';
+import { AlerteAdminService } from '../mail/alerte-admin.service';
+import { erreurDeCompte } from '../../common/utils/erreur-compte.util';
 
 /**
  * Client Claude partagé (Anthropic SDK) — infrastructure commune à tous les agents
@@ -27,7 +29,10 @@ export class ClaudeService {
   private readonly logger = new Logger(ClaudeService.name);
   private readonly client: Anthropic | null;
 
-  constructor(config: ConfigService) {
+  constructor(
+    config: ConfigService,
+    @Optional() private readonly alerte?: AlerteAdminService,
+  ) {
     const apiKey = config.get<string>('app.claudeApiKey');
     this.client = apiKey ? new Anthropic({ apiKey }) : null;
   }
@@ -65,6 +70,10 @@ export class ClaudeService {
       }
     }
     this.logger.error(`LLM generation error (after retries): ${last instanceof Error ? last.message : last}`);
+    // Crédits épuisés ou clé refusée : toutes les générations échouent jusqu'à ce que l'admin agisse
+    const detail = String((last as { message?: string })?.message ?? last);
+    const raison = erreurDeCompte((last as { status?: number })?.status, detail);
+    if (raison) void this.alerte?.fournisseur('Anthropic (Claude)', raison, detail);
     throw new GenerationError('Le service de génération est momentanément surchargé. Réessaie dans quelques secondes.');
   }
 

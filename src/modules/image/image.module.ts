@@ -5,6 +5,7 @@ import { ClaudeModule } from '../claude/claude.module';
 import { DemarrageModule } from '../demarrage/demarrage.module';
 import { GabaritModule } from '../gabarit/gabarit.module';
 import { LateModule } from '../late/late.module';
+import { MailModule } from '../mail/mail.module';
 import { MarqueModule } from '../marque/marque.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PlanningModule } from '../planning/planning.module';
@@ -17,6 +18,7 @@ import { VisuelAutoService } from './visuel-auto.service';
 @Module({
   imports: [
     PrismaModule,
+    MailModule,
     AuthModule,
     ClaudeModule,
     MarqueModule,
