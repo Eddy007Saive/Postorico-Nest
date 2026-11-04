@@ -613,9 +613,10 @@ export class MailService {
   }
 
   // ---------------------------------------------------------------- Envoi
-  /** `unsubscribeUrl` (newsletter) : ajoute un lien https en tête de List-Unsubscribe et
-   * List-Unsubscribe-Post -> désinscription One-Click, bon signal de délivrabilité.
-   * Sans URL, on retombe sur le mailto seul (pas de One-Click). */
+  /** `unsubscribeUrl` (newsletter) : List-Unsubscribe + List-Unsubscribe-Post -> désinscription
+   * One-Click, bon signal de délivrabilité pour un envoi en masse.
+   * Sans URL (email de service : code, mot de passe, facture, alerte…), AUCUN List-Unsubscribe :
+   * cet en-tête signale à Gmail un envoi marketing, qui rangeait tout dans Promotions. */
   async sendEmail(
     to: string,
     subject: string,
@@ -628,12 +629,12 @@ export class MailService {
       return { error: 'no_resend_key' };
     }
     try {
-      const headers: Record<string, string> = unsubscribeUrl
+      const headers: Record<string, string> | undefined = unsubscribeUrl
         ? {
             'List-Unsubscribe': `<${unsubscribeUrl}>, <${this.unsubscribeMailto}>`,
             'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
           }
-        : { 'List-Unsubscribe': `<${this.unsubscribeMailto}>` };
+        : undefined;
       const { data, error } = await this.resend.emails.send({
         from: this.from,
         to: [to],
