@@ -6,6 +6,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import appConfig from './config/app.config';
 import { AccountsModule } from './modules/accounts/accounts.module';
+import { EquipeModule } from './modules/equipe/equipe.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { AffiliationModule } from './modules/affiliation/affiliation.module';
 import { AgentVideoModule } from './modules/agent-video/agent-video.module';
@@ -80,6 +81,7 @@ import { UsersModule } from './modules/users/users.module';
     ContenusModule,
     AdminModule,
     AccountsModule,
+    EquipeModule,
     BrouillonsModule,
     ReelModule,
     VideoModule,

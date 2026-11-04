@@ -302,6 +302,22 @@ export class MailService {
     return this.shell(inner, 480, false, t.apercu(reseauCap), 'alerte', l);
   }
 
+  /** Invitation à rejoindre l'équipe d'un compte (Paramètres › Équipe). */
+  invitationEquipeHtml(nomCompte: string, role: string, link: string, langue?: unknown): { subject: string; html: string } {
+    const l = langueCode(langue);
+    const t = MAIL[l].equipe;
+    const compte = escapeHtml(nomCompte || 'Postorico');
+    const inner = `<tr><td class="marge" style="padding:14px 32px 26px;">
+      <h1 class="titre" style="color:#0f172a;font-size:21px;font-weight:bold;margin:0 0 14px;line-height:1.25;">${t.titre(compte)}</h1>
+      <p style="color:#334155;font-size:14.5px;line-height:1.65;margin:0 0 10px;">${t.texte(compte, t.roles[role] || role)}</p>
+      <p style="color:#5b6a82;font-size:14.5px;line-height:1.65;margin:0 0 22px;">${t.detail}</p>
+      ${this.bouton(link, t.bouton)}
+      ${this.lienSecours(link, l)}
+      <p style="color:#6b7688;font-size:12.5px;line-height:1.65;margin:0;border-top:1px solid #e9ecf4;padding-top:16px;">${t.fin}</p>
+    </td></tr>`;
+    return { subject: t.sujet(nomCompte || 'Postorico'), html: this.shell(inner, 480, false, t.apercu(compte), 'marque', l) };
+  }
+
   /** Notifie l'admin (email interne) d'un événement de facturation Stripe. */
   adminPaymentHtml(kind: string, nom: string | null, email: string | null, detail = ''): { subject: string; html: string } {
     const c = ADMIN_PAYMENT_CFG[kind] ?? { emoji: '💳 Paiement', teinte: 'marque', titre: 'Événement de facturation' };

@@ -45,6 +45,20 @@ export class AccountsController {
   @Post('switch')
   async switchAccount(@Body() dto: SwitchAccountDto, @Req() req: AuthedRequest) {
     if (!dto.telegram_id) throw new BadRequestException('telegram_id requis');
+    const origine = req.user.origine || req.user.telegram_id;
+
+    // Compte d'une autre personne dont on fait partie de l'équipe : jeton de membre.
+    const equipe = (await this.accountsService.comptesEquipe(origine)).find((c) => c.telegram_id === dto.telegram_id);
+    if (equipe) {
+      const [cible, moi] = await Promise.all([
+        this.prisma.users.findUnique({ where: { telegram_id: dto.telegram_id }, select: { email: true, nom: true, password_hash: true } }),
+        this.prisma.users.findUnique({ where: { telegram_id: origine }, select: { is_admin: true } }),
+      ]);
+      if (!cible) throw new BadRequestException('Compte introuvable');
+      const token = this.authService.issueEquipeToken(dto.telegram_id, cible.email, origine, Boolean(moi?.is_admin), equipe.role_equipe, cible.password_hash);
+      return { token, telegram_id: dto.telegram_id, nom: cible.nom, role_equipe: equipe.role_equipe };
+    }
+
     const { master, row } = await this.accountsService.resoudreCible(req.user, dto.telegram_id);
     const isSub = dto.telegram_id !== master;
 
@@ -52,7 +66,6 @@ export class AccountsController {
     // regarde — relue sur « origine » (le compte qui s'est authentifié), jamais sur la
     // cible (ce serait une élévation de privilège pour une sous-marque ordinaire dont le
     // master est administrateur).
-    const origine = req.user.origine || req.user.telegram_id;
     let estAdmin: boolean;
     if (origine === dto.telegram_id) {
       estAdmin = Boolean(row.is_admin);

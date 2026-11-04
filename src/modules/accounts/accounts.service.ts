@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { JwtPayload } from '../auth/auth.service';
+import { ROLES_EQUIPE, RoleEquipe } from '../../common/utils/acces-equipe.util';
 
 /**
  * Comptes liés : un master gère plusieurs sous-comptes (marques) — port direct de
@@ -17,6 +18,8 @@ export interface AccountSummary {
   logo_url: string | null;
   is_master: boolean;
   is_current: boolean;
+  /** Compte d'une autre personne que l'on gère comme membre de son équipe. */
+  role_equipe?: RoleEquipe;
 }
 
 @Injectable()
@@ -30,6 +33,9 @@ export class AccountsService {
    * alors le rattachement en base pour qu'un compte qui EST lui-même une sous-marque
    * retrouve ses marques sœurs plutôt que de se croire seul au monde. */
   async effectiveMaster(payload: JwtPayload): Promise<string> {
+    // Membre d'équipe en train de gérer un autre compte : sa famille est celle de la
+    // personne connectée (origine), pas celle du compte qu'il regarde.
+    if (payload.equipe) return this.effectiveMaster({ ...payload, equipe: undefined, master_id: null, telegram_id: payload.origine });
     if (payload.master_id) return payload.master_id;
     const me = payload.telegram_id;
     try {
@@ -84,7 +90,33 @@ export class AccountsService {
       if (a.is_master !== b.is_master) return a.is_master ? -1 : 1;
       return (a.nom || '').toLowerCase().localeCompare((b.nom || '').toLowerCase());
     });
+    // Puis les comptes d'autres personnes dont on fait partie de l'équipe.
+    for (const e of await this.comptesEquipe(payload.origine || payload.telegram_id)) {
+      if (accounts.some((a) => a.telegram_id === e.telegram_id)) continue;
+      accounts.push({ ...e, is_master: false, is_current: e.telegram_id === payload.telegram_id });
+    }
     return { master_id: master, accounts };
+  }
+
+  /** Comptes que `personne` gère comme membre d'équipe (invitation acceptée). */
+  async comptesEquipe(personne: string): Promise<Array<Omit<AccountSummary, 'is_master' | 'is_current'> & { role_equipe: RoleEquipe }>> {
+    try {
+      const liens = await this.prisma.membres_equipe.findMany({ where: { membre_id: personne, statut: 'actif' }, select: { compte_id: true, role: true } });
+      if (!liens.length) return [];
+      const ids = liens.map((l) => l.compte_id);
+      const [users, marques] = await Promise.all([
+        this.prisma.users.findMany({ where: { telegram_id: { in: ids } }, select: { telegram_id: true, nom: true, email: true, photo_url: true } }),
+        this.prisma.marques.findMany({ where: { telegram_id: { in: ids } }, select: { telegram_id: true, logo_url: true } }),
+      ]);
+      const logo = new Map(marques.map((m) => [m.telegram_id, m.logo_url]));
+      return users.map((u) => {
+        const role = liens.find((l) => l.compte_id === u.telegram_id)!.role;
+        return { ...u, logo_url: logo.get(u.telegram_id) ?? null, role_equipe: ((ROLES_EQUIPE as string[]).includes(role) ? role : 'editeur') as RoleEquipe };
+      });
+    } catch (e) {
+      this.logger.warn(`comptesEquipe ${personne}: ${e instanceof Error ? e.message : e}`);
+      return [];
+    }
   }
 
   /** Autorisé, cible, et si c'est un sous-compte — pour la bascule et la suppression. */

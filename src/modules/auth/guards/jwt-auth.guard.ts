@@ -1,12 +1,14 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 import { AuthService, JwtPayload } from '../auth.service';
+import { routeInterdite } from '../../../common/utils/acces-equipe.util';
 
 /**
  * Port direct de backend/dependencies.py::verify_token.
@@ -50,6 +52,19 @@ export class JwtAuthGuard implements CanActivate {
       if (!valid) {
         throw new UnauthorizedException('Session expirée');
       }
+    }
+
+    // Membre d'équipe : toujours dans l'équipe, sa propre session toujours ouverte, et la
+    // route permise à son rôle (le rôle vient de la base, pas du jeton).
+    if (payload.equipe) {
+      const role = payload.origine ? await this.authService.accesEquipe(payload.telegram_id, payload.origine) : null;
+      if (!role || !(await this.authService.sessionValid(payload.origine, undefined, payload.iat))) {
+        throw new UnauthorizedException('Accès à ce compte retiré');
+      }
+      if (routeInterdite(role, request.method, request.path)) {
+        throw new ForbiddenException('Réservé au propriétaire du compte');
+      }
+      payload.equipe = role;
     }
 
     (request as Request & { user: JwtPayload }).user = payload;

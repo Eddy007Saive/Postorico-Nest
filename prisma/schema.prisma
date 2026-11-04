@@ -531,6 +531,24 @@ model newsletters {
   @@index([statut, created_at(sort: Desc)], map: "newsletters_statut_idx")
 }
 
+/// Équipe : personnes invitées à gérer un compte (2 au plus), rôle editeur ou admin.
+/// Clés étrangères vers users en base (cascade), sans relation Prisma.
+model membres_equipe {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  compte_id  String    @db.Uuid
+  membre_id  String?   @db.Uuid
+  email      String
+  role       String    @default("editeur")
+  statut     String    @default("invite")
+  jeton_hash String?   @unique
+  invite_par String?   @db.Uuid
+  invite_le  DateTime  @default(now()) @db.Timestamptz(6)
+  rejoint_le DateTime? @db.Timestamptz(6)
+
+  @@unique([compte_id, email], map: "membres_equipe_unique")
+  @@index([membre_id], map: "membres_equipe_membre_idx")
+}
+
 model notifications {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   type        String?   @default("publication")

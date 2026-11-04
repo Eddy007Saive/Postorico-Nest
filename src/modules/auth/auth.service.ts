@@ -6,6 +6,7 @@ import * as crypto from 'crypto';
 import { randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '../../config/prisma.service';
 import { RegisterDto } from './dto/register.dto';
+import { ROLES_EQUIPE, RoleEquipe } from '../../common/utils/acces-equipe.util';
 
 /** Identité vérifiée auprès de Google — port de _identite_google(). */
 interface IdentiteGoogle {
@@ -34,6 +35,9 @@ export interface JwtPayload {
   vision?: boolean;
   // Présent seulement après une bascule vers un sous-compte (voir AccountsService.switch).
   master_id?: string | null;
+  // Membre d'équipe : telegram_id est le compte géré, origine la personne connectée.
+  // Rôle relu en base à chaque requête (JwtAuthGuard), celui-ci n'est qu'indicatif.
+  equipe?: RoleEquipe;
 }
 
 @Injectable()
@@ -386,6 +390,40 @@ export class AuthService {
 
   invalidateFp(telegramId: string): void {
     this.fpCache.delete(telegramId);
+  }
+
+  // Accès d'équipe (compte:membre -> rôle), relu au plus toutes les 30 s : un membre retiré
+  // perd l'accès dans ce délai sur cette instance, sans lire la base à chaque requête.
+  private equipeCache = new Map<string, { role: RoleEquipe | null; expiresAt: number }>();
+
+  /** Rôle actif de `membreId` dans l'équipe de `compteId`, null s'il n'en fait plus partie. */
+  async accesEquipe(compteId: string, membreId: string): Promise<RoleEquipe | null> {
+    const cle = `${compteId}:${membreId}`;
+    const now = Date.now();
+    const vu = this.equipeCache.get(cle);
+    if (vu && vu.expiresAt > now) return vu.role;
+    const ligne = await this.prisma.membres_equipe.findFirst({
+      where: { compte_id: compteId, membre_id: membreId, statut: 'actif' },
+      select: { role: true },
+    });
+    const role = ligne && (ROLES_EQUIPE as string[]).includes(ligne.role) ? (ligne.role as RoleEquipe) : null;
+    this.equipeCache.set(cle, { role, expiresAt: now + 30_000 });
+    return role;
+  }
+
+  oublierEquipe(compteId: string, membreId: string | null): void {
+    if (membreId) this.equipeCache.delete(`${compteId}:${membreId}`);
+  }
+
+  /** Jeton d'un membre d'équipe : scopé sur le compte géré (toutes les routes existantes
+   * travaillent sur ce compte et ses quotas), `origine` = la personne connectée. `fp` porte
+   * l'empreinte du compte géré, comme issueSwitchToken. */
+  issueEquipeToken(compteId: string, email: string | null, origine: string, isAdmin: boolean, role: RoleEquipe, passwordHash: string | null): string {
+    const heures = isAdmin ? this.config.get<number>('app.adminSessionHeures')! : 24 * 7;
+    return this.jwt.sign(
+      { telegram_id: compteId, email: email ?? '', is_admin: isAdmin, origine, master_id: null, equipe: role, fp: this.pwdFingerprint(passwordHash) },
+      { expiresIn: `${heures}h` },
+    );
   }
 
   /** Jeton scopé sur un compte de la famille (bascule master ↔ sous-marque) — port direct
