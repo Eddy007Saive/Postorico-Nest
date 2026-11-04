@@ -1,3 +1,4 @@
+import { UsageModule } from '../usage/usage.module';
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../config/prisma.module';
 import { AuthModule } from '../auth/auth.module';
@@ -7,7 +8,7 @@ import { NewsletterController } from './newsletter.controller';
 import { NewsletterService } from './newsletter.service';
 
 @Module({
-  imports: [PrismaModule, ClaudeModule, MailModule, AuthModule],
+  imports: [PrismaModule, ClaudeModule, MailModule, AuthModule, UsageModule],
   controllers: [NewsletterController],
   providers: [NewsletterService],
 })

@@ -4,6 +4,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import { ClaudeService } from '../claude/claude.service';
 import { AlerteAdminService } from '../mail/alerte-admin.service';
 import { erreurDeCompte } from '../../common/utils/erreur-compte.util';
+import { UsageService } from '../usage/usage.service';
 import { MarqueService } from '../marque/marque.service';
 import { normaliserUrl } from '../site/site.service';
 import { GenererImageResult, GenererPromptResult, ImageStyle } from './interfaces/image-result.interface';
@@ -157,6 +158,7 @@ export class ImageService {
     private readonly marqueService: MarqueService,
     config: ConfigService,
     @Optional() private readonly alerte?: AlerteAdminService,
+    @Optional() private readonly usage?: UsageService,
   ) {
     this.openrouterApiKey = config.get<string>('app.openrouterApiKey') || '';
     this.openrouterImageModel = config.get<string>('app.openrouterImageModel') || 'google/gemini-2.5-flash-image';
@@ -775,6 +777,8 @@ export class ImageService {
       // Composé directement au bon format : sans ça le modèle reprend celui des images reçues
       // (souvent 3:4) et le recadrage 4:5 ci-dessous coupait le bas des gabarits (bandeau).
       image_config: { aspect_ratio: ratio },
+      // Coût réel de l'appel dans la réponse (usage.cost), journalisé à la place d'un prix fixe
+      usage: { include: true },
     };
     let resp: Response | undefined;
     for (const essai of [1, 2]) {
@@ -810,10 +814,15 @@ export class ImageService {
 
     const data = (await resp.json()) as {
       choices?: Array<{ message?: { images?: Array<{ image_url?: { url?: string } }> } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
     };
+    const cout = Number(data.usage?.cost);
+    const coutUsd = Number.isFinite(cout) && cout > 0 ? cout : undefined;
     const urlData = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
     if (!urlData) {
       this.logger.error(`OpenRouter no image in response: ${JSON.stringify(data).slice(0, 400)}`);
+      // Facturé même sans image : sans cette ligne, ces échecs manquaient dans les coûts
+      if (coutUsd) void this.usage?.log(telegramId, 'image_echec', model || this.openrouterImageModel, {}, 0, undefined, coutUsd);
       return { error: 'no_image' };
     }
 
@@ -835,6 +844,6 @@ export class ImageService {
       invalidate: true,
       transformation,
     });
-    return { lien_visuel: up.secure_url };
+    return { lien_visuel: up.secure_url, cout_usd: coutUsd };
   }
 }

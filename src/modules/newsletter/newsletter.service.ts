@@ -1,4 +1,5 @@
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap, Optional } from '@nestjs/common';
+import { UsageService } from '../usage/usage.service';
 import { ConfigService } from '@nestjs/config';
 import { Interval } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
@@ -216,6 +217,7 @@ export class NewsletterService implements OnApplicationBootstrap {
     private readonly prisma: PrismaService,
     private readonly claude: ClaudeService,
     private readonly mailService: MailService,
+    @Optional() private readonly usage?: UsageService,
   ) {}
 
   onApplicationBootstrap() {
@@ -291,6 +293,7 @@ export class NewsletterService implements OnApplicationBootstrap {
           model,
           temperature: 0.2,
           max_tokens: 2500,
+          usage: { include: true },
           // Perplexity : ne lire que la semaine écoulée, avec un contexte de recherche large.
           search_recency_filter: 'week',
           web_search_options: { search_context_size: 'high' },
@@ -316,6 +319,7 @@ export class NewsletterService implements OnApplicationBootstrap {
         .filter((u) => typeof u === 'string' && u.startsWith('http'))
         .map((u) => ({ url: u, titre: '' }));
       const usage = j.usage || {};
+      void this.usage?.log(null, 'newsletter_veille', model, { input: usage.prompt_tokens || 0, output: usage.completion_tokens || 0 }, 0, undefined, Number(usage.cost || 0));
       this.logger.log(`veille perplexity : ${sources.length} sources, coût ${usage.cost} $`);
       return { texte, sources };
     } catch (e) {

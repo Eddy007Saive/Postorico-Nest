@@ -154,13 +154,13 @@ export class ConfigurationController {
     }
   }
 
-  private async transcrireFichier(file: Express.Multer.File | undefined, langue: unknown) {
+  private async transcrireFichier(file: Express.Multer.File | undefined, langue: unknown, telegramId: string | null = null) {
     if (!file) throw new BadRequestException('Enregistrement manquant.');
     if (!TranscriptionService.typeAccepte(file.mimetype)) throw new BadRequestException("Format d'enregistrement non pris en charge.");
     if (file.size > AUDIO_MAX_OCTETS) throw new BadRequestException('Enregistrement trop long (10 minutes au plus).');
     if (!this.transcription.actif) throw new HttpException('La dictée est indisponible pour le moment.', HttpStatus.SERVICE_UNAVAILABLE);
     try {
-      const texte = await this.transcription.transcrire(file.buffer, file.mimetype, typeof langue === 'string' ? langue.slice(0, 2) : 'fr');
+      const texte = await this.transcription.transcrire(file.buffer, file.mimetype, typeof langue === 'string' ? langue.slice(0, 2) : 'fr', telegramId);
       return { texte };
     } catch (e) {
       this.logger.error(`transcription: ${e instanceof Error ? e.message : e}`);
@@ -174,7 +174,7 @@ export class ConfigurationController {
   @UseInterceptors(FileInterceptor('audio'))
   async transcrire(@UploadedFile() file: Express.Multer.File, @Body('langue') langue: string, @Req() req: AuthedRequest) {
     limiter(this.rateLimit, `transcrire:${req.user.telegram_id}`, 40, 3600, 1800, 'Beaucoup de dictées : réessaie dans quelques minutes.');
-    return this.transcrireFichier(file, langue);
+    return this.transcrireFichier(file, langue, req.user.telegram_id);
   }
 
   /** Dictée au micro, questionnaire public /audit-marque (15 par heure et par adresse IP). */

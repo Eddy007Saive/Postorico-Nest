@@ -329,7 +329,7 @@ export class VisuelAutoService {
         {},
         q.unit_cost ?? 0,
         undefined,
-        IMAGE_PRICES[modele] ?? 0.04,
+        res.cout_usd ?? IMAGE_PRICES[modele] ?? 0.04,
         Number(process.hrtime.bigint() - depart) / 1e9,
       );
       this.logger.log(

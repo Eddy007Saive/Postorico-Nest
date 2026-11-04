@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { UsageService } from '../usage/usage.service';
 import { ConfigService } from '@nestjs/config';
 
 /** Formats que le navigateur enregistre (MediaRecorder) : webm/opus (Chrome, Firefox), mp4/aac (Safari). */
@@ -27,7 +28,10 @@ export class TranscriptionService {
   private readonly cle: string;
   private readonly modele: string;
 
-  constructor(config: ConfigService) {
+  constructor(
+    config: ConfigService,
+    @Optional() private readonly usage?: UsageService,
+  ) {
     this.cle = config.get<string>('app.openrouterApiKey') || '';
     this.modele = config.get<string>('app.openrouterVideoModel') || 'google/gemini-3.8-flash';
   }
@@ -42,7 +46,7 @@ export class TranscriptionService {
     return FORMATS_AUDIO[base] ?? null;
   }
 
-  async transcrire(audio: Buffer, mime: string, langue = 'fr'): Promise<string> {
+  async transcrire(audio: Buffer, mime: string, langue = 'fr', telegramId?: string | null): Promise<string> {
     const type = TranscriptionService.typeAccepte(mime);
     if (!type) throw new Error('format_audio');
     const langueNom = { fr: 'French', en: 'English', es: 'Spanish' }[langue] || 'the language spoken';
@@ -53,6 +57,7 @@ export class TranscriptionService {
       body: JSON.stringify({
         model: this.modele,
         temperature: 0,
+        usage: { include: true },
         messages: [
           {
             role: 'user',
@@ -75,7 +80,8 @@ export class TranscriptionService {
       this.logger.error(`transcription ${resp.status}: ${corps.slice(0, 200)}`);
       throw new Error('transcription_indisponible');
     }
-    const d = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const d = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number } };
+    void this.usage?.log(telegramId ?? null, 'transcription', this.modele, { input: d.usage?.prompt_tokens || 0, output: d.usage?.completion_tokens || 0 }, 0, undefined, Number(d.usage?.cost || 0));
     return String(d.choices?.[0]?.message?.content || '')
       .replace(/^["«\s]+|["»\s]+$/g, '')
       .trim();

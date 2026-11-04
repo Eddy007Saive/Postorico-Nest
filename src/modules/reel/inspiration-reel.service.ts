@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { UsageService } from '../usage/usage.service';
 import { ConfigService } from '@nestjs/config';
 import { ClaudeService } from '../claude/claude.service';
 import { MarqueService } from '../marque/marque.service';
@@ -68,6 +69,7 @@ export class InspirationReelService {
     private readonly claude: ClaudeService,
     private readonly marqueService: MarqueService,
     config: ConfigService,
+    @Optional() private readonly usage?: UsageService,
   ) {
     this.cleOpenrouter = config.get<string>('app.openrouterApiKey') || '';
     this.modeleVideo = config.get<string>('app.openrouterVideoModel') || 'google/gemini-3.8-flash';
@@ -100,6 +102,7 @@ export class InspirationReelService {
       body: JSON.stringify({
         model: this.modeleVideo,
         temperature: 0.2,
+        usage: { include: true },
         messages: [
           {
             role: 'user',
@@ -115,7 +118,8 @@ export class InspirationReelService {
       }),
       signal: AbortSignal.timeout(240_000),
     });
-    const j = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }>; error?: unknown };
+    const j = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }>; error?: unknown; usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number } };
+    void this.usage?.log(telegramId, 'reel_inspiration', this.modeleVideo, { input: j.usage?.prompt_tokens || 0, output: j.usage?.completion_tokens || 0 }, 0, undefined, Number(j.usage?.cost || 0));
     if (!resp.ok || j.error) throw new Error(`analyse Gemini ${resp.status} ${JSON.stringify(j.error || '').slice(0, 200)}`);
     return normaliserAnalyse(this.json<Record<string, unknown>>(j.choices?.[0]?.message?.content || ''));
   }

@@ -10,4 +10,6 @@ export interface GenererPromptResult {
 
 export interface GenererImageResult {
   lien_visuel: string;
+  /** Coût réel facturé par OpenRouter (usage.cost, en $), absent s'il n'a pas été renvoyé. */
+  cout_usd?: number;
 }

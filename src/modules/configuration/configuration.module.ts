@@ -1,3 +1,4 @@
+import { UsageModule } from '../usage/usage.module';
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../config/prisma.module';
 import { RateLimitModule } from '../../common/utils/rate-limit.module';
@@ -12,7 +13,7 @@ import { ConfigurationService } from './configuration.service';
 import { TranscriptionService } from './transcription.service';
 
 @Module({
-  imports: [PrismaModule, RateLimitModule, AuthModule, BillingModule, ClaudeModule, MailModule, MarqueModule, SiteModule],
+  imports: [PrismaModule, RateLimitModule, AuthModule, BillingModule, ClaudeModule, MailModule, MarqueModule, SiteModule, UsageModule],
   controllers: [ConfigurationController],
   providers: [ConfigurationService, TranscriptionService],
 })

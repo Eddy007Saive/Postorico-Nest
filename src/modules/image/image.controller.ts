@@ -221,7 +221,7 @@ export class ImageController {
       {},
       q.unit_cost ?? 0,
       undefined,
-      IMAGE_PRICES[modele] ?? 0.04,
+      res.cout_usd ?? IMAGE_PRICES[modele] ?? 0.04,
       dureeS,
     );
     out.quota = { action: actionType, used: q.used, limit: q.limit };
@@ -293,7 +293,7 @@ export class ImageController {
       {},
       q.unit_cost ?? 0,
       undefined,
-      IMAGE_PRICES[modele] ?? 0.04,
+      res.cout_usd ?? IMAGE_PRICES[modele] ?? 0.04,
       dureeS,
     );
     return { lien_visuel: res.lien_visuel, quota: { action: actionType, used: q.used, limit: q.limit } };
