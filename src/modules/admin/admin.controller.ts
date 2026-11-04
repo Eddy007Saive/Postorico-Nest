@@ -363,6 +363,11 @@ export class AdminController {
     }
   }
 
+  @Get('couts-ia')
+  async getCoutsIa(@Query('jours') jours?: string) {
+    return this.adminService.coutsIa(Number(jours) || 30);
+  }
+
   @Get('api-balances')
   async getApiBalances() {
     try {

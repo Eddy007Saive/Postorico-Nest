@@ -81,6 +81,7 @@ export class TranscriptionService {
       throw new Error('transcription_indisponible');
     }
     const d = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number } };
+    void this.usage?.suivreOpenRouter(this.modele, d.usage, undefined, 'transcription');
     void this.usage?.log(telegramId ?? null, 'transcription', this.modele, { input: d.usage?.prompt_tokens || 0, output: d.usage?.completion_tokens || 0 }, 0, undefined, Number(d.usage?.cost || 0));
     return String(d.choices?.[0]?.message?.content || '')
       .replace(/^["«\s]+|["»\s]+$/g, '')

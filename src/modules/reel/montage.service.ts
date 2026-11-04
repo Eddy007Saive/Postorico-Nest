@@ -363,6 +363,7 @@ export class MontageService {
 
   /** Coût réel renvoyé par OpenRouter (usage.cost, en $) dans usage_log. */
   private journal(telegramId: string | undefined, usage: { prompt_tokens?: number; completion_tokens?: number; cost?: number } | undefined, dureeS: number): void {
+    void this.usageService.suivreOpenRouter(this.modele, usage, dureeS * 1000, 'reel_montage');
     if (!telegramId) return;
     this.usageService
       .log(

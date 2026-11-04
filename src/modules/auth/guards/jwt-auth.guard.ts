@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 import { AuthService, JwtPayload } from '../auth.service';
 import { routeInterdite } from '../../../common/utils/acces-equipe.util';
+import { contexteIa } from '../../../common/contexte-ia';
 
 /**
  * Port direct de backend/dependencies.py::verify_token.
@@ -65,6 +66,13 @@ export class JwtAuthGuard implements CanActivate {
         throw new ForbiddenException('Réservé au propriétaire du compte');
       }
       payload.equipe = role;
+    }
+
+    // Suivi des coûts IA : les appels de cette requête sont attribués à ce compte et à cette action
+    const ctx = contexteIa.getStore();
+    if (ctx) {
+      ctx.telegramId = payload.telegram_id || null;
+      ctx.action = `${context.getClass().name.replace(/Controller$/, '')}.${context.getHandler().name}`;
     }
 
     (request as Request & { user: JwtPayload }).user = payload;

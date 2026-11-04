@@ -286,6 +286,43 @@ export class AdminService {
     };
   }
 
+  /** Coûts IA réels (appels_ia) sur `jours` jours : par fournisseur, client, action et jour,
+   * plus les contrôles quotidiens contre les factures. */
+  async coutsIa(jours: number): Promise<Record<string, unknown>> {
+    const n = Math.max(1, Math.min(365, Math.round(jours) || 30));
+    const depuis = new Date(Date.now() - n * 86_400_000);
+    const arrondi = (v: unknown) => Math.round(Number(v ?? 0) * 10_000) / 10_000;
+    const [fournisseurs, clients, actions, parJour, controles] = await Promise.all([
+      this.prisma.$queryRaw<Array<Record<string, unknown>>>`
+        select fournisseur, count(*)::int appels, sum(cout_usd) cout_usd
+        from appels_ia where created_at >= ${depuis} group by 1 order by 3 desc`,
+      this.prisma.$queryRaw<Array<Record<string, unknown>>>`
+        select a.telegram_id, u.nom, u.email, count(*)::int appels, sum(a.cout_usd) cout_usd
+        from appels_ia a left join users u on u.telegram_id = a.telegram_id
+        where a.created_at >= ${depuis} group by 1, 2, 3 order by 5 desc limit 100`,
+      this.prisma.$queryRaw<Array<Record<string, unknown>>>`
+        select action, fournisseur, count(*)::int appels, sum(cout_usd) cout_usd, avg(cout_usd) cout_moyen
+        from appels_ia where created_at >= ${depuis} group by 1, 2 order by 4 desc limit 60`,
+      this.prisma.$queryRaw<Array<Record<string, unknown>>>`
+        select date_trunc('day', created_at)::date jour, fournisseur, sum(cout_usd) cout_usd
+        from appels_ia where created_at >= ${depuis} group by 1, 2 order by 1`,
+      this.prisma.controle_couts_ia.findMany({ where: { jour: { gte: depuis } }, orderBy: [{ jour: 'desc' }, { fournisseur: 'asc' }] }),
+    ]);
+    return {
+      jours: n,
+      fournisseurs: fournisseurs.map((f) => ({ ...f, cout_usd: arrondi(f.cout_usd) })),
+      clients: clients.map((c) => ({ ...c, cout_usd: arrondi(c.cout_usd) })),
+      actions: actions.map((a) => ({ ...a, cout_usd: arrondi(a.cout_usd), cout_moyen: arrondi(a.cout_moyen) })),
+      par_jour: parJour.map((j) => ({ ...j, cout_usd: arrondi(j.cout_usd) })),
+      controles: controles.map((c) => ({
+        jour: c.jour, fournisseur: c.fournisseur,
+        facture_usd: c.facture_usd === null ? null : Number(c.facture_usd),
+        suivi_usd: c.suivi_usd === null ? null : Number(c.suivi_usd),
+        ecart_pct: c.ecart_pct === null ? null : Number(c.ecart_pct),
+      })),
+    };
+  }
+
   /** Soldes des fournisseurs IA pour l'admin (OpenRouter exact, Anthropic estimé/officiel). */
   async apiBalances(): Promise<{ openrouter: unknown; anthropic: unknown }> {
     const out: { openrouter: unknown; anthropic: unknown } = { openrouter: null, anthropic: null };
@@ -328,7 +365,8 @@ export class AdminService {
           if (!data.has_more) break;
           page = data.next_page;
         }
-        out.anthropic = { mode: 'officiel', mois_usd: Math.round(spend * 100) / 100 };
+        // Le rapport donne des centimes de dollar
+        out.anthropic = { mode: 'officiel', mois_usd: Math.round(spend) / 100 };
       } catch (e) {
         this.logger.warn(`anthropic cost report: ${e instanceof Error ? e.message : e}`);
       }

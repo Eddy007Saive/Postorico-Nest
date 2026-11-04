@@ -7,6 +7,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
 import { AppModule } from './app.module';
 import { LoggerSilencieux, niveauxLog } from './common/logger-silencieux';
 import { origineAcceptee, originesAutorisees } from './common/utils/cors.util';
+import { contexteIa, routeGenerique } from './common/contexte-ia';
 
 async function bootstrap() {
   // rawBody: true expose req.rawBody (Buffer) — nécessaire pour les webhooks signés
@@ -21,6 +22,10 @@ async function bootstrap() {
   // toujours ses appels en REACT_APP_BACKEND_URL + /api (lib/api.js), quel que soit le backend.
   // Éditeur de carrousel : jusqu'à 10 slides exportées en JPEG (data URL) dans une requête
   app.useBodyParser('json', { limit: '40mb' });
+  // Suivi des coûts IA : chaque requête porte son contexte (client, action), complété par JwtAuthGuard
+  app.use((req: { method: string; originalUrl: string }, _res: unknown, next: () => void) =>
+    contexteIa.run({ telegramId: null, action: routeGenerique(req.method, req.originalUrl) }, next),
+  );
   app.setGlobalPrefix('api');
   // Sans effet si Sentry est inactif (pas de SENTRY_DSN) : le filtre ne fait que relayer.
   // L'adaptateur HTTP est requis : sans lui, BaseExceptionFilter plante sur toute erreur

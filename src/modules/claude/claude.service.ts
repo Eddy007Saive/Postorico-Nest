@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
 import { LlmUsage } from '../usage/interfaces/llm-usage.interface';
 import { AlerteAdminService } from '../mail/alerte-admin.service';
+import { UsageService } from '../usage/usage.service';
 import { erreurDeCompte } from '../../common/utils/erreur-compte.util';
 
 /**
@@ -32,6 +33,7 @@ export class ClaudeService {
   constructor(
     config: ConfigService,
     @Optional() private readonly alerte?: AlerteAdminService,
+    @Optional() private readonly suiviUsage?: UsageService,
   ) {
     const apiKey = config.get<string>('app.claudeApiKey');
     this.client = apiKey ? new Anthropic({ apiKey }) : null;
@@ -46,7 +48,7 @@ export class ClaudeService {
    * `essais` : 4 par défaut ; 1 pour un appel public dont on borne le coût (pas de nouvel essai). */
   async messagesCreate(
     params: Anthropic.Messages.MessageCreateParamsNonStreaming,
-    options: { essais?: number } = {},
+    options: { essais?: number; action?: string } = {},
   ): Promise<Anthropic.Messages.Message> {
     const essais = Math.max(1, options.essais ?? 4);
     if (!this.client) {
@@ -55,7 +57,10 @@ export class ClaudeService {
     let last: unknown;
     for (let attempt = 0; attempt < essais; attempt++) {
       try {
-        return await this.client.messages.create(params);
+        const debut = Date.now();
+        const resp = await this.client.messages.create(params);
+        void this.suiviUsage?.suivreAnthropic(resp.model || params.model, resp.usage, Date.now() - debut, options.action);
+        return resp;
       } catch (e) {
         last = e;
         const status = (e as { status?: number })?.status;

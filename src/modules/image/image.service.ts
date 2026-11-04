@@ -816,6 +816,7 @@ export class ImageService {
       choices?: Array<{ message?: { images?: Array<{ image_url?: { url?: string } }> } }>;
       usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
     };
+    void this.usage?.suivreOpenRouter(model || this.openrouterImageModel, data.usage);
     const cout = Number(data.usage?.cost);
     const coutUsd = Number.isFinite(cout) && cout > 0 ? cout : undefined;
     const urlData = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;

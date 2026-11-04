@@ -69,7 +69,9 @@ export default registerAs('app', () => {
   // Simples indicateurs de présence pour le panneau admin « Système » — ces intégrations
   // elles-mêmes (HeyGen, solde Anthropic) ne sont pas portées.
   heygenApiKey: process.env.HEYGEN_API_KEY || '',
-  anthropicAdminKey: process.env.ANTHROPIC_ADMIN_KEY || '',
+  anthropicAdminKey: process.env.ANTHROPIC_ADMIN_KEY || process.env.ADMINISTRATION_KEY || '',
+  // Contrôle quotidien des coûts IA contre les factures (CONTROLE_COUTS_ACTIVE=0 pour le couper)
+  controleCoutsActif: (process.env.CONTROLE_COUTS_ACTIVE || '1') !== '0',
   posthogApiKey: process.env.POSTHOG_API_KEY || '',
   // Secours quotidien : le rafraîchissement normal vient du webhook analytics.synced de Zernio
   analyticsCronHeures: parseInt(process.env.ANALYTICS_CRON_HOURS || '24', 10),

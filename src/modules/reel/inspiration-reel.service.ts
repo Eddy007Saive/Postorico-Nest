@@ -119,6 +119,7 @@ export class InspirationReelService {
       signal: AbortSignal.timeout(240_000),
     });
     const j = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }>; error?: unknown; usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number } };
+    void this.usage?.suivreOpenRouter(this.modeleVideo, j.usage, undefined, 'reel_inspiration');
     void this.usage?.log(telegramId, 'reel_inspiration', this.modeleVideo, { input: j.usage?.prompt_tokens || 0, output: j.usage?.completion_tokens || 0 }, 0, undefined, Number(j.usage?.cost || 0));
     if (!resp.ok || j.error) throw new Error(`analyse Gemini ${resp.status} ${JSON.stringify(j.error || '').slice(0, 200)}`);
     return normaliserAnalyse(this.json<Record<string, unknown>>(j.choices?.[0]?.message?.content || ''));

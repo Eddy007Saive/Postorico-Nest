@@ -319,6 +319,7 @@ export class NewsletterService implements OnApplicationBootstrap {
         .filter((u) => typeof u === 'string' && u.startsWith('http'))
         .map((u) => ({ url: u, titre: '' }));
       const usage = j.usage || {};
+      void this.usage?.suivreOpenRouter(model, usage, undefined, 'newsletter_veille');
       void this.usage?.log(null, 'newsletter_veille', model, { input: usage.prompt_tokens || 0, output: usage.completion_tokens || 0 }, 0, undefined, Number(usage.cost || 0));
       this.logger.log(`veille perplexity : ${sources.length} sources, coût ${usage.cost} $`);
       return { texte, sources };
