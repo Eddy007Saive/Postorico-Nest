@@ -1,9 +1,12 @@
 /** Sites autorisés à appeler l'API depuis un navigateur (CORS). */
 
-/** Toujours acceptés : l'appli mobile Capacitor (Android `https://localhost`, iOS
- * `capacitor://localhost`) et le site lancé en local. Aucun site tiers ne peut se faire passer
- * pour ces origines. */
+/** Toujours acceptés : le site de production (même si CORS_ORIGINS d'une instance oublie de
+ * le lister, il ne doit jamais être coupé), l'appli mobile Capacitor (Android
+ * `https://localhost`, iOS `capacitor://localhost`) et le site lancé en local. Aucun site
+ * tiers ne peut se faire passer pour ces origines. */
 const TOUJOURS = [
+  'https://postorico.com',
+  'https://www.postorico.com',
   'https://localhost',
   'capacitor://localhost',
   'http://localhost',

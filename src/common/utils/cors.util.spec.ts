@@ -20,6 +20,12 @@ describe('CORS', () => {
     }
   });
 
+  it('accepte toujours le site de production, même absent de CORS_ORIGINS', () => {
+    const dev = originesAutorisees('https://dev.exemple.vercel.app', 'https://dev.exemple.vercel.app');
+    expect(origineAcceptee('https://postorico.com', dev)).toBe(true);
+    expect(origineAcceptee('https://www.postorico.com', dev)).toBe(true);
+  });
+
   it('refuse un site tiers', () => {
     expect(origineAcceptee('https://pirate.exemple', liste)).toBe(false);
     expect(origineAcceptee('https://postorico.com.pirate.exemple', liste)).toBe(
