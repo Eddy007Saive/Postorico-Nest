@@ -13,17 +13,20 @@ import { OUTILS_VALIDATION } from './outils/validation';
 export { ErreurOutil } from './outils/commun';
 export type { Appel, Outil } from './outils/commun';
 
-export const OUTILS: Outil[] = [
-  ...OUTILS_MARQUE,
-  ...OUTILS_IDEES,
-  ...OUTILS_GENERATION,
-  ...OUTILS_PLANIFICATION,
-  ...OUTILS_VALIDATION,
-  ...OUTILS_PUBLICATION,
-  ...OUTILS_ANALYTICS,
-  ...OUTILS_GOOGLE,
-  ...OUTILS_COMPTE,
+/** Catégories dans l'ordre de la documentation. */
+export const CATEGORIES: Array<{ id: string; outils: Outil[] }> = [
+  { id: 'marque', outils: OUTILS_MARQUE },
+  { id: 'idees', outils: OUTILS_IDEES },
+  { id: 'generation', outils: OUTILS_GENERATION },
+  { id: 'planification', outils: OUTILS_PLANIFICATION },
+  { id: 'validation', outils: OUTILS_VALIDATION },
+  { id: 'publication', outils: OUTILS_PUBLICATION },
+  { id: 'analytics', outils: OUTILS_ANALYTICS },
+  { id: 'google', outils: OUTILS_GOOGLE },
+  { id: 'compte', outils: OUTILS_COMPTE },
 ];
+
+export const OUTILS: Outil[] = CATEGORIES.flatMap((c) => c.outils);
 
 /** Deux outils du même nom : erreur dès le démarrage plutôt qu'un outil masqué. */
 const noms = new Set<string>();

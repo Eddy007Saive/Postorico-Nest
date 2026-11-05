@@ -4,6 +4,7 @@ import type { Request } from 'express';
 import { JwtPayload } from '../auth/auth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ClesApiService } from './cles-api.service';
+import { documentationMcp } from './documentation';
 
 type AuthedRequest = Request & { user: JwtPayload };
 
@@ -24,6 +25,12 @@ export class ClesApiController {
   @Get()
   lister(@Req() req: AuthedRequest) {
     return this.cles.lister(req.user.telegram_id);
+  }
+
+  /** Référence du connecteur (outils, ressources, missions), pour la page Documentation. */
+  @Get('documentation')
+  documentation() {
+    return documentationMcp();
   }
 
   /** Ce que les assistants ont fait via le connecteur (30 dernières actions). */
