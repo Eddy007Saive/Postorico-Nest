@@ -5,6 +5,7 @@ import {
   Get,
   InternalServerErrorException,
   Logger,
+  NotFoundException,
   Param,
   Patch,
   Post,
@@ -190,12 +191,15 @@ export class SujetsController {
     const offre = await this.dimensionsService.validerOffre(req.user.telegram_id, dimsIn.offre);
     if (offre) dims.offre = offre;
     try {
-      await this.prisma.brouillons.updateMany({
-        where: { id, telegram_id: req.user.telegram_id },
-        data: { dimensions: Object.keys(dims).length ? dims : undefined },
+      const titre = (dto.titre || '').trim();
+      const r = await this.prisma.brouillons.updateMany({
+        where: { id, telegram_id: req.user.telegram_id, statut: 'Brouillon' },
+        data: { dimensions: Object.keys(dims).length ? dims : undefined, ...(titre ? { titre: titre.slice(0, 200) } : {}) },
       });
-      return { success: true, dimensions: dims };
+      if (!r.count) throw new NotFoundException('Sujet introuvable');
+      return { success: true, dimensions: dims, ...(titre ? { titre } : {}) };
     } catch (e) {
+      if (e instanceof NotFoundException) throw e;
       this.logger.error(`Maj sujet dimensions error: ${e instanceof Error ? e.message : e}`);
       throw new InternalServerErrorException(e instanceof Error ? e.message : String(e));
     }

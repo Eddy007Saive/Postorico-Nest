@@ -27,6 +27,9 @@ import { RedigerPostResult } from './interfaces/rediger-post-result.interface';
 
 export { MODELE_REDACTION };
 
+export type ActionRetouche = 'reecrire' | 'ameliorer' | 'adapter' | 'reviser' | 'hashtags';
+export const ACTIONS_RETOUCHE: ActionRetouche[] = ['reecrire', 'ameliorer', 'adapter', 'reviser', 'hashtags'];
+
 const RESEAUX: Record<string, string> = {
   linkedin: 'LinkedIn',
   instagram: 'Instagram',
@@ -176,6 +179,67 @@ export class PostsService {
       })
       .filter((a): a is NonNullable<typeof a> => !!a && !vus.has(a.texte) && !!vus.add(a.texte))
       .slice(0, 6);
+  }
+
+  /** Retouche d'un texte existant dans la voix de la marque (connecteur IA et outils de
+   * retouche) : réécrire, améliorer, adapter à un autre réseau, réviser selon une consigne,
+   * ou proposer des hashtags. Ne touche à aucun contenu : renvoie seulement le résultat. */
+  async retravailler(
+    telegramId: string,
+    texte: string,
+    action: ActionRetouche,
+    reseau = 'linkedin',
+    consigne = '',
+  ): Promise<{ texte?: string; hashtags?: string[] }> {
+    const u = await this.marqueService.chargerMarque(telegramId);
+    const reseauLabel = RESEAUX[reseau] ?? 'LinkedIn';
+    const exemples = String(u[`exemples_${reseau}`] ?? '').trim();
+    const contexte =
+      this.marqueService.contexteMarque(u) +
+      (exemples ? `\n\n## CLIENT'S ${reseauLabel} POST EXAMPLES (style reference)\n\n${exemples.slice(0, 3000)}` : '');
+    const regles =
+      'Keep the language of the text. Keep every fact, number, name and link exactly; NEVER invent a number, a client, a result or a link. ' +
+      'No greeting, no meta comment, no quotes around the text. Avoid: ' + A_EVITER.map((x) => `« ${x} »`).join('; ') + '.';
+    const consignes: Record<ActionRetouche, string> = {
+      reecrire: `Rewrite this ${reseauLabel} post with fresh wording and the same message, same length roughly, in the brand voice.`,
+      ameliorer: `Improve this ${reseauLabel} post: a stronger first line, clearer structure and rhythm, tighter sentences, a natural ending. Keep the message and roughly the same length.`,
+      adapter: `Adapt this post for ${reseauLabel}: length, line breaks, tone and conventions of ${reseauLabel} (hashtags only if they are customary there), in the brand voice. Keep the message.`,
+      reviser: `Revise this ${reseauLabel} post following the client's instruction exactly, and change nothing else.`,
+      hashtags: `Suggest 5 to 12 relevant hashtags for this ${reseauLabel} post, specific to the brand and the topic, a mix of broad and niche, in the language of the post.`,
+    };
+    const sortie =
+      action === 'hashtags'
+        ? 'Return STRICT JSON: {"hashtags": ["#..."]}.'
+        : 'Return STRICT JSON: {"texte": "<the full post>"}.';
+    const resp = await this.claude.messagesCreate({
+      model: MODELE_REDACTION,
+      max_tokens: 1800,
+      system: `${consignes[action]} ${regles} ${sortie}${contexte}`,
+      messages: [
+        {
+          role: 'user',
+          content: `The post:\n\n${texte.slice(0, 6000)}${consigne ? `\n\nClient's instruction: ${consigne.slice(0, 1000)}` : ''}`,
+        },
+      ],
+    });
+    const raw = this.claude.texte(resp);
+    let d: { texte?: unknown; hashtags?: unknown } = {};
+    try {
+      const m = /\{[\s\S]*\}/.exec(raw);
+      d = JSON.parse(m ? m[0] : raw);
+    } catch {
+      d = action === 'hashtags' ? {} : { texte: raw };
+    }
+    if (action === 'hashtags') {
+      const tags = (Array.isArray(d.hashtags) ? d.hashtags : [])
+        .map((h) => String(h).trim().replace(/\s+/g, ''))
+        .filter(Boolean)
+        .map((h) => (h.startsWith('#') ? h : `#${h}`));
+      return { hashtags: [...new Set(tags)].slice(0, 15) };
+    }
+    const sortieTexte = nettoyerTexteGenere(sansInvisibles(String(d.texte ?? ''))).trim();
+    if (!sortieTexte) throw new Error('réponse vide');
+    return { texte: sortieTexte };
   }
 
   async premierCommentaire(telegramId: string, texte: string, reseau = 'linkedin'): Promise<string> {

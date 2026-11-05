@@ -10,9 +10,10 @@ const MAX_TEXTE = 60_000;
 const APPELS_PAR_MINUTE = 60;
 
 const INSTRUCTIONS =
-  "Postorico est le studio de contenu du client : ses posts sont rédigés dans la voix de sa marque, puis validés et publiés sur ses réseaux. " +
-  'Fais toujours relire un texte au client avant valider_et_programmer ou repondre_commentaire : ces deux outils publient en son nom. ' +
-  'rediger_post consomme son quota mensuel ; quotas indique ce qui reste.';
+  "Postorico est le studio de contenu du client : ses posts sont rédigés dans la voix de sa marque, validés par lui, puis publiés sur ses réseaux. " +
+  'Commence par get_brand_profile pour comprendre la marque. Circuit : idée (get_content_ideas) → post rédigé en brouillon (generate_social_post) → A valider → approuvé (approve_content) → publié. ' +
+  "Règle absolue : fais relire et accepter explicitement chaque texte par le client avant tout outil qui publie en son nom (approve_content, schedule_publication, publish_content, publish_google_business_post, reply_to_comment, reply_to_google_review, create_social_post avec programmer). " +
+  'Les outils generate_* consomment son quota mensuel (get_quota) ; les retouches de texte et create_social_post sont gratuits.';
 
 interface Rpc {
   jsonrpc?: string;
@@ -84,7 +85,17 @@ export class McpController {
     this.autre(res);
   }
 
+  /** Une panne passagère (base injoignable…) répond en JSON-RPC, pas par une page 500 brute. */
   private async traiter(cle: string, req: Request, res: Response) {
+    try {
+      await this.traiterSansFilet(cle, req, res);
+    } catch (e) {
+      this.logger.error(`MCP : ${e instanceof Error ? e.message : e}`);
+      if (!res.headersSent) res.status(503).json(erreur(null, -32603, 'Postorico est momentanément indisponible : réessaie dans un instant.'));
+    }
+  }
+
+  private async traiterSansFilet(cle: string, req: Request, res: Response) {
     const titulaire = await this.cles.verifier(cle);
     if (!titulaire) {
       res.status(401).set('WWW-Authenticate', 'Bearer').json(erreur(null, -32001, 'Clé API absente, invalide ou révoquée (Paramètres › Connecteur IA).'));

@@ -47,7 +47,7 @@ import { EnregistrerDto } from './dto/enregistrer.dto';
 import { CreateTemplateDto } from './dto/create-template.dto';
 import { UpdateTemplateDto } from './dto/update-template.dto';
 import { PutDraftsDto } from './dto/put-drafts.dto';
-import { PostsService, MODELE_REDACTION } from './posts.service';
+import { PostsService, MODELE_REDACTION, ACTIONS_RETOUCHE, ActionRetouche } from './posts.service';
 import { VisuelAutoService } from '../image/visuel-auto.service';
 
 type AuthedRequest = Request & { user: JwtPayload };
@@ -288,6 +288,31 @@ export class PostsController {
     } catch (e) {
       this.logger.error(`accroches: ${e instanceof Error ? e.message : e}`);
       throw new HttpException("Les accroches n'ont pas pu être proposées. Réessaie.", HttpStatus.BAD_GATEWAY);
+    }
+  }
+
+  /** Retouche d'un texte dans la voix de la marque (réécrire, améliorer, adapter à un réseau,
+   * réviser selon une consigne, hashtags). Gratuit, 40 par heure et par compte. */
+  @Post('retravailler')
+  async retravailler(@Body() body: Record<string, unknown>, @Req() req: AuthedRequest) {
+    const telegramId = req.user.telegram_id;
+    const texte = typeof body.texte === 'string' ? body.texte.trim() : '';
+    if (!texte) throw new BadRequestException('texte requis');
+    const action = String(body.action || '') as ActionRetouche;
+    if (!ACTIONS_RETOUCHE.includes(action)) throw new BadRequestException(`action invalide (${ACTIONS_RETOUCHE.join(', ')})`);
+    const consigne = typeof body.consigne === 'string' ? body.consigne.trim() : '';
+    if (action === 'reviser' && !consigne) throw new BadRequestException('consigne requise pour réviser');
+    const reseau = typeof body.reseau === 'string' && RESEAU_MAP[body.reseau.toLowerCase()] ? body.reseau.toLowerCase() : 'linkedin';
+    const cle = `retravailler:${telegramId}`;
+    if (this.rateLimitService.lockedFor(cle) > 0) {
+      throw new HttpException('Tu as beaucoup sollicité l’IA. Réessaie dans quelques minutes.', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    this.rateLimitService.fail(cle, 40, 3600, 600);
+    try {
+      return await this.postsService.retravailler(telegramId, texte, action, reseau, consigne);
+    } catch (e) {
+      this.logger.error(`retravailler: ${e instanceof Error ? e.message : e}`);
+      throw new HttpException("Le texte n'a pas pu être retravaillé. Réessaie.", HttpStatus.BAD_GATEWAY);
     }
   }
 

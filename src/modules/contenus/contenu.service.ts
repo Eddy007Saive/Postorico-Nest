@@ -63,7 +63,7 @@ export interface RecyclerResult {
 export interface ReplanifierResult {
   ok: boolean;
   date_publication?: string;
-  publish_status?: string;
+  publish_status?: string | null;
   error?: string;
 }
 
@@ -304,6 +304,11 @@ export class ContenuService {
       where: { id: contenuId, telegram_id: telegramId },
       data: { date_publication: slot, late_post_id: null, publish_status: null, publish_error: null } as never,
     });
+    // Comme pour le visuel automatique : un contenu pas encore validé change de date, mais ne
+    // part JAMAIS vers Zernio.
+    if (!['Valider', 'Planifie', 'Pret_a_publier'].includes(String(cur.statut))) {
+      return { ok: true, date_publication: slot, publish_status: null };
+    }
     const pub = await this.lateService.programmerContenu(telegramId, contenuId);
     return {
       ok: true,
