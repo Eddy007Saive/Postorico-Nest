@@ -10,6 +10,14 @@ const MAX_CLES_ACTIVES = 5;
 
 export const hacherCle = (cle: string) => crypto.createHash('sha256').update(cle).digest('hex');
 
+export interface FiltreActivite {
+  page?: number;
+  parPage?: number;
+  du?: string;
+  au?: string;
+  echecs?: boolean;
+}
+
 export interface TitulaireCle {
   cle_id: string;
   telegram_id: string;
@@ -114,17 +122,41 @@ export class ClesApiService {
     }
   }
 
-  /** 30 dernières actions faites via le connecteur, avec le nom de la clé utilisée. */
-  async activite(telegramId: string) {
-    const lignes = await this.prisma.journal_mcp.findMany({
-      where: { telegram_id: telegramId },
-      orderBy: { created_at: 'desc' },
-      take: 30,
-      select: { id: true, created_at: true, cle_id: true, outil: true, ok: true, details: true, erreur: true },
-    });
+  /** Actions faites via le connecteur, les plus récentes d'abord, par page, sur une période
+   * facultative (bornes ISO calculées par le navigateur, dans le fuseau du client). */
+  async activite(telegramId: string, f: FiltreActivite = {}) {
+    const parPage = Math.min(Math.max(Math.floor(f.parPage || 20), 1), 100);
+    const page = Math.max(Math.floor(f.page || 1), 1);
+    const date = (v?: string) => {
+      const d = v ? new Date(v) : null;
+      return d && !Number.isNaN(d.getTime()) ? d : undefined;
+    };
+    const du = date(f.du);
+    const au = date(f.au);
+    const where = {
+      telegram_id: telegramId,
+      ...(du || au ? { created_at: { ...(du ? { gte: du } : {}), ...(au ? { lte: au } : {}) } } : {}),
+      ...(f.echecs ? { ok: false } : {}),
+    };
+    const [total, lignes] = await Promise.all([
+      this.prisma.journal_mcp.count({ where }),
+      this.prisma.journal_mcp.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        skip: (page - 1) * parPage,
+        take: parPage,
+        select: { id: true, created_at: true, cle_id: true, outil: true, ok: true, details: true, erreur: true },
+      }),
+    ]);
     const ids = [...new Set(lignes.map((l) => l.cle_id).filter((x): x is string => !!x))];
     const cles = ids.length ? await this.prisma.cles_api.findMany({ where: { id: { in: ids } }, select: { id: true, nom: true } }) : [];
     const noms = new Map(cles.map((c) => [c.id, c.nom]));
-    return lignes.map(({ cle_id, ...l }) => ({ ...l, cle: cle_id ? noms.get(cle_id) ?? null : null }));
+    return {
+      total,
+      page,
+      par_page: parPage,
+      pages: Math.max(Math.ceil(total / parPage), 1),
+      actions: lignes.map(({ cle_id, ...l }) => ({ ...l, cle: cle_id ? noms.get(cle_id) ?? null : null })),
+    };
   }
 }

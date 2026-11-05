@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, NotFoundException, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, NotFoundException, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { IsOptional, IsString, MaxLength } from 'class-validator';
 import type { Request } from 'express';
 import { JwtPayload } from '../auth/auth.service';
@@ -33,10 +33,23 @@ export class ClesApiController {
     return documentationMcp();
   }
 
-  /** Ce que les assistants ont fait via le connecteur (30 dernières actions). */
+  /** Ce que les assistants ont fait via le connecteur : ?page=&par_page=&du=&au=&echecs=1 */
   @Get('activite')
-  activite(@Req() req: AuthedRequest) {
-    return this.cles.activite(req.user.telegram_id);
+  activite(
+    @Req() req: AuthedRequest,
+    @Query('page') page?: string,
+    @Query('par_page') parPage?: string,
+    @Query('du') du?: string,
+    @Query('au') au?: string,
+    @Query('echecs') echecs?: string,
+  ) {
+    return this.cles.activite(req.user.telegram_id, {
+      page: Number(page) || 1,
+      parPage: Number(parPage) || 20,
+      du,
+      au,
+      echecs: echecs === '1' || echecs === 'true',
+    });
   }
 
   @Post()
