@@ -162,10 +162,12 @@ export class McpController {
     const base = `http://127.0.0.1:${process.env.PORT ?? 3000}/api`;
     return async (methode, chemin, corps) => {
       const jeton = this.auth.issueMcpToken(titulaire.telegram_id, titulaire.email, titulaire.password_hash);
+      // Un FormData (envoi de fichier) part tel quel : fetch pose lui-même l'en-tête multipart
+      const multipart = corps instanceof FormData;
       const r = await fetch(base + chemin, {
         method: methode,
-        headers: { Authorization: `Bearer ${jeton}`, ...(corps !== undefined ? { 'Content-Type': 'application/json' } : {}) },
-        body: corps !== undefined ? JSON.stringify(corps) : undefined,
+        headers: { Authorization: `Bearer ${jeton}`, ...(corps !== undefined && !multipart ? { 'Content-Type': 'application/json' } : {}) },
+        body: corps === undefined ? undefined : multipart ? corps : JSON.stringify(corps),
       });
       const brut = await r.text();
       let json: unknown = brut;

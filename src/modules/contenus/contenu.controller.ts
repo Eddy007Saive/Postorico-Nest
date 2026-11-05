@@ -106,8 +106,9 @@ export class ContenuController {
     }
     if (!res) throw new NotFoundException('Contenu introuvable');
     // Visuel prêt + date -> on programme sur Zernio (le webhook post.scheduled posera le statut Planifie).
+    // Comme pour le visuel automatique : un contenu pas encore validé ne part JAMAIS vers Zernio.
     const out: Record<string, unknown> = { ...res, statut: labelStatutContenu(res.statut as string | null | undefined) };
-    if (res.date_publication) {
+    if (res.date_publication && (res.statut === 'Valider' || res.statut === 'Planifie')) {
       try {
         const pub = await this.lateService.programmerContenu(telegramId, id);
         out.publish_status = pub.ok ? 'envoi' : pub.skipped ? 'ignoré' : 'échec';
