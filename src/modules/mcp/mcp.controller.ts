@@ -24,6 +24,17 @@ interface Rpc {
 const reponse = (id: Rpc['id'], result: unknown) => ({ jsonrpc: '2.0', id, result });
 const erreur = (id: Rpc['id'], code: number, message: string) => ({ jsonrpc: '2.0', id: id ?? null, error: { code, message } });
 
+/** Ce qu'on garde des paramètres d'un outil dans le journal : identifiants et choix, textes
+ * coupés (le texte complet d'un post reste dans le contenu lui-même). */
+function resumeArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(args)) {
+    if (typeof v === 'number' || typeof v === 'boolean') out[k] = v;
+    else if (typeof v === 'string') out[k] = v.length > 200 ? `${v.slice(0, 200)}…` : v;
+  }
+  return out;
+}
+
 /** Message lisible d'une réponse d'erreur Nest ({ message } texte, liste ou objet). */
 function messageErreur(statut: number, corps: unknown): string {
   const m = corps && typeof corps === 'object' ? (corps as { message?: unknown; detail?: unknown }).message ?? (corps as { detail?: unknown }).detail : corps;
@@ -130,14 +141,18 @@ export class McpController {
     const outil = OUTILS.find((o) => o.name === params.name);
     if (!outil) return { isError: true, content: [{ type: 'text', text: `Outil inconnu : ${String(params.name)}` }] };
     const args = params.arguments && typeof params.arguments === 'object' ? (params.arguments as Record<string, unknown>) : {};
+    const details = resumeArgs(args);
     try {
       const resultat = await outil.executer(this.api(titulaire), args);
+      const cree = resultat && typeof resultat === 'object' ? (resultat as { contenu_id?: unknown }).contenu_id : undefined;
+      if (outil.journal) await this.cles.journaliser(titulaire, outil.name, true, typeof cree === 'string' ? { ...details, contenu_id: cree } : details);
       let texte = JSON.stringify(resultat, null, 1);
       if (texte.length > MAX_TEXTE) texte = `${texte.slice(0, MAX_TEXTE)}\n… (réponse tronquée)`;
       return { content: [{ type: 'text', text: texte }] };
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       if (!(e instanceof ErreurOutil)) this.logger.warn(`outil ${outil.name} (${titulaire.telegram_id}) : ${message}`);
+      if (outil.journal) await this.cles.journaliser(titulaire, outil.name, false, details, message);
       return { isError: true, content: [{ type: 'text', text: message }] };
     }
   }

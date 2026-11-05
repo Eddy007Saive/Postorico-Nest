@@ -1128,6 +1128,22 @@ model cles_api {
   created_at            DateTime  @default(now()) @db.Timestamptz(6)
   derniere_utilisation  DateTime? @db.Timestamptz(6)
   revoquee_le           DateTime? @db.Timestamptz(6)
+  /// Empreinte du mot de passe à la création : un changement de mot de passe révoque la clé.
+  empreinte             String?
 
   @@index([telegram_id], map: "cles_api_client_idx")
+}
+
+/// Actions faites par un assistant IA via le connecteur MCP (trace pour le client et le support).
+model journal_mcp {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  telegram_id String   @db.Uuid
+  cle_id      String?  @db.Uuid
+  outil       String
+  ok          Boolean
+  details     Json?
+  erreur      String?
+
+  @@index([telegram_id, created_at(sort: Desc)], map: "journal_mcp_client_idx")
 }

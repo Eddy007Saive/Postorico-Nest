@@ -94,6 +94,17 @@ export class InboxService {
     return { ok: true, telegram_id: telegramId, platform };
   }
 
+  /** Le compte social appartient-il à ce client ? Garde des routes qui agissent sur un
+   * compte par son identifiant Zernio : la clé Zernio est commune à toute la plateforme. */
+  async appartient(telegramId: string, accountId: string | null | undefined): Promise<boolean> {
+    if (!accountId) return false;
+    const row = await this.prisma.comptes_sociaux.findFirst({
+      where: { telegram_id: telegramId, late_account_id: accountId },
+      select: { id: true },
+    });
+    return !!row;
+  }
+
   private async profile(telegramId: string): Promise<string | null> {
     const u = await this.prisma.users.findUnique({ where: { telegram_id: telegramId }, select: { late_profile_id: true } });
     return u?.late_profile_id ?? null;

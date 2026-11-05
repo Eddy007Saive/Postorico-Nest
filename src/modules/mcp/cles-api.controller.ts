@@ -26,6 +26,12 @@ export class ClesApiController {
     return this.cles.lister(req.user.telegram_id);
   }
 
+  /** Ce que les assistants ont fait via le connecteur (30 dernières actions). */
+  @Get('activite')
+  activite(@Req() req: AuthedRequest) {
+    return this.cles.activite(req.user.telegram_id);
+  }
+
   @Post()
   creer(@Body() dto: CreerCleDto, @Req() req: AuthedRequest) {
     return this.cles.creer(req.user.telegram_id, dto.nom || '');

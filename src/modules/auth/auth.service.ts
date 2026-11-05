@@ -69,6 +69,11 @@ export class AuthService {
     }
   }
 
+  /** Empreinte publique du mot de passe actuel (clés MCP : un changement de mot de passe les révoque). */
+  empreinteMotDePasse(passwordHash: string | null): string {
+    return this.pwdFingerprint(passwordHash);
+  }
+
   /** Empreinte courte du hash actuel — rend un lien de reset à usage unique (même algo Python : sha256[:16]). */
   private pwdFingerprint(passwordHash: string | null): string {
     return crypto

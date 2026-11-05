@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, HttpException, HttpStatus, Logger, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpException, HttpStatus, Logger, NotFoundException, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { JwtPayload } from '../auth/auth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -18,6 +18,13 @@ export class InboxController {
     private readonly inboxService: InboxService,
     private readonly lateService: LateService,
   ) {}
+
+  /** 404 si le compte social n'est pas celui du client : on ne dit pas qu'il existe ailleurs. */
+  private async exigerCompte(req: AuthedRequest, accountId: string | undefined): Promise<void> {
+    if (!(await this.inboxService.appartient(req.user.telegram_id, accountId))) {
+      throw new NotFoundException('Compte introuvable');
+    }
+  }
 
   /** Webhook Late `comment.received` (public, vérifié par signature) -> push temps réel. */
   @Post('webhook')
@@ -52,13 +59,15 @@ export class InboxController {
 
   @Get('post/:postId')
   @UseGuards(JwtAuthGuard)
-  async postComments(@Param('postId') postId: string, @Query('account_id') accountId: string) {
+  async postComments(@Param('postId') postId: string, @Query('account_id') accountId: string, @Req() req: AuthedRequest) {
+    await this.exigerCompte(req, accountId);
     return this.inboxService.postComments(postId, accountId);
   }
 
   @Post('reply')
   @UseGuards(JwtAuthGuard)
-  async reply(@Body() body: InboxReplyDto) {
+  async reply(@Body() body: InboxReplyDto, @Req() req: AuthedRequest) {
+    await this.exigerCompte(req, body.account_id);
     const message = (body.message || '').trim();
     if (!(body.post_id && body.account_id && message)) throw new BadRequestException('post_id, account_id et message requis');
     const r = await this.inboxService.reply(body.post_id, body.account_id, message, body.comment_id);
@@ -68,7 +77,8 @@ export class InboxController {
 
   @Post('action')
   @UseGuards(JwtAuthGuard)
-  async action(@Body() body: InboxActionDto) {
+  async action(@Body() body: InboxActionDto, @Req() req: AuthedRequest) {
+    await this.exigerCompte(req, body.account_id);
     const r = await this.inboxService.action(body.kind, body.post_id, body.comment_id, body.account_id);
     if (!r.ok) throw new BadRequestException(r.error);
     return r;

@@ -13,6 +13,8 @@ export interface Outil {
   description: string;
   inputSchema: Record<string, unknown>;
   annotations?: Record<string, boolean>;
+  /** Action qui change quelque chose (création, modification, publication) : tracée dans journal_mcp. */
+  journal?: boolean;
   executer: (api: Appel, args: Args) => Promise<unknown>;
 }
 
@@ -50,6 +52,7 @@ function resume(c: Contenu, extrait = true) {
 export const OUTILS: Outil[] = [
   {
     name: 'rediger_post',
+    journal: true,
     title: 'Rédiger un post',
     description:
       "Rédige un post dans la voix de la marque du client (profil de marque, piliers, exemples validés) et l'enregistre en brouillon dans Postorico. Consomme 1 post du quota mensuel. Renvoie le texte et l'id du contenu, à faire relire au client avant de le valider.",
@@ -98,6 +101,7 @@ export const OUTILS: Outil[] = [
   },
   {
     name: 'modifier_contenu',
+    journal: true,
     title: 'Modifier un contenu',
     description: "Remplace le texte, le titre ou le premier commentaire d'un contenu qui n'est pas encore publié.",
     inputSchema: {
@@ -127,6 +131,7 @@ export const OUTILS: Outil[] = [
   },
   {
     name: 'valider_et_programmer',
+    journal: true,
     title: 'Valider et programmer',
     description:
       "Valide un contenu et le programme sur son réseau : au prochain créneau libre de la planification du client, ou à la date donnée. La publication part ensuite automatiquement. À n'utiliser qu'après accord explicite du client sur le texte.",
@@ -216,6 +221,7 @@ export const OUTILS: Outil[] = [
   },
   {
     name: 'repondre_commentaire',
+    journal: true,
     title: 'Répondre à un commentaire',
     description:
       "Publie une réponse, au nom du client, sous une publication ou à un commentaire précis. La réponse est publique : à n'envoyer qu'après accord du client sur le texte.",
