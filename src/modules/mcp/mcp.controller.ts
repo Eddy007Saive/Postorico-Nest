@@ -4,6 +4,7 @@ import { AuthService } from '../auth/auth.service';
 import { ClesApiService, TitulaireCle } from './cles-api.service';
 import { Appel, ErreurOutil, OUTILS } from './mcp-outils';
 import { lirePrompt, listePrompts } from './mcp-prompts';
+import { OUTIL_SUIVI, TachesMcp } from './taches-mcp';
 import { lireRessource, listeRessources } from './mcp-ressources';
 
 /** Versions du protocole MCP comprises (la plus récente d'abord). */
@@ -59,6 +60,7 @@ function messageErreur(statut: number, corps: unknown): string {
 export class McpController {
   private readonly logger = new Logger(McpController.name);
   private readonly debits = new Map<string, number[]>();
+  private readonly taches = new TachesMcp();
 
   constructor(
     private readonly cles: ClesApiService,
@@ -141,7 +143,10 @@ export class McpController {
         return reponse(m.id, {});
       case 'tools/list':
         return reponse(m.id, {
-          tools: OUTILS.map(({ name, title, description, inputSchema, annotations }) => ({ name, title, description, inputSchema, ...(annotations ? { annotations } : {}) })),
+          tools: [
+            ...OUTILS.map(({ name, title, description, inputSchema, annotations }) => ({ name, title, description, inputSchema, ...(annotations ? { annotations } : {}) })),
+            OUTIL_SUIVI,
+          ],
         });
       case 'tools/call':
         return reponse(m.id, await this.outil(m.params || {}, titulaire));
@@ -173,17 +178,41 @@ export class McpController {
   }
 
   private async outil(params: Record<string, unknown>, titulaire: TitulaireCle) {
+    const args = params.arguments && typeof params.arguments === 'object' ? (params.arguments as Record<string, unknown>) : {};
+    if (params.name === OUTIL_SUIVI.name) {
+      const etat = this.taches.etat(titulaire.telegram_id, typeof args.tache_id === 'string' ? args.tache_id : '');
+      if (!etat) return { isError: true, content: [{ type: 'text', text: 'Tâche introuvable (identifiant inconnu, ou résultat expiré après une heure).' }] };
+      // Terminée : la réponse de l'outil, telle quelle
+      if (etat.statut === 'terminee') return etat.resultat;
+      return { content: [{ type: 'text', text: JSON.stringify(etat, null, 1) }] };
+    }
     const outil = OUTILS.find((o) => o.name === params.name);
     if (!outil) return { isError: true, content: [{ type: 'text', text: `Outil inconnu : ${String(params.name)}` }] };
-    const args = params.arguments && typeof params.arguments === 'object' ? (params.arguments as Record<string, unknown>) : {};
+    const issue = await this.taches.lancer(titulaire.telegram_id, outil.name, this.executer(outil, args, titulaire));
+    if (issue.fini) return issue.resultat;
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          en_cours: true,
+          tache_id: issue.tacheId,
+          note: `Le travail est long et continue côté Postorico. Appelle ${OUTIL_SUIVI.name} avec ce tache_id dans 20 à 30 secondes pour le résultat.`,
+        }, null, 1),
+      }],
+    };
+  }
+
+  /** Exécute un outil et journalise ; ne lève jamais : une erreur devient une réponse isError. */
+  private async executer(outil: (typeof OUTILS)[number], args: Record<string, unknown>, titulaire: TitulaireCle) {
     const details = resumeArgs(args);
     try {
       const resultat = await outil.executer(this.api(titulaire), args);
       const cree = resultat && typeof resultat === 'object' ? (resultat as { contenu_id?: unknown }).contenu_id : undefined;
       if (outil.journal) await this.cles.journaliser(titulaire, outil.name, true, typeof cree === 'string' ? { ...details, contenu_id: cree } : details);
       let texte = JSON.stringify(resultat, null, 1);
-      if (texte.length > MAX_TEXTE) texte = `${texte.slice(0, MAX_TEXTE)}\n… (réponse tronquée)`;
-      return { content: [{ type: 'text', text: texte }] };
+      if (texte.length > MAX_TEXTE) texte = `${texte.slice(0, MAX_TEXTE)}
+… (réponse tronquée)`;
+      return { content: [{ type: 'text', text: texte }] } as { content: Array<{ type: string; text: string }>; isError?: boolean };
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       if (!(e instanceof ErreurOutil)) this.logger.warn(`outil ${outil.name} (${titulaire.telegram_id}) : ${message}`);
@@ -191,6 +220,7 @@ export class McpController {
       return { isError: true, content: [{ type: 'text', text: message }] };
     }
   }
+
 
   /** Appel à l'API de ce même serveur, au nom du titulaire de la clé. */
   private api(titulaire: TitulaireCle): Appel {
