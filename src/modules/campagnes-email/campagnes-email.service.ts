@@ -251,11 +251,18 @@ export class CampagnesEmailService implements OnApplicationBootstrap {
   }
 
   /** Traduit une erreur Zernio sur la boîte en message clair. */
-  private erreurBoite(e: unknown, quoi: string): ErreurCampagne {
+  private erreurBoite(e: unknown, quoi: string, telegramId?: string): ErreurCampagne {
     const st = e instanceof ZernioError ? e.statusCode : undefined;
     this.logger.warn(
       `${quoi}: [${st ?? '-'}] ${e instanceof Error ? e.message : String(e)}`,
     );
+    // La boîte n'existe plus chez Zernio : on oublie la connexion, pour que la page
+    // propose de la reconnecter au lieu d'afficher une boîte vide « connectée ».
+    if (st === 404 && telegramId && /account_not_found|Account not found/i.test(e instanceof Error ? e.message : String(e))) {
+      void this.deconnecter(telegramId).catch((err) =>
+        this.logger.warn(`oubli de la boîte ${telegramId}: ${err instanceof Error ? err.message : err}`),
+      );
+    }
     if (st === 412 || st === 401 || st === 403 || st === 404) {
       return new ErreurCampagne(
         'Ta boîte mail doit être reconnectée (accès expiré ou retiré).',
@@ -320,7 +327,7 @@ export class CampagnesEmailService implements OnApplicationBootstrap {
         suite: pagination.hasMore ? pagination.nextCursor : null,
       };
     } catch (e) {
-      throw this.erreurBoite(e, `fils ${telegramId}`);
+      throw this.erreurBoite(e, `fils ${telegramId}`, telegramId);
     }
   }
 
@@ -358,7 +365,7 @@ export class CampagnesEmailService implements OnApplicationBootstrap {
         })),
       };
     } catch (e) {
-      throw this.erreurBoite(e, `fil ${telegramId}/${filId}`);
+      throw this.erreurBoite(e, `fil ${telegramId}/${filId}`, telegramId);
     }
   }
 
@@ -389,7 +396,7 @@ export class CampagnesEmailService implements OnApplicationBootstrap {
       return { ok: true };
     } catch (e) {
       if (e instanceof ErreurCampagne) throw e;
-      throw this.erreurBoite(e, `répondre ${telegramId}/${filId}`);
+      throw this.erreurBoite(e, `répondre ${telegramId}/${filId}`, telegramId);
     }
   }
 
@@ -414,7 +421,7 @@ export class CampagnesEmailService implements OnApplicationBootstrap {
       });
       return { ok: true };
     } catch (e) {
-      throw this.erreurBoite(e, `écrire ${telegramId}`);
+      throw this.erreurBoite(e, `écrire ${telegramId}`, telegramId);
     }
   }
 
@@ -425,7 +432,7 @@ export class CampagnesEmailService implements OnApplicationBootstrap {
     try {
       fil = await this.lireFil(b.account_id, filId);
     } catch (e) {
-      throw this.erreurBoite(e, `suggestion ${telegramId}/${filId}`);
+      throw this.erreurBoite(e, `suggestion ${telegramId}/${filId}`, telegramId);
     }
     const u = await this.marque.chargerMarque(telegramId);
     const moi = (b.adresse || '').toLowerCase();
