@@ -441,6 +441,15 @@ export class AuthService {
     );
   }
 
+  /** Connecteur MCP : jeton utilisateur de 5 minutes, frappé à chaque appel d'outil pour
+   * passer par les routes existantes (quotas, suivi des coûts, règles d'accès). */
+  issueMcpToken(telegramId: string, email: string | null, passwordHash: string | null): string {
+    return this.jwt.sign(
+      { telegram_id: telegramId, email: email ?? '', is_admin: false, origine: telegramId, master_id: null, mcp: true, fp: this.pwdFingerprint(passwordHash) },
+      { expiresIn: '5m' },
+    );
+  }
+
   /** Mode Vision (admin) : jeton UTILISATEUR temporaire (1h) pour voir/agir comme le
    * client — les actions consomment les quotas du CLIENT, pas de l'admin.
    * `fp` porte l'empreinte du mot de passe du CLIENT visé (payload.telegram_id), pour que

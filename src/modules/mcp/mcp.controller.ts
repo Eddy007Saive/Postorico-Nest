@@ -1,0 +1,175 @@
+import { All, Controller, Logger, Param, Post, Req, Res } from '@nestjs/common';
+import type { Request, Response } from 'express';
+import { AuthService } from '../auth/auth.service';
+import { ClesApiService, TitulaireCle } from './cles-api.service';
+import { Appel, ErreurOutil, OUTILS } from './mcp-outils';
+
+/** Versions du protocole MCP comprises (la plus récente d'abord). */
+const VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
+const MAX_TEXTE = 60_000;
+const APPELS_PAR_MINUTE = 60;
+
+const INSTRUCTIONS =
+  "Postorico est le studio de contenu du client : ses posts sont rédigés dans la voix de sa marque, puis validés et publiés sur ses réseaux. " +
+  'Fais toujours relire un texte au client avant valider_et_programmer ou repondre_commentaire : ces deux outils publient en son nom. ' +
+  'rediger_post consomme son quota mensuel ; quotas indique ce qui reste.';
+
+interface Rpc {
+  jsonrpc?: string;
+  id?: string | number | null;
+  method?: string;
+  params?: Record<string, unknown>;
+}
+
+const reponse = (id: Rpc['id'], result: unknown) => ({ jsonrpc: '2.0', id, result });
+const erreur = (id: Rpc['id'], code: number, message: string) => ({ jsonrpc: '2.0', id: id ?? null, error: { code, message } });
+
+/** Message lisible d'une réponse d'erreur Nest ({ message } texte, liste ou objet). */
+function messageErreur(statut: number, corps: unknown): string {
+  const m = corps && typeof corps === 'object' ? (corps as { message?: unknown; detail?: unknown }).message ?? (corps as { detail?: unknown }).detail : corps;
+  if (typeof m === 'string' && m) return m;
+  if (Array.isArray(m)) return m.join(' ; ');
+  if (m && typeof m === 'object') {
+    const t = (m as { message?: unknown }).message;
+    if (typeof t === 'string') return t;
+  }
+  return `Erreur ${statut}`;
+}
+
+/**
+ * Serveur MCP de Postorico (transport « Streamable HTTP », sans session) : POST /api/mcp avec
+ * « Authorization: Bearer pst_… », ou POST /api/mcp/pst_… pour les clients qui ne savent
+ * pas envoyer d'en-tête. Chaque outil rappelle l'API avec un jeton de 5 minutes du titulaire.
+ */
+@Controller('mcp')
+export class McpController {
+  private readonly logger = new Logger(McpController.name);
+  private readonly debits = new Map<string, number[]>();
+
+  constructor(
+    private readonly cles: ClesApiService,
+    private readonly auth: AuthService,
+  ) {}
+
+  @Post()
+  avecEntete(@Req() req: Request, @Res() res: Response) {
+    const entete = req.headers.authorization || '';
+    return this.traiter(entete.startsWith('Bearer ') ? entete.slice(7).trim() : '', req, res);
+  }
+
+  @Post(':cle')
+  avecChemin(@Param('cle') cle: string, @Req() req: Request, @Res() res: Response) {
+    return this.traiter(cle, req, res);
+  }
+
+  /** Pas de flux SSE ni de session à fermer dans ce mode. */
+  @All()
+  autre(@Res() res: Response) {
+    res.status(405).set('Allow', 'POST').json(erreur(null, -32000, 'Méthode non permise : utilise POST.'));
+  }
+
+  @All(':cle')
+  autreChemin(@Res() res: Response) {
+    this.autre(res);
+  }
+
+  private async traiter(cle: string, req: Request, res: Response) {
+    const titulaire = await this.cles.verifier(cle);
+    if (!titulaire) {
+      res.status(401).set('WWW-Authenticate', 'Bearer').json(erreur(null, -32001, 'Clé API absente, invalide ou révoquée (Paramètres › Connecteur IA).'));
+      return;
+    }
+    if (!this.debitOk(titulaire.telegram_id)) {
+      res.status(429).json(erreur(null, -32002, 'Trop d’appels : réessaie dans une minute.'));
+      return;
+    }
+    const corps = req.body as Rpc | Rpc[] | undefined;
+    const messages = Array.isArray(corps) ? corps : corps ? [corps] : [];
+    if (!messages.length) {
+      res.status(400).json(erreur(null, -32700, 'Message JSON-RPC attendu.'));
+      return;
+    }
+    const sorties = (await Promise.all(messages.map((m) => this.message(m, titulaire)))).filter(Boolean);
+    // Uniquement des notifications : rien à renvoyer
+    if (!sorties.length) {
+      res.status(202).end();
+      return;
+    }
+    res.status(200).json(Array.isArray(corps) ? sorties : sorties[0]);
+  }
+
+  private async message(m: Rpc, titulaire: TitulaireCle): Promise<unknown> {
+    if (!m || typeof m !== 'object' || m.jsonrpc !== '2.0') return erreur(m?.id, -32600, 'Requête JSON-RPC invalide.');
+    // Notification (pas d'id) ou réponse du client : rien à répondre
+    if (m.id === undefined || m.id === null || !m.method) return null;
+    switch (m.method) {
+      case 'initialize': {
+        const v = m.params?.protocolVersion;
+        const demandee = typeof v === 'string' ? v : '';
+        return reponse(m.id, {
+          protocolVersion: VERSIONS.includes(demandee) ? demandee : VERSIONS[0],
+          capabilities: { tools: { listChanged: false } },
+          serverInfo: { name: 'postorico', title: 'Postorico', version: '1.0.0' },
+          instructions: INSTRUCTIONS,
+        });
+      }
+      case 'ping':
+        return reponse(m.id, {});
+      case 'tools/list':
+        return reponse(m.id, {
+          tools: OUTILS.map(({ name, title, description, inputSchema, annotations }) => ({ name, title, description, inputSchema, ...(annotations ? { annotations } : {}) })),
+        });
+      case 'tools/call':
+        return reponse(m.id, await this.outil(m.params || {}, titulaire));
+      default:
+        return erreur(m.id, -32601, `Méthode inconnue : ${m.method}`);
+    }
+  }
+
+  private async outil(params: Record<string, unknown>, titulaire: TitulaireCle) {
+    const outil = OUTILS.find((o) => o.name === params.name);
+    if (!outil) return { isError: true, content: [{ type: 'text', text: `Outil inconnu : ${String(params.name)}` }] };
+    const args = params.arguments && typeof params.arguments === 'object' ? (params.arguments as Record<string, unknown>) : {};
+    try {
+      const resultat = await outil.executer(this.api(titulaire), args);
+      let texte = JSON.stringify(resultat, null, 1);
+      if (texte.length > MAX_TEXTE) texte = `${texte.slice(0, MAX_TEXTE)}\n… (réponse tronquée)`;
+      return { content: [{ type: 'text', text: texte }] };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (!(e instanceof ErreurOutil)) this.logger.warn(`outil ${outil.name} (${titulaire.telegram_id}) : ${message}`);
+      return { isError: true, content: [{ type: 'text', text: message }] };
+    }
+  }
+
+  /** Appel à l'API de ce même serveur, au nom du titulaire de la clé. */
+  private api(titulaire: TitulaireCle): Appel {
+    const base = `http://127.0.0.1:${process.env.PORT ?? 3000}/api`;
+    return async (methode, chemin, corps) => {
+      const jeton = this.auth.issueMcpToken(titulaire.telegram_id, titulaire.email, titulaire.password_hash);
+      const r = await fetch(base + chemin, {
+        method: methode,
+        headers: { Authorization: `Bearer ${jeton}`, ...(corps !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+        body: corps !== undefined ? JSON.stringify(corps) : undefined,
+      });
+      const brut = await r.text();
+      let json: unknown = brut;
+      try {
+        json = brut ? JSON.parse(brut) : null;
+      } catch {
+        /* réponse texte */
+      }
+      if (!r.ok) throw new ErreurOutil(messageErreur(r.status, json));
+      return json;
+    };
+  }
+
+  private debitOk(telegramId: string): boolean {
+    const maintenant = Date.now();
+    const recents = (this.debits.get(telegramId) || []).filter((t) => maintenant - t < 60_000);
+    if (recents.length >= APPELS_PAR_MINUTE) return false;
+    recents.push(maintenant);
+    this.debits.set(telegramId, recents);
+    return true;
+  }
+}

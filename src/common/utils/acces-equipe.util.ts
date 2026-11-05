@@ -24,6 +24,7 @@ const PROPRIETAIRE: Regle[] = [
   ['POST', /^\/publicite\/booster$/],
   ['PUT', /^\/publicite\/pubs\/[^/]+\/statut$/],
   ['POST', /^\/configuration\/lien-pack$/],
+  ['*', /^\/cles-api(\/|$)/],
 ];
 
 // En plus pour l'éditeur : les réseaux connectés et les réglages de la marque, que seul

@@ -1117,3 +1117,17 @@ model campagnes_email_destinataires {
   @@unique([campagne_id, email], map: "campagnes_email_dest_unique")
   @@index([campagne_id, statut], map: "campagnes_email_dest_campagne_idx")
 }
+
+/// Clés API personnelles (connecteur MCP) : seul le sha256 de la clé est gardé.
+model cles_api {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  telegram_id           String    @db.Uuid
+  nom                   String
+  prefixe               String
+  hash                  String    @unique
+  created_at            DateTime  @default(now()) @db.Timestamptz(6)
+  derniere_utilisation  DateTime? @db.Timestamptz(6)
+  revoquee_le           DateTime? @db.Timestamptz(6)
+
+  @@index([telegram_id], map: "cles_api_client_idx")
+}
