@@ -3,6 +3,8 @@ import type { Request, Response } from 'express';
 import { AuthService } from '../auth/auth.service';
 import { ClesApiService, TitulaireCle } from './cles-api.service';
 import { Appel, ErreurOutil, OUTILS } from './mcp-outils';
+import { lirePrompt, listePrompts } from './mcp-prompts';
+import { lireRessource, listeRessources } from './mcp-ressources';
 
 /** Versions du protocole MCP comprises (la plus récente d'abord). */
 const VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
@@ -130,7 +132,7 @@ export class McpController {
         const demandee = typeof v === 'string' ? v : '';
         return reponse(m.id, {
           protocolVersion: VERSIONS.includes(demandee) ? demandee : VERSIONS[0],
-          capabilities: { tools: { listChanged: false } },
+          capabilities: { tools: { listChanged: false }, resources: { listChanged: false, subscribe: false }, prompts: { listChanged: false } },
           serverInfo: { name: 'postorico', title: 'Postorico', version: '1.0.0' },
           instructions: INSTRUCTIONS,
         });
@@ -143,6 +145,28 @@ export class McpController {
         });
       case 'tools/call':
         return reponse(m.id, await this.outil(m.params || {}, titulaire));
+      case 'resources/list':
+        return reponse(m.id, { resources: listeRessources() });
+      case 'resources/templates/list':
+        return reponse(m.id, { resourceTemplates: [] });
+      case 'resources/read': {
+        const uri = typeof m.params?.uri === 'string' ? m.params.uri : '';
+        try {
+          const contenu = await lireRessource(this.api(titulaire), uri);
+          if (!contenu) return erreur(m.id, -32002, `Ressource inconnue : ${uri}`);
+          return reponse(m.id, { contents: [contenu] });
+        } catch (e) {
+          return erreur(m.id, -32603, e instanceof Error ? e.message : String(e));
+        }
+      }
+      case 'prompts/list':
+        return reponse(m.id, { prompts: listePrompts() });
+      case 'prompts/get': {
+        const nom = typeof m.params?.name === 'string' ? m.params.name : '';
+        const args = m.params?.arguments && typeof m.params.arguments === 'object' ? (m.params.arguments as Record<string, unknown>) : {};
+        const p = lirePrompt(nom, args);
+        return p ? reponse(m.id, p) : erreur(m.id, -32602, `Prompt inconnu : ${nom}`);
+      }
       default:
         return erreur(m.id, -32601, `Méthode inconnue : ${m.method}`);
     }
