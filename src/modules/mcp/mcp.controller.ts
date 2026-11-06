@@ -16,7 +16,8 @@ const INSTRUCTIONS =
   "Postorico est le studio de contenu du client : ses posts sont rédigés dans la voix de sa marque, validés par lui, puis publiés sur ses réseaux. " +
   'Commence par get_brand_profile pour comprendre la marque. Circuit : idée (get_content_ideas) → post rédigé en brouillon (generate_social_post) → A valider → approuvé (approve_content) → publié. ' +
   "Règle absolue : fais relire et accepter explicitement chaque texte par le client avant tout outil qui publie en son nom (approve_content, schedule_publication, publish_content, publish_google_business_post, reply_to_comment, reply_to_google_review, create_social_post avec programmer). " +
-  'Les outils generate_* consomment son quota mensuel (get_quota) ; les retouches de texte et create_social_post sont gratuits.';
+  'Les outils generate_* consomment son quota mensuel (get_quota) ; les retouches de texte et create_social_post sont gratuits. ' +
+  "Vidéo : get_video_options d'abord, puis generate_reel (reel animé, quelques minutes) ou generate_ai_video (montage par l'agent IA, 5 à 20 minutes, quota le plus serré) ; les deux tournent en arrière-plan, suis-les avec get_video_status.";
 
 interface Rpc {
   jsonrpc?: string;

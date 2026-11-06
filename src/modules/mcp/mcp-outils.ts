@@ -9,6 +9,7 @@ import { OUTILS_MARQUE } from './outils/marque';
 import { OUTILS_PLANIFICATION } from './outils/planification';
 import { OUTILS_PUBLICATION } from './outils/publication';
 import { OUTILS_VALIDATION } from './outils/validation';
+import { OUTILS_VIDEO } from './outils/video';
 
 export { ErreurOutil } from './outils/commun';
 export type { Appel, Outil } from './outils/commun';
@@ -18,6 +19,7 @@ export const CATEGORIES: Array<{ id: string; outils: Outil[] }> = [
   { id: 'marque', outils: OUTILS_MARQUE },
   { id: 'idees', outils: OUTILS_IDEES },
   { id: 'generation', outils: OUTILS_GENERATION },
+  { id: 'video', outils: OUTILS_VIDEO },
   { id: 'planification', outils: OUTILS_PLANIFICATION },
   { id: 'validation', outils: OUTILS_VALIDATION },
   { id: 'publication', outils: OUTILS_PUBLICATION },
