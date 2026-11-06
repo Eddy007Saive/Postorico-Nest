@@ -58,6 +58,17 @@ async function voixParDefaut(api: Appel): Promise<string | null> {
   return v?.disponible && v.defaut ? v.defaut : null;
 }
 
+/** Réglage du client (Paramètres › Connecteur IA) : musique de fond sur les vidéos, oui par défaut. */
+async function musiqueVoulue(api: Appel): Promise<boolean> {
+  const r = (await api('GET', '/video/reglages').catch(() => null)) as { connecteur?: { musique?: boolean } | null } | null;
+  return r?.connecteur?.musique !== false;
+}
+
+/** Musique explicite de l'assistant, sinon le réglage du client : piste par défaut, ou aucune. */
+function choisirMusique(demandee: string, voulue: boolean, defaut: string): string {
+  return demandee || (voulue ? defaut : 'none');
+}
+
 const SUIVI = 'Le rendu tourne en arrière-plan : suis-le avec get_video_status (toutes les 30 à 60 secondes), la vidéo arrive « À valider ».';
 
 async function etatAgent(api: Appel, contenuId: string): Promise<Record<string, unknown> | null> {
@@ -77,13 +88,14 @@ export const OUTILS_VIDEO: Outil[] = [
     inputSchema: { type: 'object', properties: {} },
     annotations: LECTURE,
     executer: async (api) => {
-      const [tpl, voix, banque] = await Promise.all([
+      const [tpl, voix, banque, musique] = await Promise.all([
         api('GET', '/reels/templates').catch(() => ({})) as Promise<{
           templates?: Array<Record<string, unknown>>;
           musiques?: Array<Record<string, unknown>>;
         }>,
         api('GET', '/reels/voix').catch(() => null) as Promise<Record<string, unknown> | null>,
         api('GET', '/reels/banque').catch(() => ({})) as Promise<Banque>,
+        musiqueVoulue(api),
       ]);
       const medias = banque.images || [];
       return {
@@ -99,6 +111,10 @@ export const OUTILS_VIDEO: Outil[] = [
         musiques: (tpl.musiques || []).map((m) => choisir(m, ['id', 'label', 'category'])),
         banque_photos: medias.filter((m) => !estVideo(m)).map((m) => choisir(m, ['url', 'description'])),
         banque_videos: medias.filter(estVideo).map((m) => choisir(m, ['url', 'description', 'duree_s'])),
+        reglages_client: {
+          musique: musique ? 'oui : une piste adaptée est mise d’office' : 'non : pas de musique, sauf si le client en demande une',
+          voix_off: 'toujours sur les reels et les vidéos motion, avec la voix par défaut du compte',
+        },
         note: "Les photos et vidéos s'ajoutent à la banque depuis Postorico (Studio Reel ou Banque de médias) ; une URL extérieure est refusée.",
       };
     },
@@ -107,7 +123,7 @@ export const OUTILS_VIDEO: Outil[] = [
     name: 'generate_reel',
     title: 'Créer un reel animé',
     description:
-      "Crée un reel vidéo animé à la charte (textes animés, visuels, musique, voix off en option). Avec contenu_id : met en vidéo un post existant, selon le modèle choisi. Avec brief : reel libre sur ce sujet. Par défaut, voix off avec la voix du compte et musique adaptée au style (voix: \"none\" ou musique: \"none\" pour s'en passer). Consomme 1 reel du quota (+ 1 voix off). Le rendu prend une à trois minutes en arrière-plan ; le reel arrive « À valider ».",
+      "Crée un reel vidéo animé à la charte (textes animés, visuels, musique, voix off en option). Avec contenu_id : met en vidéo un post existant, selon le modèle choisi. Avec brief : reel libre sur ce sujet. Voix off toujours présente, avec la voix par défaut du compte (sa propre voix s'il l'a clonée). Musique selon le réglage du client dans Postorico (piste adaptée au style, ou aucune) ; musique: \"none\" ou un id l'imposent. Consomme 1 reel et 1 voix off du quota. Le rendu prend une à trois minutes en arrière-plan ; le reel arrive « À valider ».",
     inputSchema: {
       type: 'object',
       properties: {
@@ -116,8 +132,8 @@ export const OUTILS_VIDEO: Outil[] = [
         modele: { type: 'string', description: "Modèle de reel (id de get_video_options, « sequence » par défaut). Avec contenu_id seulement ; un reel libre est toujours une séquence." },
         style: { type: 'string', description: 'Style de séquence (signature, cinema, editorial, impact, odyssee, vlog, carnet, avantapres, temoignage, conseils).' },
         reseau: { type: 'string', enum: Object.keys(RESEAUX_VIDEO), description: 'Réseau du reel libre (instagram par défaut).' },
-        voix: { type: 'string', description: 'Voix off (id de get_video_options). Absente : voix par défaut du compte ; « none » : pas de voix. Modèles « sequence » uniquement.' },
-        musique: { type: 'string', description: 'Musique (id de get_video_options). Absente : choisie selon le style ; « none » : pas de musique.' },
+        voix: { type: 'string', description: 'Autre voix off que celle du compte (id de get_video_options), si le client le demande.' },
+        musique: { type: 'string', description: 'Musique (id de get_video_options) ou « none ». Absente : selon le réglage du client.' },
         images: { type: 'array', items: { type: 'string' }, maxItems: 8, description: 'Photos de la banque à utiliser (URL), 8 au plus.' },
         plans_video: { type: 'boolean', description: 'Ajouter des plans vidéo d’illustration (vrai par défaut).' },
       },
@@ -130,32 +146,21 @@ export const OUTILS_VIDEO: Outil[] = [
       const images = urls(args.images, 8).map((i) => ({ url: i.url, desc: i.description }));
       const modele = contenuId ? texte(args.modele) || 'sequence' : 'sequence';
       const sequence = modele.startsWith('sequence');
-      const musique = texte(args.musique) || (sequence ? MUSIQUE_PAR_STYLE[styleDuModele(modele, texte(args.style))] || 'studio-pub' : 'studio-pub');
-      const voixDemandee = texte(args.voix);
-      const voixDefaut = !voixDemandee && sequence ? await voixParDefaut(api) : null;
-      const voix = voixDemandee === 'none' ? null : voixDemandee || voixDefaut;
-      const lancer = (avecVoix: string | null) => {
-        const commun = {
-          ...(images.length ? { images } : {}),
-          ...(texte(args.style) ? { style: texte(args.style) } : {}),
-          musique,
-          ...(avecVoix ? { voix: avecVoix } : {}),
-          ...(typeof args.plans_video === 'boolean' ? { plans_video: args.plans_video } : {}),
-        };
-        return contenuId
-          ? api('POST', '/reels/generer', { contenu_id: contenuId, template: modele, ...(brief ? { brief } : {}), ...commun })
-          : api('POST', '/reels/creer', { brief, reseau: reseauVideo(args.reseau), ...commun });
+      const defautStyle = sequence ? MUSIQUE_PAR_STYLE[styleDuModele(modele, texte(args.style))] || 'studio-pub' : 'studio-pub';
+      const musique = choisirMusique(texte(args.musique), await musiqueVoulue(api), defautStyle);
+      // Voix off toujours là (décision du 2026-11-06) : « none » n'est pas accepté
+      const voixDemandee = texte(args.voix) === 'none' ? '' : texte(args.voix);
+      const voix = sequence ? voixDemandee || (await voixParDefaut(api)) : null;
+      const commun = {
+        ...(images.length ? { images } : {}),
+        ...(texte(args.style) ? { style: texte(args.style) } : {}),
+        musique,
+        ...(voix ? { voix } : {}),
+        ...(typeof args.plans_video === 'boolean' ? { plans_video: args.plans_video } : {}),
       };
-      let sansVoix = false;
-      let r: Record<string, unknown>;
-      try {
-        r = (await lancer(voix)) as Record<string, unknown>;
-      } catch (e) {
-        // Voix ajoutée d'office mais plus de quota voix off : le reel part quand même, sans voix
-        if (!voixDefaut || !/voix/i.test(e instanceof Error ? e.message : String(e))) throw e;
-        r = (await lancer(null)) as Record<string, unknown>;
-        sansVoix = true;
-      }
+      const r = (contenuId
+        ? await api('POST', '/reels/generer', { contenu_id: contenuId, template: modele, ...(brief ? { brief } : {}), ...commun })
+        : await api('POST', '/reels/creer', { brief, reseau: reseauVideo(args.reseau), ...commun })) as Record<string, unknown>;
       return {
         contenu_id: r.id ?? contenuId ?? null,
         video_status: r.video_status ?? 'en_traitement',
@@ -163,8 +168,8 @@ export const OUTILS_VIDEO: Outil[] = [
         reseau: r.reseau ?? null,
         date_publication: r.date_publication ?? null,
         musique: musique === 'none' ? null : musique,
-        voix: sansVoix ? null : voix,
-        note: sansVoix ? `${SUIVI} Sans voix off : le quota voix off du mois est épuisé.` : SUIVI,
+        voix,
+        note: SUIVI,
       };
     },
   },
@@ -172,13 +177,13 @@ export const OUTILS_VIDEO: Outil[] = [
     name: 'generate_ai_video',
     title: "Faire monter une vidéo par l'agent IA",
     description:
-      "Confie une vidéo à l'agent de montage IA (le plus abouti : coupes, sous-titres, illustrations, zooms, musique, logo). Deux modes : avec clips (vidéos de la banque du client) il monte ses rushes ; sans clips, avec script, il crée une vidéo motion design lue par la voix off. Musique d'office (musique: \"none\" pour s'en passer) ; en mode script, voix par défaut du compte si voix est absente. Consomme 1 vidéo agent du quota (le plus serré). Le montage prend 5 à 20 minutes ; la vidéo arrive « À valider ». Fais valider le script et les consignes par le client avant de lancer.",
+      "Confie une vidéo à l'agent de montage IA (le plus abouti : coupes, sous-titres, illustrations, zooms, musique, logo). Deux modes : avec clips (vidéos de la banque du client) il monte ses rushes ; sans clips, avec script, il crée une vidéo motion design lue par la voix off. En mode script, la voix off est toujours là (voix par défaut du compte, sa propre voix s'il l'a clonée). Musique selon le réglage du client dans Postorico ; musique: \"none\" ou un id l'imposent. Consomme 1 vidéo agent du quota (le plus serré). Le montage prend 5 à 20 minutes ; la vidéo arrive « À valider ». Fais valider le script et les consignes par le client avant de lancer.",
     inputSchema: {
       type: 'object',
       properties: {
         clips: { type: 'array', items: { type: 'string' }, maxItems: 10, description: 'Vidéos à monter (URL de banque_videos, get_video_options), 10 au plus.' },
         script: { type: 'string', description: 'Sans clips : le texte que la voix off lit (20 à 3 000 caractères).' },
-        voix: { type: 'string', description: 'Voix off du mode script (id de get_video_options).' },
+        voix: { type: 'string', description: 'Mode script : autre voix que celle du compte (id de get_video_options), si le client le demande.' },
         consignes: { type: 'string', description: 'Ce que le montage doit donner : style, rythme, textes à l’écran, couleurs… (1 500 caractères au plus).' },
         reseau: { type: 'string', enum: Object.keys(RESEAUX_VIDEO), description: 'Réseau visé (instagram par défaut).' },
         format: { type: 'string', enum: ['9:16', '16:9', '1:1'], description: '9:16 par défaut.' },
@@ -186,7 +191,7 @@ export const OUTILS_VIDEO: Outil[] = [
         illustrations: { type: 'boolean', description: 'Ajouter des illustrations (vrai par défaut).' },
         logo: { type: 'boolean', description: 'Afficher le logo de la marque (vrai par défaut).' },
         images: { type: 'array', items: { type: 'string' }, maxItems: 10, description: 'Photos de la banque à placer (URL).' },
-        musique: { type: 'string', description: 'Musique (id de get_video_options). Absente : choisie d’office ; « none » : pas de musique.' },
+        musique: { type: 'string', description: 'Musique (id de get_video_options) ou « none ». Absente : selon le réglage du client.' },
       },
     },
     journal: true,
@@ -197,7 +202,7 @@ export const OUTILS_VIDEO: Outil[] = [
       const r = (await api('POST', '/agent-video', {
         mode: clips.length ? 'video' : 'motion',
         ...(clips.length ? { clips: clips.map((c) => ({ url: c.url })) } : { script }),
-        ...(texte(args.voix) ? { voix: texte(args.voix) } : {}),
+        ...(texte(args.voix) && texte(args.voix) !== 'none' ? { voix: texte(args.voix) } : {}),
         ...(texte(args.consignes) ? { consignes: texte(args.consignes) } : {}),
         reseau: reseauVideo(args.reseau).toLowerCase(),
         ...(texte(args.format) ? { format: texte(args.format) } : {}),
@@ -205,7 +210,7 @@ export const OUTILS_VIDEO: Outil[] = [
         ...(typeof args.illustrations === 'boolean' ? { illustrations: args.illustrations } : {}),
         ...(typeof args.logo === 'boolean' ? { logo: args.logo } : {}),
         ...(Array.isArray(args.images) ? { images: urls(args.images, 10) } : {}),
-        musique: texte(args.musique) || (clips.length ? 'optimiste' : 'studio-edu'),
+        musique: choisirMusique(texte(args.musique), await musiqueVoulue(api), clips.length ? 'optimiste' : 'studio-edu'),
       })) as { id?: string; contenu_id?: string; video_status?: string };
       return {
         contenu_id: r.contenu_id ?? null,

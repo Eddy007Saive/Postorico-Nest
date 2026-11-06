@@ -24,7 +24,7 @@ const REGLAGES_MONTAGE: Record<string, 'texte' | 'bool' | 'nombre'> = {
   subPosition: 'nombre',
   subUppercase: 'bool',
 };
-export const CLES_REGLAGES = ['montage', 'consigne_video', 'consigne_motion'] as const;
+export const CLES_REGLAGES = ['montage', 'consigne_video', 'consigne_motion', 'connecteur'] as const;
 export type CleReglage = (typeof CLES_REGLAGES)[number];
 export const CONSIGNE_MAX = 1500;
 
@@ -32,6 +32,8 @@ export interface ReglagesVideo {
   montage?: Record<string, string | number | boolean | null> | null;
   consigne_video?: string | null;
   consigne_motion?: string | null;
+  /** Vidéos créées par le connecteur IA (MCP) : musique de fond ou non (oui par défaut). */
+  connecteur?: { musique: boolean } | null;
 }
 
 /** Ne garde que les réglages connus, au bon type (texte court, nombre fini, booléen). */
@@ -67,7 +69,11 @@ export class ReglagesVideoService {
   async ecrire(telegramId: string, cle: CleReglage, valeur: unknown): Promise<ReglagesVideo> {
     const actuels = await this.lire(telegramId);
     const suivants: ReglagesVideo = { ...actuels };
-    if (cle === 'montage') {
+    if (cle === 'connecteur') {
+      const v = valeur as Record<string, unknown> | null;
+      if (v && typeof v.musique === 'boolean') suivants.connecteur = { musique: v.musique };
+      else delete suivants.connecteur;
+    } else if (cle === 'montage') {
       const m = valeur === null ? {} : nettoyerMontage(valeur);
       if (Object.keys(m).length) suivants.montage = m;
       else delete suivants.montage;
