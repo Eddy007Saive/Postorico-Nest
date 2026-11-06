@@ -194,32 +194,26 @@ export class ContenuService {
     const data: Record<string, unknown> = { ...updateData, updated_at: new Date() };
     if (updateData.statut) data.statut = normStatutContenu(updateData.statut);
 
-    // Auto-planification : à la validation, (re)pose une date si absente OU déjà passée (on
-    // ne planifie jamais une publication dans le passé).
+    // Auto-planification à la validation : sans date donnée dans la même requête, le contenu prend
+    // le premier créneau libre parmi les contenus VALIDÉS (les « À valider » n'ont qu'une date
+    // proposée et ne bloquent plus rien), ou garde sa date proposée si elle est libre et plus tôt.
+    // Jamais de date dans le passé.
+    const dejaValide = ['Valider', 'Planifie', 'Pret_a_publier', 'Publie'].includes(String(current.statut));
+    const dateCourante = current.date_publication ? new Date(current.date_publication as string | Date).getTime() : NaN;
+    const sansDateValable = !(dateCourante > Date.now());
+    if (updateData.statut === 'Valider' && !updateData.date_publication && (!dejaValide || sansDateValable)) {
+      const creneau = await this.planningService.creneauALaValidation(
+        telegramId,
+        current.reseau_cible as string | null,
+        current.type as string | null,
+        current.date_publication as Date | string | null,
+      );
+      if (creneau && new Date(creneau).getTime() !== (current.date_publication ? new Date(current.date_publication as unknown as string).getTime() : NaN)) {
+        data.date_publication = creneau;
+        this.logger.log(`Auto-planif contenu ${contenuId} -> ${creneau} (créneau parmi les contenus validés)`);
+      }
+    }
     if (updateData.statut === 'Valider') {
-      const effDateRaw = updateData.date_publication || current.date_publication;
-      let past = false;
-      if (effDateRaw) {
-        const d = new Date(effDateRaw as string | Date);
-        if (!Number.isNaN(d.getTime())) {
-          const today = new Date();
-          today.setUTCHours(0, 0, 0, 0);
-          const dd = new Date(d);
-          dd.setUTCHours(0, 0, 0, 0);
-          past = dd < today;
-        }
-      }
-      if (!effDateRaw || past) {
-        const creneau = await this.planningService.prochainCreneau(
-          telegramId,
-          current.reseau_cible as string | null,
-          current.type as string | null,
-        );
-        if (creneau) {
-          data.date_publication = creneau;
-          this.logger.log(`Auto-planif contenu ${contenuId} -> ${creneau} (${!effDateRaw ? 'date absente' : 'date passée'})`);
-        }
-      }
       // Taux de réécriture (H2) : figé à l'instant de la validation, jamais recalculé ensuite —
       // c'est une mesure ponctuelle, pas une valeur vivante. null si pas de base de
       // comparaison (contenu_original absent : créé avant la migration, ou vidéo/reel/story).
@@ -289,7 +283,9 @@ export class ContenuService {
     if (!cur) return { ok: false, error: 'not_found' };
     if (cur.publish_status === 'publié') return { ok: false, error: 'already_published' };
 
-    const slot = await this.planningService.prochainCreneau(telegramId, cur.reseau_cible as string | null, cur.type as string | null);
+    // Un contenu validé ne cède pas sa place aux « À valider » : seuls les validés comptent
+    const valide = ['Valider', 'Planifie', 'Pret_a_publier'].includes(String(cur.statut));
+    const slot = await this.planningService.prochainCreneau(telegramId, cur.reseau_cible as string | null, cur.type as string | null, { valides: valide });
     if (!slot) return { ok: false, error: 'no_slot' };
 
     // Nettoie l'ancien post Zernio (échoué ou programmé) avant de reprogrammer.

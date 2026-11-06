@@ -17,7 +17,7 @@ describe('ContenuService.updateContenu — déclenche indexerContenu', () => {
         update: jest.fn().mockResolvedValue(row),
       },
     } as unknown as PrismaService;
-    const planningService = { prochainCreneau: jest.fn() } as unknown as PlanningService;
+    const planningService = { prochainCreneau: jest.fn(), creneauALaValidation: jest.fn().mockResolvedValue(null) } as unknown as PlanningService;
     const lateService = { programmerContenu: jest.fn() } as unknown as LateService;
     const carrouselRendu = {} as unknown as CarrouselRenduService;
     const memoireService = { indexerContenu: jest.fn().mockResolvedValue(true) } as unknown as MemoireService;

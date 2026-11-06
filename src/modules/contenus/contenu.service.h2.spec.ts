@@ -18,7 +18,7 @@ describe('ContenuService.updateContenu — mesure H2 et journal', () => {
     const prisma = {
       contenu: { findFirst: jest.fn().mockResolvedValue(row), update },
     } as unknown as PrismaService;
-    const planningService = { prochainCreneau: jest.fn().mockResolvedValue(null) } as unknown as PlanningService;
+    const planningService = { prochainCreneau: jest.fn().mockResolvedValue(null), creneauALaValidation: jest.fn().mockResolvedValue(null) } as unknown as PlanningService;
     const lateService = { programmerContenu: jest.fn().mockResolvedValue({ ok: false }) } as unknown as LateService;
     const carrouselRendu = {} as unknown as CarrouselRenduService;
     const memoireService = { indexerContenu: jest.fn().mockResolvedValue(true) } as unknown as MemoireService;

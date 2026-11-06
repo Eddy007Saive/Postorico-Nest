@@ -93,6 +93,9 @@ export function timeForDay(
   return { hour: h, minute: m };
 }
 
+/** Statuts d'un contenu qui va réellement partir : eux seuls réservent un jour au planning. */
+const STATUTS_VALIDES = new Set(['Valider', 'Planifie', 'Pret_a_publier', 'Publie']);
+
 @Injectable()
 export class PlanningService {
   private readonly logger = new Logger(PlanningService.name);
@@ -141,11 +144,15 @@ export class PlanningService {
    * En « cumulé », seuls les contenus de la MÊME famille bloquent le jour : deux
    * familles différentes peuvent le partager. En « à la suite », n'importe quel
    * contenu bloque le jour. */
+  /** Jours déjà pris sur ce réseau pour cette famille. `valides` : seuls les contenus qui vont
+   * vraiment partir (validés, planifiés, publiés) comptent ; un post « À valider » n'a qu'une
+   * date proposée et ne doit pas prendre la place d'un post validé (décision du 2026-11-06). */
   private async joursOccupes(
     telegramId: string,
     reseauCible: string,
     famille: string,
     mode: string = MODE_DEFAUT,
+    valides = false,
   ): Promise<Set<string>> {
     let rows: Array<{ date_publication: Date | null; type: string | null; statut: string | null }>;
     try {
@@ -165,10 +172,33 @@ export class PlanningService {
     for (const row of rows) {
       if (!row.date_publication) continue;
       if (row.statut === 'Refuse') continue;
+      if (valides && !STATUTS_VALIDES.has(String(row.statut))) continue;
       if (this.familleDe(row.type, mode) !== famille) continue;
       out.add(row.date_publication.toISOString().slice(0, 10));
     }
     return out;
+  }
+
+  /** Date d'un contenu qu'on valide : le premier créneau libre parmi les contenus validés, sauf
+   * si sa date proposée est déjà libre, à venir et plus tôt (on la garde). Ainsi un post validé
+   * passe devant les posts encore « À valider » au lieu d'être relégué derrière eux. */
+  async creneauALaValidation(
+    telegramId: string,
+    reseauCible: string | null | undefined,
+    typeContenu: string | null | undefined,
+    dateActuelle: Date | string | null | undefined,
+  ): Promise<string | null> {
+    const creneau = await this.prochainCreneau(telegramId, reseauCible, typeContenu, { valides: true });
+    const actuelle = dateActuelle ? new Date(dateActuelle) : null;
+    if (!actuelle || Number.isNaN(actuelle.getTime()) || actuelle.getTime() <= Date.now() || !reseauCible) return creneau;
+    if (!creneau || actuelle.getTime() <= new Date(creneau).getTime()) {
+      // Date proposée plus tôt (ou aucun créneau trouvé) : on la garde si aucun post validé n'a ce jour
+      const platform = RESEAU_TO_PLATFORM[reseauCible];
+      const mode = platform ? await this.modeDuReseau(telegramId, platform) : MODE_DEFAUT;
+      const occ = await this.joursOccupes(telegramId, reseauCible, this.familleDe(typeContenu, mode), mode, true);
+      if (!occ.has(actuelle.toISOString().slice(0, 10))) return actuelle.toISOString();
+    }
+    return creneau;
   }
 
   /** Renvoie une date_publication ISO (UTC) pour le prochain créneau libre de la
@@ -177,6 +207,7 @@ export class PlanningService {
     telegramId: string,
     reseauCible: string | null | undefined,
     typeContenu?: string | null,
+    opts: { valides?: boolean } = {},
   ): Promise<string | null> {
     if (!reseauCible) return null;
     const platform = RESEAU_TO_PLATFORM[reseauCible];
@@ -203,7 +234,7 @@ export class PlanningService {
     const ptime = this.extractTime(row?.preferred_time);
     const days = new Set(row?.days_of_week || []);
 
-    const occ = await this.joursOccupes(telegramId, reseauCible, famille, mode);
+    const occ = await this.joursOccupes(telegramId, reseauCible, famille, mode, !!opts.valides);
     const today = new Date();
     const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
 

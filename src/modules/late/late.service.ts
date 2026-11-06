@@ -852,10 +852,12 @@ export class LateService implements OnApplicationBootstrap {
           publish_error: null,
         };
         if (c.en_retard) {
+          // Contenus validés en reprogrammation : seuls les validés bloquent un jour
           const creneau = await this.planningService.prochainCreneau(
             telegramId,
             reseau,
             c.type,
+            { valides: true },
           );
           if (!creneau) continue;
           data.date_publication = new Date(creneau);
