@@ -55,6 +55,9 @@ export default registerAs('app', () => {
   lateWebhookSecret: process.env.LATE_WEBHOOK_SECRET || '',
   adminNotifEmail: process.env.ADMIN_NOTIF_EMAIL || 'martindumoulin88@gmail.com',
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
+  // GoHighLevel (intégration privée, droits contacts) : tags posés sur les événements de paiement
+  ghlToken: process.env.GHL_TOKEN || '',
+  ghlLocationId: process.env.GHL_LOCATION_ID || 'SHCo5TpAjpiunCagfcf9',
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
   stripePricePro: process.env.STRIPE_PRICE_PRO || '',
   stripePriceProUsd: process.env.STRIPE_PRICE_PRO_USD || '',

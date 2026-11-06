@@ -5,6 +5,7 @@ import Stripe from 'stripe';
 import { PrismaService } from '../../config/prisma.service';
 import { AffiliationService } from '../affiliation/affiliation.service';
 import { DemarrageService } from '../demarrage/demarrage.service';
+import { ContactGhl, decouperNom, GhlService, TAGS_GHL } from '../ghl/ghl.service';
 import { ImpayeService } from '../impaye/impaye.service';
 import { NotificationService } from '../notifications/notification.service';
 import {
@@ -99,6 +100,7 @@ export class BillingService {
     private readonly notificationService: NotificationService,
     private readonly affiliationService: AffiliationService,
     config: ConfigService,
+    private readonly ghl: GhlService,
   ) {
     const secretKey = config.get<string>('app.stripeSecretKey') || '';
     // Aucune clé Stripe réelle n'est présente en local pour ce portage (voir en-tête) :
@@ -1092,6 +1094,64 @@ export class BillingService {
     return { ok: true };
   }
 
+  /** Événements Stripe de l'abonnement -> tags GoHighLevel (brief du 2026-11-05) :
+   * actif = abonnement-actif (et retire résilié/échec), paiement échoué = paiement-echoue,
+   * facture payée = retire paiement-echoue, résiliation = abonnement-resilie (retire actif).
+   * Le contact est retrouvé par l'email du client Stripe (même email que le pack). */
+  private async ghlDepuisStripe(etype: string, obj: unknown): Promise<void> {
+    if (!this.ghl.actif()) return;
+    let ajouter: string[] = [];
+    let retirer: string[] = [];
+    let customer: string | Stripe.Customer | Stripe.DeletedCustomer | null | undefined;
+    let depuisFacture: ContactGhl | null = null;
+    if (etype === 'customer.subscription.created' || etype === 'customer.subscription.updated') {
+      const sub = obj as Stripe.Subscription;
+      if (sub.status !== 'active') return;
+      ajouter = [TAGS_GHL.actif];
+      retirer = [TAGS_GHL.resilie, TAGS_GHL.echec];
+      customer = sub.customer;
+    } else if (etype === 'customer.subscription.deleted') {
+      const sub = obj as Stripe.Subscription;
+      ajouter = [TAGS_GHL.resilie];
+      retirer = [TAGS_GHL.actif];
+      customer = sub.customer;
+    } else if (etype === 'invoice.payment_failed' || etype === 'invoice.paid') {
+      const inv = obj as Stripe.Invoice;
+      if (etype === 'invoice.payment_failed') ajouter = [TAGS_GHL.echec];
+      else retirer = [TAGS_GHL.echec];
+      customer = inv.customer;
+      if (inv.customer_email) {
+        const { prenom, nom } = decouperNom(inv.customer_name);
+        depuisFacture = { email: inv.customer_email, prenom, nom, telephone: inv.customer_phone };
+      }
+    } else {
+      return;
+    }
+    const contact = depuisFacture || (await this.contactStripe(customer));
+    if (!contact) {
+      this.logger.warn(`ghl ${etype}: client Stripe sans email, rien envoyé`);
+      return;
+    }
+    this.ghl.taguer(contact, ajouter, retirer, etype);
+  }
+
+  /** Email, nom et téléphone d'un client Stripe (objet déjà développé, ou id à relire). */
+  private async contactStripe(customer: string | Stripe.Customer | Stripe.DeletedCustomer | null | undefined): Promise<ContactGhl | null> {
+    if (!customer) return null;
+    let c: Stripe.Customer | Stripe.DeletedCustomer;
+    if (typeof customer === 'string') {
+      if (!this.stripe) return null;
+      c = await this.stripe.customers.retrieve(customer);
+    } else {
+      c = customer;
+    }
+    if ('deleted' in c && c.deleted) return null;
+    const client = c as Stripe.Customer;
+    if (!client.email) return null;
+    const { prenom, nom } = decouperNom(client.name);
+    return { email: client.email, prenom, nom, telephone: client.phone };
+  }
+
   /** Traite un webhook Stripe déjà vérifié par le contrôleur (signature valide). */
   async handleWebhook(payloadBytes: Buffer, signature: string | undefined): Promise<WebhookResult> {
     if (!this.ready) return { ok: false };
@@ -1113,6 +1173,8 @@ export class BillingService {
       return { ok: true, event: etype, duplicate: true };
     }
     const obj = event.data.object as unknown;
+    // GoHighLevel : tags du contact, en arrière-plan ; ne bloque ni ne fait échouer le webhook
+    void this.ghlDepuisStripe(etype, obj).catch((e) => this.logger.warn(`ghl ${etype}: ${e instanceof Error ? e.message : e}`));
     let canceledUid: string | null = null;
     let clientImpaye: ClientImpayePayload | null = null;
     let notify: NotifyPayload | null = null;
