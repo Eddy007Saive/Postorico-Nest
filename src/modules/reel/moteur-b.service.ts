@@ -168,7 +168,7 @@ export class MoteurBService implements OnApplicationBootstrap {
       const tache = corps.data?.task_id;
       if (!r.ok || !tache) throw new Error(`moteur B ${r.status} ${corps.message || ''}`.trim());
 
-      const creneau = await this.planningService.prochainCreneau(telegramId, reseau, 'Reel');
+      // Pas de date à la création : un contenu « À valider » reçoit son créneau à la validation.
       const ins = await this.prisma.contenu.create({
         data: {
           telegram_id: telegramId,
@@ -178,7 +178,6 @@ export class MoteurBService implements OnApplicationBootstrap {
           reseau_cible: reseau,
           statut: normStatutContenu('A valider'),
           video_status: 'en_traitement',
-          ...(creneau ? { date_publication: creneau } : {}),
           reel_data: { moteur: 'b', tache, termes, source_contenu_id: opts.contenuId || null } as never,
           created_at: new Date(),
         } as never,

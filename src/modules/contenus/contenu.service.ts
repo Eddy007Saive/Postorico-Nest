@@ -146,8 +146,8 @@ export class ContenuService {
     const upd: Record<string, unknown> = { lien_visuel: url };
     // Pas de statut "Planifie" optimiste : la route appelante pousse vers Zernio et c'est
     // l'event webhook post.scheduled qui confirmera le statut (source de vérité = Zernio).
-    if (!cur.date_publication) {
-      const creneau = await this.planningService.prochainCreneau(telegramId, cur.reseau_cible as string | null, cur.type as string | null);
+    if (!cur.date_publication && ['Valider', 'Planifie', 'Pret_a_publier'].includes(String(cur.statut))) {
+      const creneau = await this.planningService.prochainCreneau(telegramId, cur.reseau_cible as string | null, cur.type as string | null, { valides: true });
       if (creneau) upd.date_publication = creneau;
     }
     await this.prisma.contenu.updateMany({ where: { id: contenuId, telegram_id: telegramId }, data: upd as never });
@@ -344,8 +344,7 @@ export class ContenuService {
       row.statut = normStatutContenu("A valider");
       row.created_at = new Date();
 
-      const creneau = await this.planningService.prochainCreneau(telegramId, net, cur.type as string | null);
-      if (creneau) row.date_publication = creneau;
+      // Pas de date à la création : un contenu « À valider » reçoit son créneau à la validation.
 
       let newId: string | undefined;
       try {

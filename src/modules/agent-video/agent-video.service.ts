@@ -382,11 +382,7 @@ export class AgentVideoService implements OnApplicationBootstrap {
         format,
         duree_max_s: dureeMax,
       };
-      const creneau = await this.planning.prochainCreneau(
-        telegramId,
-        reseau,
-        'Reel',
-      );
+      // Pas de date à la création : un contenu « À valider » reçoit son créneau à la validation.
       const contenu = await this.prisma.contenu.create({
         data: {
           telegram_id: telegramId,
@@ -403,7 +399,6 @@ export class AgentVideoService implements OnApplicationBootstrap {
           video_status: 'en_traitement',
           reel_data: { agent: { statut: 'en_cours', format } },
           created_at: new Date(),
-          ...(creneau ? { date_publication: creneau } : {}),
         } as never,
       });
       contenuId = contenu.id;

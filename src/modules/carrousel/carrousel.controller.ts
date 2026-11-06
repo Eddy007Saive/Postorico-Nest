@@ -271,10 +271,7 @@ export class CarrouselController {
       if (result.formule_accroche) row.formule_accroche = result.formule_accroche; // formule de la couverture
       if (RESEAU_MAP[reseau]) {
         row.reseau_cible = RESEAU_MAP[reseau];
-        // Réservation du créneau DÈS la création : évite que deux contenus non encore
-        // datés calculent le même "prochain jour libre" (chevauchements).
-        const creneau = await this.planningService.prochainCreneau(telegramId, row.reseau_cible as string, 'Carrousel');
-        if (creneau) row.date_publication = creneau;
+        // Pas de date à la création : un contenu « À valider » reçoit son créneau à la validation.
       }
       const ins = await this.prisma.contenu.create({ data: row as never });
       contenuId = ins.id;

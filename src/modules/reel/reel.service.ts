@@ -868,8 +868,7 @@ export class ReelService {
       reel_data: scenario,
       created_at: new Date(),
     };
-    const creneau = await this.planningService.prochainCreneau(telegramId, reseau, 'Reel');
-    if (creneau) row.date_publication = creneau;
+    // Pas de date à la création : un contenu « À valider » reçoit son créneau à la validation.
     const ins = await this.prisma.contenu.create({ data: row as never });
     const newId = ins.id;
     if (!newId) return { error: 'Création du contenu reel impossible.' };
@@ -1082,8 +1081,7 @@ ${texte}`, 3)));
       lien_visuel: scenario ? this.posterSequence(scenario) : null,
       created_at: new Date(),
     };
-    const creneau = await this.planningService.prochainCreneau(telegramId, cur.reseau_cible as string | null, 'Reel');
-    if (creneau) row.date_publication = creneau;
+    // Pas de date à la création : un contenu « À valider » reçoit son créneau à la validation.
     if (scenario) row.reel_data = scenario;
     const ins = await this.prisma.contenu.create({ data: row as never });
     const newId = ins.id;

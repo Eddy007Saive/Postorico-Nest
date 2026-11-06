@@ -292,8 +292,7 @@ export class ContenuController {
       story_source_id: id,
       created_at: new Date(),
     };
-    const creneau = await this.planningService.prochainCreneau(telegramId, cur.reseau_cible as string | null, 'Story');
-    if (creneau) row.date_publication = creneau;
+    // Pas de date à la création : un contenu « À valider » reçoit son créneau à la validation.
     const ins = await this.prisma.contenu.create({ data: row as never });
     if (!ins.id) throw new InternalServerErrorException('Création du contenu impossible.');
     try {
@@ -351,8 +350,7 @@ export class ContenuController {
       story_source_id: id,
       created_at: new Date(),
     };
-    const creneau = await this.planningService.prochainCreneau(telegramId, cur.reseau_cible as string | null, 'Story');
-    if (creneau) row.date_publication = creneau;
+    // Pas de date à la création : un contenu « À valider » reçoit son créneau à la validation.
     const ins = await this.prisma.contenu.create({ data: row as never });
     return { contenu_id: ins.id, date_publication: row.date_publication ?? null, lien_visuel: imageUrl };
   }

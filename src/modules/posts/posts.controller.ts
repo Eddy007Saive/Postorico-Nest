@@ -246,8 +246,7 @@ export class PostsController {
     };
     if (RESEAU_MAP[reseau]) {
       row.reseau_cible = RESEAU_MAP[reseau];
-      const creneau = await this.planningService.prochainCreneau(telegramId, row.reseau_cible as string);
-      if (creneau) row.date_publication = creneau;
+      // Pas de date à la création : un contenu « À valider » reçoit son créneau à la validation.
     }
     if (lien) row.lien_visuel = lien;
     const ins = await this.prisma.contenu.create({ data: row as never });
@@ -422,9 +421,7 @@ export class PostsController {
       }
       if (reseau && RESEAU_MAP[reseau]) {
         row.reseau_cible = RESEAU_MAP[reseau]; // enum single value (LinkedIn, Instagram…)
-        // Réservation du créneau DÈS la création (anti-chevauchement, famille story/feed).
-        const creneau = await this.planningService.prochainCreneau(telegramId, row.reseau_cible as string, row.type as string | undefined);
-        if (creneau) row.date_publication = creneau;
+        // Pas de date à la création : un contenu « À valider » reçoit son créneau à la validation.
       }
       const contenuOriginal = (dto.contenu_original || '').trim();
       // Brouillon du Studio IA déjà en base : on le PROMEUT (même ligne, même id) en « A valider ».

@@ -183,11 +183,14 @@ export class VisuelAutoService {
         type: true,
       },
     });
-    if (!cur?.date_publication) {
+    // Un contenu « À valider » reste sans date : il prend son créneau à la validation
+    const valide = ['Valider', 'Planifie', 'Pret_a_publier'].includes(String(cur?.statut));
+    if (!cur?.date_publication && valide) {
       const creneau = await this.planningService.prochainCreneau(
         telegramId,
         cur?.reseau_cible,
         cur?.type,
+        { valides: true },
       );
       if (creneau) upd.date_publication = creneau;
     }
