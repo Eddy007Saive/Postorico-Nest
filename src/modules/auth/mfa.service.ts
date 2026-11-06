@@ -11,9 +11,10 @@ import { AuthService } from './auth.service';
  *
  * Règle : le mot de passe suffit sur un appareil déjà connu ; sur un appareil inconnu,
  * un code à 6 chiffres envoyé par email est demandé, et l'utilisateur peut marquer
- * l'appareil « de confiance » pour 30 jours. Un administrateur donne toujours le code,
- * y compris via la connexion Google (AuthController.google() route vers demanderCode()
- * pour tout compte is_admin, exactement comme /auth/admin-login).
+ * l'appareil « de confiance » pour 30 jours. Même règle pour un administrateur (décision
+ * du 2026-11-06) : code sur appareil inconnu, puis 30 jours sans code sur cet appareil.
+ * Seule la connexion Google d'un admin exige encore le code à chaque fois (pas d'appareil
+ * transmis sur ce chemin).
  *
  * Mécanique : le login renvoie un jeton d'ATTENTE (JWT type=mfa, 10 min) au lieu d'une
  * session ; le code est haché en base (jamais en clair), 5 essais, un seul code vivant
@@ -92,8 +93,7 @@ export class MfaService {
     await this.prisma.appareils_confiance.deleteMany({ where: { telegram_id: telegramId } }).catch(() => undefined);
   }
 
-  exigeCode(user: { is_admin: boolean | null }, appareilConnu: boolean): boolean {
-    if (user.is_admin) return true;
+  exigeCode(_user: { is_admin: boolean | null }, appareilConnu: boolean): boolean {
     return !appareilConnu;
   }
 
@@ -177,7 +177,7 @@ export class MfaService {
     if (!user) throw new Error('jeton_invalide');
 
     const session = await this.authService.sessionFromUser(user);
-    if (confiance && !user.is_admin) {
+    if (confiance) {
       try {
         (session as Record<string, unknown>).appareil = await this.creerAppareil(tid, libelle, ip);
       } catch {

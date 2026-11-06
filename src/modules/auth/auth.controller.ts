@@ -247,9 +247,12 @@ export class AuthController {
       throw new UnauthorizedException('Identifiants administrateur invalides.');
     }
     this.rateLimit.clear(keys.key);
-    // Un administrateur donne TOUJOURS le code — pas de vérification d'appareil de confiance
-    // pour ce rôle (même règle que login_admin côté Python).
-    return this.demanderCode(user);
+    // Même règle que /auth/login : le code seulement sur un appareil inconnu.
+    const appareilConnu = await this.mfaService.appareilValide(user.telegram_id, dto.appareil);
+    if (this.mfaService.exigeCode(user, appareilConnu)) {
+      return this.demanderCode(user);
+    }
+    return this.authService.sessionFromUser(user);
   }
 
   @Post('code/verifier')

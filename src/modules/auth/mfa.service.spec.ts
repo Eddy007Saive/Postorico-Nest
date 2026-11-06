@@ -27,4 +27,14 @@ describe('MfaService (logique pure)', () => {
   it('renvoie *** sur une entrée sans arobase', () => {
     expect(service.masquerEmail('pas-un-email')).toBe('***');
   });
+
+  // Décision du 2026-11-06 : l'administrateur profite aussi de l'appareil de confiance.
+  it.each([
+    [false, false, true],
+    [false, true, false],
+    [true, false, true],
+    [true, true, false],
+  ])('admin=%s, appareil connu=%s -> code exigé=%s', (is_admin, connu, attendu) => {
+    expect(service.exigeCode({ is_admin }, connu)).toBe(attendu);
+  });
 });
