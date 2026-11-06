@@ -21,9 +21,9 @@ export default registerAs('app', () => {
   }
   return {
     jwtSecret,
-  // Durée de session admin, en heures. 8h côté mémoire/tests — le fallback Python (24*7)
-  // n'est qu'un défaut jamais réellement utilisé (l'env var le fixe à 8 en prod comme en tests).
-  adminSessionHeures: parseInt(process.env.ADMIN_SESSION_HEURES || '8', 10),
+  // Durée de session admin, en heures : 48 (2 jours) depuis le 2026-11-06, au lieu de 8.
+  // La variable ADMIN_SESSION_HEURES, si elle est posée sur Railway, l'emporte sur ce défaut.
+  adminSessionHeures: parseInt(process.env.ADMIN_SESSION_HEURES || '48', 10),
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
   // Sites autorisés à appeler l'API depuis un navigateur, séparés par des virgules (FRONTEND_URL
   // et l'appli mobile s'y ajoutent d'office). Vide = API ouverte à tous (voir cors.util.ts).
