@@ -1,6 +1,8 @@
 import { All, Controller, Logger, Param, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { AuthService } from '../auth/auth.service';
+import { AccountsService } from '../accounts/accounts.service';
+import { AuthService, JwtPayload } from '../auth/auth.service';
+import type { RoleEquipe } from '../../common/utils/acces-equipe.util';
 import { ClesApiService, TitulaireCle } from './cles-api.service';
 import { Appel, ErreurOutil, OUTILS } from './mcp-outils';
 import { lirePrompt, listePrompts } from './mcp-prompts';
@@ -17,6 +19,7 @@ const INSTRUCTIONS =
   'Commence par get_brand_profile pour comprendre la marque. Circuit : idée (get_content_ideas) → post rédigé en brouillon (generate_social_post) → A valider → approuvé (approve_content) → publié. ' +
   "Règle absolue : fais relire et accepter explicitement chaque texte par le client avant tout outil qui publie en son nom (approve_content, schedule_publication, publish_content, publish_google_business_post, reply_to_comment, reply_to_google_review, create_social_post avec programmer). " +
   'Les outils generate_* consomment son quota mensuel (get_quota) ; les retouches de texte et create_social_post sont gratuits. ' +
+  "Plusieurs comptes (marques) : list_accounts donne le compte principal, ses sous-comptes et les comptes gérés en équipe ; passe compte: <id> à n'importe quel outil pour agir sur l'un d'eux (sinon, c'est le compte de la clé). Dis toujours au client sur quel compte tu travailles. " +
   "Vidéo : get_video_options d'abord, puis generate_reel (reel animé, quelques minutes) ou generate_ai_video (montage par l'agent IA, 5 à 20 minutes, quota le plus serré) ; les deux tournent en arrière-plan, suis-les avec get_video_status.";
 
 interface Rpc {
@@ -57,6 +60,29 @@ function messageErreur(statut: number, corps: unknown): string {
  * « Authorization: Bearer pst_… », ou POST /api/mcp/pst_… pour les clients qui ne savent
  * pas envoyer d'en-tête. Chaque outil rappelle l'API avec un jeton de 5 minutes du titulaire.
  */
+/** Compte sur lequel un appel d'outil agit. */
+interface Cible {
+  telegram_id: string;
+  email: string | null;
+  password_hash: string | null;
+  nom: string | null;
+  origine?: string;
+  masterId?: string | null;
+  equipe?: RoleEquipe;
+}
+
+/** Ajoute le paramètre « compte » au schéma d'un outil (sans modifier la définition partagée). */
+function avecCompte(schema: Record<string, unknown>): Record<string, unknown> {
+  const props = (schema.properties as Record<string, unknown>) || {};
+  return {
+    ...schema,
+    properties: {
+      ...props,
+      compte: { type: 'string', description: "Id du compte sur lequel agir (list_accounts). Absent : le compte de la clé." },
+    },
+  };
+}
+
 @Controller('mcp')
 export class McpController {
   private readonly logger = new Logger(McpController.name);
@@ -66,6 +92,7 @@ export class McpController {
   constructor(
     private readonly cles: ClesApiService,
     private readonly auth: AuthService,
+    private readonly comptes: AccountsService,
   ) {}
 
   @Post()
@@ -145,7 +172,13 @@ export class McpController {
       case 'tools/list':
         return reponse(m.id, {
           tools: [
-            ...OUTILS.map(({ name, title, description, inputSchema, annotations }) => ({ name, title, description, inputSchema, ...(annotations ? { annotations } : {}) })),
+            ...OUTILS.map(({ name, title, description, inputSchema, annotations }) => ({
+              name,
+              title,
+              description,
+              inputSchema: name === 'list_accounts' ? inputSchema : avecCompte(inputSchema),
+              ...(annotations ? { annotations } : {}),
+            })),
             OUTIL_SUIVI,
           ],
         });
@@ -189,7 +222,15 @@ export class McpController {
     }
     const outil = OUTILS.find((o) => o.name === params.name);
     if (!outil) return { isError: true, content: [{ type: 'text', text: `Outil inconnu : ${String(params.name)}` }] };
-    const issue = await this.taches.lancer(titulaire.telegram_id, outil.name, this.executer(outil, args, titulaire));
+    // « compte » : agir sur un sous-compte (ou un compte géré en équipe) plutôt que sur celui de la clé
+    const { compte, ...argsOutil } = args;
+    let cible: Cible;
+    try {
+      cible = await this.cible(titulaire, typeof compte === 'string' ? compte.trim() : '');
+    } catch (e) {
+      return { isError: true, content: [{ type: 'text', text: e instanceof Error ? e.message : String(e) }] };
+    }
+    const issue = await this.taches.lancer(titulaire.telegram_id, outil.name, this.executer(outil, argsOutil, titulaire, cible));
     if (issue.fini) return issue.resultat;
     return {
       content: [{
@@ -204,10 +245,10 @@ export class McpController {
   }
 
   /** Exécute un outil et journalise ; ne lève jamais : une erreur devient une réponse isError. */
-  private async executer(outil: (typeof OUTILS)[number], args: Record<string, unknown>, titulaire: TitulaireCle) {
-    const details = resumeArgs(args);
+  private async executer(outil: (typeof OUTILS)[number], args: Record<string, unknown>, titulaire: TitulaireCle, cible?: Cible) {
+    const details = { ...resumeArgs(args), ...(cible?.nom && cible.telegram_id !== titulaire.telegram_id ? { compte: cible.nom } : {}) };
     try {
-      const resultat = await outil.executer(this.api(titulaire), args);
+      const resultat = await outil.executer(this.api(titulaire, cible), args);
       const cree = resultat && typeof resultat === 'object' ? (resultat as { contenu_id?: unknown }).contenu_id : undefined;
       if (outil.journal) await this.cles.journaliser(titulaire, outil.name, true, typeof cree === 'string' ? { ...details, contenu_id: cree } : details);
       let texte = JSON.stringify(resultat, null, 1);
@@ -223,11 +264,32 @@ export class McpController {
   }
 
 
-  /** Appel à l'API de ce même serveur, au nom du titulaire de la clé. */
-  private api(titulaire: TitulaireCle): Appel {
+  /** Compte visé par un appel : celui de la clé, ou un compte de sa famille (master et
+   * sous-comptes) ou de son équipe — mêmes contrôles que la bascule de l'application. */
+  private async cible(titulaire: TitulaireCle, compte: string): Promise<Cible> {
+    if (!compte || compte === titulaire.telegram_id) return { telegram_id: titulaire.telegram_id, email: titulaire.email, password_hash: titulaire.password_hash, nom: null };
+    const moi = { telegram_id: titulaire.telegram_id, origine: titulaire.telegram_id } as JwtPayload;
+    const equipe = (await this.comptes.comptesEquipe(titulaire.telegram_id)).find((c) => c.telegram_id === compte);
+    if (equipe) {
+      const u = await this.comptes.ficheCompte(compte);
+      if (!u) throw new ErreurOutil('Compte introuvable : vérifie son id avec list_accounts.');
+      return { ...u, origine: titulaire.telegram_id, equipe: equipe.role_equipe };
+    }
+    try {
+      const { master, row } = await this.comptes.resoudreCible(moi, compte);
+      return { telegram_id: row.telegram_id, email: row.email, password_hash: row.password_hash, nom: row.nom, origine: titulaire.telegram_id, masterId: row.telegram_id === master ? null : master };
+    } catch {
+      throw new ErreurOutil("Ce compte n'est pas accessible avec cette clé : list_accounts donne les comptes possibles.");
+    }
+  }
+
+  /** Appel à l'API de ce même serveur, au nom du titulaire de la clé (ou du compte visé). */
+  private api(titulaire: TitulaireCle, cible?: Cible): Appel {
     const base = `http://127.0.0.1:${process.env.PORT ?? 3000}/api`;
     return async (methode, chemin, corps) => {
-      const jeton = this.auth.issueMcpToken(titulaire.telegram_id, titulaire.email, titulaire.password_hash);
+      const jeton = cible && cible.telegram_id !== titulaire.telegram_id
+        ? this.auth.issueMcpToken(cible.telegram_id, cible.email, cible.password_hash, { origine: cible.origine, masterId: cible.masterId, equipe: cible.equipe })
+        : this.auth.issueMcpToken(titulaire.telegram_id, titulaire.email, titulaire.password_hash);
       // Un FormData (envoi de fichier) part tel quel : fetch pose lui-même l'en-tête multipart
       const multipart = corps instanceof FormData;
       const r = await fetch(base + chemin, {

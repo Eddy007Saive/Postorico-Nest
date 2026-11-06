@@ -4,6 +4,26 @@ import { enc, exiger, LECTURE, Outil, PUBLIC, RESEAUX, reseauValide, texte } fro
 
 export const OUTILS_COMPTE: Outil[] = [
   {
+    name: 'list_accounts',
+    title: 'Comptes accessibles',
+    description:
+      "Les comptes (marques) que cette clé peut gérer : le compte principal, ses sous-comptes et les comptes gérés en équipe. Passe ensuite compte: <id> à n'importe quel outil pour agir sur l'un d'eux ; sans compte, l'outil agit sur le compte de la clé.",
+    inputSchema: { type: 'object', properties: {} },
+    annotations: LECTURE,
+    executer: async (api) => {
+      const r = (await api('GET', '/accounts')) as { accounts?: Array<Record<string, unknown>> };
+      return {
+        comptes: (r.accounts || []).map((a) => ({
+          id: a.telegram_id,
+          nom: a.nom,
+          email: a.email,
+          type: a.role_equipe ? `géré en équipe (${String(a.role_equipe)})` : a.is_master ? 'compte principal' : 'sous-compte',
+          ...(a.is_current ? { compte_de_la_cle: true } : {}),
+        })),
+      };
+    },
+  },
+  {
     name: 'get_comments_inbox',
     title: 'Publications commentées',
     description: "Publications récentes qui ont reçu des commentaires, tous réseaux confondus. Pour lire les commentaires d'une publication : get_post_comments avec son post_id et son account_id.",

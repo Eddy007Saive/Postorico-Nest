@@ -448,9 +448,26 @@ export class AuthService {
 
   /** Connecteur MCP : jeton utilisateur de 5 minutes, frappé à chaque appel d'outil pour
    * passer par les routes existantes (quotas, suivi des coûts, règles d'accès). */
-  issueMcpToken(telegramId: string, email: string | null, passwordHash: string | null): string {
+  issueMcpToken(
+    telegramId: string,
+    email: string | null,
+    passwordHash: string | null,
+    /** Autre compte que celui de la clé (sous-compte, ou compte géré en équipe) : comme la
+     * bascule de l'application, `origine` = le titulaire de la clé, `fp` = l'empreinte du
+     * compte visé. */
+    portee: { origine?: string; masterId?: string | null; equipe?: RoleEquipe } = {},
+  ): string {
     return this.jwt.sign(
-      { telegram_id: telegramId, email: email ?? '', is_admin: false, origine: telegramId, master_id: null, mcp: true, fp: this.pwdFingerprint(passwordHash) },
+      {
+        telegram_id: telegramId,
+        email: email ?? '',
+        is_admin: false,
+        origine: portee.origine || telegramId,
+        master_id: portee.masterId ?? null,
+        ...(portee.equipe ? { equipe: portee.equipe } : {}),
+        mcp: true,
+        fp: this.pwdFingerprint(passwordHash),
+      },
       { expiresIn: '5m' },
     );
   }

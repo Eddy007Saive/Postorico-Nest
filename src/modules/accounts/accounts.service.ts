@@ -119,6 +119,11 @@ export class AccountsService {
     }
   }
 
+  /** Ce qu'il faut pour frapper un jeton sur un compte (connecteur MCP). */
+  async ficheCompte(telegramId: string): Promise<{ telegram_id: string; email: string | null; password_hash: string | null; nom: string | null } | null> {
+    return this.prisma.users.findUnique({ where: { telegram_id: telegramId }, select: { telegram_id: true, email: true, password_hash: true, nom: true } });
+  }
+
   /** Autorisé, cible, et si c'est un sous-compte — pour la bascule et la suppression. */
   async resoudreCible(
     payload: JwtPayload,
