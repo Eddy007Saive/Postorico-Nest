@@ -213,6 +213,11 @@ export class ContenuService {
         this.logger.log(`Auto-planif contenu ${contenuId} -> ${creneau} (créneau parmi les contenus validés)`);
       }
     }
+    // Un contenu refusé ne garde pas de date : il n'occupe plus le planning (s'il n'est pas déjà
+    // programmé chez le réseau, auquel cas l'annulation passe par son propre chemin).
+    if (updateData.statut === 'Refuse' && !updateData.date_publication && !current.late_post_id) {
+      data.date_publication = null;
+    }
     if (updateData.statut === 'Valider') {
       // Taux de réécriture (H2) : figé à l'instant de la validation, jamais recalculé ensuite —
       // c'est une mesure ponctuelle, pas une valeur vivante. null si pas de base de
