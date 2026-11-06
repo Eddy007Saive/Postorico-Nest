@@ -36,32 +36,48 @@ const LANGUES: Record<string, string> = {
 };
 
 const ROLE_DIRECTION =
-  "Tu es le directeur artistique de la marque. Tu prépares le visuel d'un post de réseau social en " +
-  "restant COHÉRENT avec l'identité visuelle du client : ses gabarits de marque (modèles de " +
-  "publication qu'il a créés, chacun avec ses règles) et ses images d'inspiration. Tu VOIS ces " +
-  "images : appuie-toi sur ce qu'elles montrent vraiment (mise en page, typographies, couleurs, " +
-  'ambiance, type de photo, place du texte).\n\n' +
+  "Tu es le directeur artistique de la marque. Tu prépares le visuel d'un post de réseau social. " +
+  "Deux choses à tenir ensemble : la COHÉRENCE de la marque (ses gabarits de publication, chacun " +
+  "avec ses règles, et ses images d'inspiration) et la VARIÉTÉ (un feed où chaque visuel montre la " +
+  "même photo lasse vite). Tu VOIS ces images : appuie-toi sur ce qu'elles montrent vraiment.\n\n" +
   "1. Choisis le gabarit le plus adapté au post. Commence par l'ANGLE du post (nouveau produit ? " +
   'produit mis en avant avec son prix ? situation du quotidien, moment de vie ? argument ou ' +
   'info pratique ?), puis prends le gabarit dont le nom et les règles décrivent CET usage : ce ' +
   'sont elles qui disent à quoi il sert. Un gabarit aux règles génériques (qui ne disent pas à ' +
-  "quoi il sert) ne se choisit que si aucun autre ne correspond à l'angle. S'il n'y a aucun " +
-  "gabarit, ou qu'aucun ne convient vraiment, réponds 0.\n" +
-  "2. Choisis jusqu'à 3 inspirations utiles à CE visuel (leurs numéros). Garde celles marquées " +
+  "quoi il sert) ne se choisit que si aucun autre ne correspond à l'angle. Dès que le client a des " +
+  'gabarits, choisis-en TOUJOURS un, le plus proche : le visuel garde la mise en page de la marque et ' +
+  "change de photo. 0 seulement s'il n'y a aucun gabarit.\n" +
+  'Dès que le post parle de quelque chose de CONCRET (un lieu, un métier, un commerce, un produit, une ' +
+  'situation), prends un gabarit qui contient une PHOTO, pour montrer ce sujet ; un gabarit purement ' +
+  'typographique (sans photo) va aux posts d\'opinion ou aux punchlines sans sujet concret.\n' +
+  "2. Choisis jusqu'à 3 inspirations (leurs numéros) : 2 ou 3 images de style qui donnent " +
+  "l'UNIVERS de la marque (type de photo, lumière, étalonnage, ambiance), et celles marquées " +
   '« à intégrer » quand elles ont leur place dans la scène.\n' +
-  "3. Écris la commande pour le générateur d'image, en un seul paragraphe :\n" +
-  '   - AVEC un gabarit : décris seulement ce qui change par rapport à lui, en respectant ses ' +
-  'règles : le produit, le sujet ou la scène à montrer, et les TEXTES EXACTS à afficher, entre ' +
-  "guillemets, courts, tirés du post. N'invente jamais un prix, une promotion, un horaire ou une " +
-  'info absente du post ou des règles du gabarit. Ne redécris pas ce qui reste identique.\n' +
-  "   - SANS gabarit : décris la scène (cadrage, sujet, action, décor, lumière) dans l'esprit des " +
-  "inspirations, avec AUCUN texte dans l'image et aucun personnage humain inventé.\n" +
+  '3. AVEC un gabarit : le gabarit fixe la MISE EN PAGE et la CHARTE (emplacements et hiérarchie des ' +
+  'textes, polices, couleurs, bandeaux, logo, éléments graphiques) ; ça ne bouge pas. Ce qui change à ' +
+  'chaque post, c\'est la PHOTO (ou l\'illustration) et les textes :\n' +
+  '   - "scene" : une scène NEUVE qui montre le sujet CONCRET du post : le lieu, le métier, les objets, ' +
+  'les produits, les animaux dont il parle. Exemple : un post sur les avis Google d\'une boucherie se ' +
+  "passe DANS une boucherie (l'étal, la vitrine, le boucher au travail), pas devant un téléphone. " +
+  "Décris en un paragraphe le sujet, le décor, l'action, le cadrage, l'angle et la lumière, dans " +
+  "l'univers des inspirations, sans copier leur contenu. Jamais la photo du gabarit, jamais une scène " +
+  'proche des scènes déjà utilisées (liste fournie) : change de lieu, de sujet, d\'angle ou de moment. ' +
+  'Des personnes possibles de dos, de profil ou en plan serré sur les mains, pas de visage inventé en gros plan. ' +
+  'AUCUN texte dans la photo : ni enseigne, ni étiquette, ni panneau, ni lettrage ; seuls le titre et le ' +
+  'sous-titre s\'écrivent.\n' +
+  '   - "titre" : le titre affiché à la place de celui du gabarit, court (7 mots au plus), tiré du post.\n' +
+  '   - "sous_titre" : la ligne sous le titre, qui complète (14 mots au plus), tirée du post.\n' +
+  "   N'invente jamais un prix, une promotion, un horaire ou une info absente du post ou des règles du " +
+  'gabarit. "commande" : vide, ou un détail indispensable dicté par les règles du gabarit.\n' +
+  "   SANS gabarit : \"commande\" décrit l'image entière (cadrage, sujet, action, décor, lumière) dans " +
+  "l'esprit des inspirations, avec AUCUN texte dans l'image et aucun personnage humain inventé ; " +
+  'même exigence de variété ; "scene", "titre" et "sous_titre" restent vides.\n' +
   "Le générateur reçoit les images du gabarit choisi sans leur numéro : n'écris jamais « gabarit " +
   "N » ni « inspiration N » dans la commande. Un prix ne s'affiche que s'il figure dans le post. " +
   "Couleurs nommées en mots, jamais de code hexadécimal. Pas d'écran montrant une interface " +
   'inventée.\n\n' +
   'Réponds UNIQUEMENT avec ce JSON : {"gabarit": <numéro ou 0>, "inspirations": [<numéros>], ' +
-  '"commande": "<texte>"}';
+  '"scene": "<texte>", "titre": "<texte>", "sous_titre": "<texte>", "commande": "<texte>"}';
 
 interface Gabarit {
   id: string;
@@ -264,6 +280,7 @@ export class VisuelAutoService {
         style = await this.imageService.choisirStyle(c.contenu || '');
       if (!(style in styles)) style = 'photo';
       const ratio = c.type === 'Story' ? '9:16' : '4:5';
+      const recentes = await this.scenesRecentes(telegramId, contenuId);
 
       const depart = process.hrtime.bigint();
       const d = await this.direction(
@@ -273,6 +290,7 @@ export class VisuelAutoService {
         gabarits,
         inspirations,
         styles[style].texte,
+        recentes,
       );
       const gabarit = d.gabarit ? gabarits[d.gabarit - 1] : null;
       const choisies = d.inspirations
@@ -284,7 +302,10 @@ export class VisuelAutoService {
         ? await this.imageService.genererDepuisGabarit(telegramId, {
             gabaritUrls: gabarit.images,
             note: gabarit.note,
-            commande: d.commande,
+            commande: d.scene ? d.commande === d.scene ? '' : d.commande : d.commande,
+            scene: d.scene,
+            titre: d.titre,
+            sousTitre: d.sous_titre,
             integrateUrls: choisies
               .filter((i) => i.role === 'integrate')
               .map((i) => i.url),
@@ -314,13 +335,17 @@ export class VisuelAutoService {
       if ('error' in res) throw new Error(res.error);
       await this.quotaService.confirm(q);
 
-      // prompt_image = la description du mode IA du dialogue : seulement quand on n'a pas suivi
-      // de gabarit (la commande d'un gabarit n'a pas de sens comme description libre).
+      // prompt_image = la description de la photo : la scène (avec gabarit) ou la commande (sans).
+      // Elle sert aussi de mémoire pour varier les visuels suivants (scenesRecentes).
       await this.appliquerVisuel(
         telegramId,
         contenuId,
         res.lien_visuel,
-        gabarit ? {} : { prompt_image: d.commande, style_image: style },
+        gabarit
+          ? d.scene
+            ? { prompt_image: d.scene }
+            : {}
+          : { prompt_image: d.commande, style_image: style },
       );
       await this.usageService.log(
         telegramId,
@@ -333,7 +358,7 @@ export class VisuelAutoService {
         Number(process.hrtime.bigint() - depart) / 1e9,
       );
       this.logger.log(
-        `visuel auto ${contenuId} : ${gabarit ? `gabarit « ${gabarit.nom} »` : 'sans gabarit'}, ${choisies.length} inspiration(s)`,
+        `visuel auto ${contenuId} : ${gabarit ? `gabarit « ${gabarit.nom} »` : 'sans gabarit'}, ${choisies.length} inspiration(s), scène : ${(d.scene || d.commande).slice(0, 120)}`,
       );
       await this.notificationService.notifierCle(
         telegramId,
@@ -359,6 +384,19 @@ export class VisuelAutoService {
     }
   }
 
+  /** Les scènes des derniers visuels du compte, pour ne pas refaire la même photo. */
+  private async scenesRecentes(telegramId: string, contenuId: string): Promise<string[]> {
+    const rows = await this.prisma.contenu
+      .findMany({
+        where: { telegram_id: telegramId, id: { not: contenuId }, prompt_image: { not: null } },
+        select: { prompt_image: true },
+        orderBy: { created_at: 'desc' },
+        take: 8,
+      })
+      .catch(() => [] as Array<{ prompt_image: string | null }>);
+    return rows.map((r) => (r.prompt_image || '').trim().slice(0, 240)).filter(Boolean);
+  }
+
   /** Claude voit les gabarits et les inspirations, choisit et écrit la commande. */
   private async direction(
     telegramId: string,
@@ -371,6 +409,7 @@ export class VisuelAutoService {
     gabarits: Gabarit[],
     inspirations: Array<{ url: string; role: string }>,
     styleTexte: string,
+    recentes: string[] = [],
   ): Promise<Direction> {
     const langue = typeof u.langue === 'string' ? u.langue.toLowerCase() : 'fr';
     const blocs: Anthropic.Messages.ContentBlockParam[] = [];
@@ -406,6 +445,14 @@ export class VisuelAutoService {
               ? "capture d'écran réelle"
               : 'style';
         blocs.push({ type: 'text', text: `Inspiration ${i + 1} (${role})` });
+      });
+    }
+    if (recentes.length) {
+      blocs.push({
+        type: 'text',
+        text:
+          'SCÈNES DÉJÀ UTILISÉES dans les derniers visuels (ne pas refaire, ni rien de proche) :\n' +
+          recentes.map((s) => `- ${s}`).join('\n'),
       });
     }
     blocs.push({

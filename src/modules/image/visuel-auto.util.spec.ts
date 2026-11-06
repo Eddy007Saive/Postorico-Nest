@@ -34,6 +34,22 @@ describe('lireDirection', () => {
     ).toEqual([1, 2, 3]);
   });
 
+  it('lit la scène, le titre et le sous-titre (avec gabarit)', () => {
+    const d = lireDirection(
+      '{"gabarit": 1, "inspirations": [2], "scene": "Étal de boucherie, côtes de bœuf, lumière chaude", "titre": "4,9 sur Google", "sous_titre": "Merci à nos clients fidèles", "commande": ""}',
+      2,
+      3,
+    );
+    expect(d).toEqual({
+      gabarit: 1,
+      inspirations: [2],
+      commande: 'Étal de boucherie, côtes de bœuf, lumière chaude',
+      scene: 'Étal de boucherie, côtes de bœuf, lumière chaude',
+      titre: '4,9 sur Google',
+      sous_titre: 'Merci à nos clients fidèles',
+    });
+  });
+
   it('refuse une réponse sans commande ou illisible', () => {
     expect(lireDirection('{"gabarit": 1, "commande": "  "}', 2, 0)).toBeNull();
     expect(lireDirection('pas de json', 2, 0)).toBeNull();

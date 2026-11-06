@@ -401,6 +401,10 @@ export class ImageService {
       gabaritUrls: string[];
       note: string;
       commande: string;
+      /** Photo neuve à placer dans le cadre photo du gabarit (visuel automatique). */
+      scene?: string;
+      titre?: string;
+      sousTitre?: string;
       integrateUrls?: string[];
       styleUrls?: string[];
       model?: string;
@@ -414,13 +418,23 @@ export class ImageService {
     const integrate = await this.prepRefs((p.integrateUrls || []).slice(0, 2).map((u) => vignette(u, 1024, 'png')));
     const styles = await this.prepRefs((p.styleUrls || []).slice(0, 2).map((u) => vignette(u, 1024)));
     const n = gabarits.length;
-    let texte =
-      `${n > 1 ? `Les ${n} PREMIÈRES images sont` : 'La PREMIÈRE image est'} le GABARIT DE MARQUE du client : ` +
-      "c'est le modèle à suivre. Crée une NOUVELLE publication qui garde son identité à l'identique : même " +
-      'mise en page, même hiérarchie et mêmes emplacements de texte, mêmes typographies, mêmes couleurs, ' +
-      'mêmes bandeaux, logo et éléments graphiques, même ambiance et même qualité photo. Seul change ce que ' +
-      'la commande ci-dessous demande (produit, scène, textes). Ne recopie pas l\'ancien contenu du gabarit ' +
-      'quand la commande le remplace : l\'ancien texte disparaît.';
+    const scene = (p.scene || '').trim();
+    const premieres = n > 1 ? `Les ${n} PREMIÈRES images sont` : 'La PREMIÈRE image est';
+    let texte = scene
+      ? `${premieres} le GABARIT DE MARQUE du client. Il fixe la MISE EN PAGE et la CHARTE, à garder à ` +
+        "l'identique : emplacements et hiérarchie des textes, typographies (mêmes polices, mêmes graisses, " +
+        'mêmes tailles relatives), couleurs, bandeaux, logo et éléments graphiques.\n' +
+        "La PHOTO (ou l'illustration) du gabarit, elle, est REMPLACÉE par une image entièrement NOUVELLE : " +
+        'la scène décrite ci-dessous, au même emplacement et dans le même cadre que la photo du gabarit. ' +
+        "Ne reprends RIEN de l'ancienne photo : ni son sujet, ni son décor, ni ses objets, ni ses personnes. " +
+        'La photo ne contient AUCUN texte (enseigne, étiquette, panneau, lettrage) : les seuls textes sont ceux du gabarit. ' +
+        "L'ancien texte du gabarit disparaît, remplacé par le titre et le sous-titre ci-dessous."
+      : `${premieres} le GABARIT DE MARQUE du client : ` +
+        "c'est le modèle à suivre. Crée une NOUVELLE publication qui garde son identité à l'identique : même " +
+        'mise en page, même hiérarchie et mêmes emplacements de texte, mêmes typographies, mêmes couleurs, ' +
+        'mêmes bandeaux, logo et éléments graphiques, même ambiance et même qualité photo. Seul change ce que ' +
+        'la commande ci-dessous demande (produit, scène, textes). Ne recopie pas l\'ancien contenu du gabarit ' +
+        'quand la commande le remplace : l\'ancien texte disparaît.';
     if (p.note.trim()) {
       texte += `\n\nRÈGLES DU GABARIT, écrites par le client (elles priment) :\n${p.note.trim().slice(0, 6000)}`;
     }
@@ -430,12 +444,22 @@ export class ImageService {
         'produit réel…) : leur contenu doit être clairement visible et fidèle.';
     }
     if (styles.length) {
-      texte +=
-        '\n\nLes dernières images sont des références de STYLE du client : inspire-toi de leur ambiance ' +
-        'sans copier leur contenu.';
+      texte += scene
+        ? "\n\nLes dernières images donnent l'UNIVERS visuel de la marque : type de photo, lumière, " +
+          'étalonnage, ambiance. La nouvelle scène doit sembler sortir du même univers, sans copier leur contenu.'
+        : '\n\nLes dernières images sont des références de STYLE du client : inspire-toi de leur ambiance ' +
+          'sans copier leur contenu.';
+    }
+    if (scene) {
+      texte += `\n\nNOUVELLE PHOTO (scène) :\n${scene}`;
+      if (p.titre?.trim()) texte += `\n\nTITRE, à l'emplacement du titre du gabarit : « ${p.titre.trim()} »`;
+      if (p.sousTitre?.trim()) texte += `\nSOUS-TITRE, sous le titre, dans le style du gabarit : « ${p.sousTitre.trim()} »`;
+      if (p.commande.trim()) texte += `\n\nPRÉCISION : ${p.commande.trim()}`;
+      texte += '\n\n';
+    } else {
+      texte += `\n\nCOMMANDE :\n${p.commande.trim()}\n\n`;
     }
     texte +=
-      `\n\nCOMMANDE :\n${p.commande.trim()}\n\n` +
       'Textes parfaitement lisibles, sans faute, accents corrects. N\'ajoute aucun texte, prix, promotion, ' +
       'logo ou badge que la commande ou les règles ne demandent pas.';
     if (p.ratio === '9:16') {

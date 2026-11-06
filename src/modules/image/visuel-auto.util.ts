@@ -11,7 +11,13 @@ export interface Direction {
   gabarit: number;
   /** Numéros des inspirations choisies (1…n), sans doublon. */
   inspirations: number[];
+  /** Sans gabarit : la description complète de l'image. Avec gabarit : vide ou complément. */
   commande: string;
+  /** Avec gabarit : la photo NEUVE à mettre dans le cadre photo du gabarit. */
+  scene?: string;
+  /** Avec gabarit : titre et sous-titre exacts à afficher aux emplacements du gabarit. */
+  titre?: string;
+  sous_titre?: string;
 }
 
 /** Lit la réponse de Claude : un objet JSON, éventuellement entouré de texte ou d'une clôture
@@ -32,8 +38,10 @@ export function lireDirection(
   }
   if (!brut || typeof brut !== 'object') return null;
   const o = brut as Record<string, unknown>;
-  const commande = typeof o.commande === 'string' ? o.commande.trim() : '';
-  if (!commande) return null;
+  const lire = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+  const commande = lire(o.commande, 3000);
+  const scene = lire(o.scene, 2000);
+  if (!commande && !scene) return null;
   const g = Math.trunc(Number(o.gabarit));
   const gabarit = Number.isFinite(g) && g >= 1 && g <= nbGabarits ? g : 0;
   const inspirations: number[] = [];
@@ -48,5 +56,15 @@ export function lireDirection(
       inspirations.push(n);
     if (inspirations.length >= MAX_INSPIRATIONS_CHOISIES) break;
   }
-  return { gabarit, inspirations, commande: commande.slice(0, 3000) };
+  const titre = lire(o.titre, 140);
+  const sousTitre = lire(o.sous_titre, 220);
+  return {
+    gabarit,
+    inspirations,
+    // Sans gabarit, la scène sert de commande si Claude n'en a pas écrit d'autre
+    commande: commande || scene,
+    ...(scene ? { scene } : {}),
+    ...(titre ? { titre } : {}),
+    ...(sousTitre ? { sous_titre: sousTitre } : {}),
+  };
 }
