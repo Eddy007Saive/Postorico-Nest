@@ -171,6 +171,41 @@ export class ContenuService {
     };
   }
 
+  /** Image n° `position` (1 à 10) d'un post à plusieurs photos (carrousel de photos) : posée à
+   * sa place dans `slides_images`, la première sert de visuel principal. Les positions se
+   * remplissent dans l'ordre (pas de trou) ; renvoyer une position la remplace. null si le
+   * contenu n'existe pas ; { erreur } pour une position impossible ou un post déjà publié. */
+  async uploadSlide(
+    telegramId: string,
+    contenuId: string,
+    position: number,
+    fileBytes: Buffer,
+    mimetype: string,
+  ): Promise<{ slides_images: string[]; lien_visuel: string; statut: unknown; date_publication: unknown } | { erreur: string } | null> {
+    const cur = await this.getContenu(contenuId, telegramId);
+    if (!cur) return null;
+    if (cur.statut === 'Publie' || cur.publish_status === 'publié') return { erreur: 'Ce post est déjà publié : son image ne peut plus changer.' };
+    const slides = Array.isArray(cur.slides_images) ? [...(cur.slides_images as string[])] : [];
+    if (!Number.isInteger(position) || position < 1 || position > 10) return { erreur: 'Position entre 1 et 10.' };
+    if (position > slides.length + 1) {
+      return { erreur: `Envoie les images dans l'ordre : la prochaine position libre est ${slides.length + 1}.` };
+    }
+    const up = await cloudinary.uploader.upload(`data:${mimetype};base64,${fileBytes.toString('base64')}`, {
+      resource_type: 'image',
+      public_id: `contenus/${telegramId}/${contenuId}-${position}`,
+      overwrite: true,
+      invalidate: true,
+    });
+    slides[position - 1] = up.secure_url;
+    const upd: Record<string, unknown> = { slides_images: slides, lien_visuel: slides[0] };
+    if (!cur.date_publication && ['Valider', 'Planifie', 'Pret_a_publier'].includes(String(cur.statut))) {
+      const creneau = await this.planningService.prochainCreneau(telegramId, cur.reseau_cible as string | null, cur.type as string | null, { valides: true });
+      if (creneau) upd.date_publication = creneau;
+    }
+    await this.prisma.contenu.updateMany({ where: { id: contenuId, telegram_id: telegramId }, data: upd as never });
+    return { slides_images: slides, lien_visuel: slides[0], statut: cur.statut, date_publication: upd.date_publication ?? cur.date_publication };
+  }
+
   // ---------------------------------------------------------------------------
   // Mise à jour (validation, auto-planif, programmation Zernio)
   // ---------------------------------------------------------------------------

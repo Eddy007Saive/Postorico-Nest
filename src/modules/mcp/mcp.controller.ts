@@ -1,4 +1,6 @@
-import { All, Controller, Logger, Param, Post, Req, Res } from '@nestjs/common';
+import { All, Controller, HttpException, HttpStatus, Logger, Param, Post, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { AccountsService } from '../accounts/accounts.service';
 import { AuthService, JwtPayload } from '../auth/auth.service';
@@ -8,6 +10,8 @@ import { Appel, ErreurOutil, OUTILS } from './mcp-outils';
 import { lirePrompt, listePrompts } from './mcp-prompts';
 import { OUTIL_SUIVI, TachesMcp } from './taches-mcp';
 import { lireRessource, listeRessources } from './mcp-ressources';
+import { adresseServeur, commandeEnvoi, lireEnvoi, signerEnvoi, TAILLE_MAX_IMAGE, typeImage, VALIDITE_ENVOI_MS } from './envoi-image';
+import type { ContexteOutil } from './outils/commun';
 
 /** Versions du protocole MCP comprises (la plus récente d'abord). */
 const VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
@@ -93,7 +97,69 @@ export class McpController {
     private readonly cles: ClesApiService,
     private readonly auth: AuthService,
     private readonly comptes: AccountsService,
-  ) {}
+    config: ConfigService,
+  ) {
+    this.secret = config.get<string>('app.jwtSecret') || '';
+  }
+
+  private readonly secret: string;
+
+  /** Envoi direct d'une image dans un post : POST multipart (champ « file ») sur l'adresse
+   * rendue par create_social_post ou get_post_image_upload. Le fichier ne passe pas par le
+   * protocole MCP. JPG, PNG ou WEBP (type vérifié sur le contenu), 10 Mo au plus. */
+  @Post('image/:jeton')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: TAILLE_MAX_IMAGE * 2 } }))
+  async envoiImage(@Param('jeton') jeton: string, @UploadedFile() file: Express.Multer.File | undefined) {
+    const refus = (message: string, statut = HttpStatus.BAD_REQUEST) => new HttpException({ ok: false, erreur: message }, statut);
+    const a = lireEnvoi(this.secret, jeton);
+    if ('refus' in a) throw refus(a.refus, HttpStatus.UNAUTHORIZED);
+    const titulaire = await this.cles.titulaireParId(a.cle);
+    if (!titulaire) throw refus('Clé du connecteur révoquée ou invalide.', HttpStatus.UNAUTHORIZED);
+    if (!this.debitOk(titulaire.telegram_id)) throw refus('Trop d’appels : réessaie dans une minute.', HttpStatus.TOO_MANY_REQUESTS);
+    if (!file?.buffer?.length) throw refus('Aucun fichier reçu : envoie-le dans le champ « file » (curl -F "file=@photo.jpg").');
+    if (file.size > TAILLE_MAX_IMAGE) throw refus(`Image trop lourde (${Math.round(file.size / 1e5) / 10} Mo) : 10 Mo au plus.`, HttpStatus.PAYLOAD_TOO_LARGE);
+    const type = typeImage(file.buffer);
+    if (!type) throw refus('Format non pris en charge : JPG, PNG ou WEBP seulement (un PDF ou une vidéo est refusé).', HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+    let cible: Cible;
+    try {
+      cible = await this.cible(titulaire, a.compte === titulaire.telegram_id ? '' : a.compte);
+    } catch (e) {
+      throw refus(e instanceof Error ? e.message : String(e), HttpStatus.FORBIDDEN);
+    }
+    const api = this.api(titulaire, cible);
+    const details: Record<string, unknown> = { contenu_id: a.contenu, ...(a.position ? { position: a.position } : {}), ...(cible.nom && cible.telegram_id !== titulaire.telegram_id ? { compte: cible.nom } : {}) };
+    try {
+      const c = (await api('GET', `/contenus/${encodeURIComponent(a.contenu)}`)) as Record<string, unknown>;
+      if (c.statut === 'Publie' || c.publish_status === 'publié') throw new ErreurOutil('Ce post est déjà publié : son image ne peut plus changer.');
+      const form = new FormData();
+      form.append('file', new Blob([new Uint8Array(file.buffer)], { type }), `image.${type.split('/')[1].replace('jpeg', 'jpg')}`);
+      const r = (await api('POST', a.position ? `/contenus/${encodeURIComponent(a.contenu)}/slides/${a.position}` : `/contenus/${encodeURIComponent(a.contenu)}/image`, form)) as Record<string, unknown>;
+      await this.cles.journaliser(titulaire, 'post_image_upload', true, details);
+      return {
+        ok: true,
+        contenu_id: a.contenu,
+        ...(a.position ? { position: a.position, photos: r.slides_images } : { visuel: r.lien_visuel }),
+        statut: r.statut,
+        note: 'Image jointe au post. Il reste « À valider » tant que le client ne l’a pas approuvé.',
+      };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      await this.cles.journaliser(titulaire, 'post_image_upload', false, details, message);
+      throw refus(message);
+    }
+  }
+
+  /** Adresse d'envoi direct d'une image pour un post (et une position de carrousel). */
+  private contexte(titulaire: TitulaireCle, cible: Cible, base: string): ContexteOutil {
+    return {
+      lienEnvoiImage: (contenuId, position) => {
+        const expire = Date.now() + VALIDITE_ENVOI_MS;
+        const jeton = signerEnvoi(this.secret, { cle: titulaire.cle_id, compte: cible.telegram_id, contenu: contenuId, position, expire });
+        const url = `${base}/api/mcp/image/${jeton}`;
+        return { url, expire: new Date(expire).toISOString(), commande: commandeEnvoi(url) };
+      },
+    };
+  }
 
   @Post()
   avecEntete(@Req() req: Request, @Res() res: Response) {
@@ -143,7 +209,8 @@ export class McpController {
       res.status(400).json(erreur(null, -32700, 'Message JSON-RPC attendu.'));
       return;
     }
-    const sorties = (await Promise.all(messages.map((m) => this.message(m, titulaire)))).filter(Boolean);
+    const base = adresseServeur(req.headers, req.protocol);
+    const sorties = (await Promise.all(messages.map((m) => this.message(m, titulaire, base)))).filter(Boolean);
     // Uniquement des notifications : rien à renvoyer
     if (!sorties.length) {
       res.status(202).end();
@@ -152,7 +219,7 @@ export class McpController {
     res.status(200).json(Array.isArray(corps) ? sorties : sorties[0]);
   }
 
-  private async message(m: Rpc, titulaire: TitulaireCle): Promise<unknown> {
+  private async message(m: Rpc, titulaire: TitulaireCle, base = ''): Promise<unknown> {
     if (!m || typeof m !== 'object' || m.jsonrpc !== '2.0') return erreur(m?.id, -32600, 'Requête JSON-RPC invalide.');
     // Notification (pas d'id) ou réponse du client : rien à répondre
     if (m.id === undefined || m.id === null || !m.method) return null;
@@ -183,7 +250,7 @@ export class McpController {
           ],
         });
       case 'tools/call':
-        return reponse(m.id, await this.outil(m.params || {}, titulaire));
+        return reponse(m.id, await this.outil(m.params || {}, titulaire, base));
       case 'resources/list':
         return reponse(m.id, { resources: listeRessources() });
       case 'resources/templates/list':
@@ -211,7 +278,7 @@ export class McpController {
     }
   }
 
-  private async outil(params: Record<string, unknown>, titulaire: TitulaireCle) {
+  private async outil(params: Record<string, unknown>, titulaire: TitulaireCle, base = '') {
     const args = params.arguments && typeof params.arguments === 'object' ? (params.arguments as Record<string, unknown>) : {};
     if (params.name === OUTIL_SUIVI.name) {
       const etat = this.taches.etat(titulaire.telegram_id, typeof args.tache_id === 'string' ? args.tache_id : '');
@@ -230,7 +297,7 @@ export class McpController {
     } catch (e) {
       return { isError: true, content: [{ type: 'text', text: e instanceof Error ? e.message : String(e) }] };
     }
-    const issue = await this.taches.lancer(titulaire.telegram_id, outil.name, this.executer(outil, argsOutil, titulaire, cible));
+    const issue = await this.taches.lancer(titulaire.telegram_id, outil.name, this.executer(outil, argsOutil, titulaire, cible, this.contexte(titulaire, cible, base)));
     if (issue.fini) return issue.resultat;
     return {
       content: [{
@@ -245,10 +312,10 @@ export class McpController {
   }
 
   /** Exécute un outil et journalise ; ne lève jamais : une erreur devient une réponse isError. */
-  private async executer(outil: (typeof OUTILS)[number], args: Record<string, unknown>, titulaire: TitulaireCle, cible?: Cible) {
+  private async executer(outil: (typeof OUTILS)[number], args: Record<string, unknown>, titulaire: TitulaireCle, cible: Cible, ctx: ContexteOutil) {
     const details = { ...resumeArgs(args), ...(cible?.nom && cible.telegram_id !== titulaire.telegram_id ? { compte: cible.nom } : {}) };
     try {
-      const resultat = await outil.executer(this.api(titulaire, cible), args);
+      const resultat = await outil.executer(this.api(titulaire, cible), args, ctx);
       const cree = resultat && typeof resultat === 'object' ? (resultat as { contenu_id?: unknown }).contenu_id : undefined;
       if (outil.journal) await this.cles.journaliser(titulaire, outil.name, true, typeof cree === 'string' ? { ...details, contenu_id: cree } : details);
       let texte = JSON.stringify(resultat, null, 1);

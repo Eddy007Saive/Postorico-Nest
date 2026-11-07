@@ -10,6 +10,12 @@ export class ErreurOutil extends Error {}
 
 export type Args = Record<string, unknown>;
 
+/** Ce que le serveur fournit à un outil en plus de l'API : l'adresse d'envoi direct d'une image
+ * dans un post (autorisation signée de 30 minutes, voir envoi-image.ts). */
+export interface ContexteOutil {
+  lienEnvoiImage: (contenuId: string, position: number) => { url: string; expire: string; commande: string };
+}
+
 export interface Outil {
   name: string;
   title: string;
@@ -18,7 +24,7 @@ export interface Outil {
   annotations?: Record<string, boolean>;
   /** Action qui change quelque chose (création, modification, publication) : tracée dans journal_mcp. */
   journal?: boolean;
-  executer: (api: Appel, args: Args) => Promise<unknown>;
+  executer: (api: Appel, args: Args, ctx: ContexteOutil) => Promise<unknown>;
 }
 
 export const RESEAUX = ['linkedin', 'instagram', 'facebook', 'tiktok', 'youtube', 'googlebusiness'];

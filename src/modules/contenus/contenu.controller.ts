@@ -119,6 +119,41 @@ export class ContenuController {
     return out;
   }
 
+  /** Photo n° `position` d'un post à plusieurs photos (carrousel de photos), dans l'ordre. */
+  @Post(':id/slides/:position')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadSlide(
+    @Param('id') id: string,
+    @Param('position') position: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: AuthedRequest,
+  ) {
+    const telegramId = req.user.telegram_id;
+    if (!file || !/^image\/(jpeg|png|webp)$/.test(file.mimetype || '')) {
+      throw new BadRequestException('Le fichier doit être une image JPG, PNG ou WEBP.');
+    }
+    if (file.size > 10 * 1024 * 1024) throw new BadRequestException('Image trop lourde (10 Mo au plus).');
+    let res: Awaited<ReturnType<ContenuService['uploadSlide']>>;
+    try {
+      res = await this.contenuService.uploadSlide(telegramId, id, Number(position), file.buffer, file.mimetype);
+    } catch (e) {
+      this.logger.error(`Upload slide error: ${e instanceof Error ? e.message : e}`);
+      throw new InternalServerErrorException("Échec de l'import de l'image");
+    }
+    if (!res) throw new NotFoundException('Contenu introuvable');
+    if ('erreur' in res) throw new BadRequestException(res.erreur);
+    const out: Record<string, unknown> = { ...res, statut: labelStatutContenu(res.statut as string | null | undefined) };
+    if (res.date_publication && (res.statut === 'Valider' || res.statut === 'Planifie')) {
+      try {
+        const pub = await this.lateService.programmerContenu(telegramId, id);
+        out.publish_status = pub.ok ? 'envoi' : pub.skipped ? 'ignoré' : 'échec';
+      } catch (e) {
+        this.logger.warn(`auto-programmation après photo ${position} de ${id}: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    return out;
+  }
+
   @Post(':id/replanifier')
   async replanifier(@Param('id') id: string, @Req() req: AuthedRequest) {
     const res = await this.contenuService.replanifierContenu(req.user.telegram_id, id);

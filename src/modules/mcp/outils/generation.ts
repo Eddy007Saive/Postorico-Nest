@@ -1,8 +1,9 @@
 import { ImageRefusee, telechargerImage } from '../image-distante';
 import {
-  Appel, Contenu, dateFuture, dejaPublie, enc, entier, ErreurOutil, exiger, lireContenu, noteProgrammation, Outil,
+  Appel, Contenu, dateFuture, dejaPublie, enc, entier, ErreurOutil, exiger, LECTURE, lireContenu, noteProgrammation, Outil,
   programmeChezReseau, PUBLIC, RESEAUX, RESEAUX_TEXTE, reseauValide, resume, texte, validerEtProgrammer,
 } from './commun';
+import { TAILLE_MAX_IMAGE, typeImage } from '../envoi-image';
 import { redigerDepuis } from './idees';
 
 /** 03. Génération : le cœur de Postorico. */
@@ -73,7 +74,7 @@ export const OUTILS_GENERATION: Outil[] = [
     name: 'create_social_post',
     title: 'Créer un post avec le texte du client',
     description:
-      "Enregistre un post dont le client fournit lui-même le texte, tel quel, sans IA et sans quota. Visuel facultatif : une image par son adresse https, ou le visuel automatique de Postorico (1 image du quota). Sans « programmer », le post attend sa validation ; avec, il est validé et programmé (publication réelle, accord explicite du client requis). Instagram exige un visuel.",
+      "Enregistre un post dont le client fournit lui-même le texte, tel quel, sans IA et sans quota. Visuel facultatif, au choix : image_a_venir: true (ou nb_photos pour un carrousel de photos) rend la COMMANDE D'ENVOI à lancer avec le fichier de ton ordinateur (le fichier part directement, sans le recopier : c'est la voie normale pour une image locale) ; image_url pour une image déjà en ligne ; image_base64 pour une toute petite image (quelques dizaines de Ko) ; visuel_auto pour le visuel automatique de Postorico (1 image du quota). Sans « programmer », le post attend sa validation ; avec, il est validé et programmé (publication réelle, accord explicite du client requis). Instagram exige un visuel.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -81,6 +82,9 @@ export const OUTILS_GENERATION: Outil[] = [
         reseau: { type: 'string', enum: RESEAUX_TEXTE, description: 'Réseau cible.' },
         titre: { type: 'string', description: 'Titre interne (facultatif).' },
         image_url: { type: 'string', description: "Adresse https d'une image (jpg, png, webp, gif ; 10 Mo au plus)." },
+        image_a_venir: { type: 'boolean', description: "L'image sera envoyée juste après, en fichier : la réponse donne la commande d'envoi (valable 30 minutes)." },
+        nb_photos: { type: 'integer', minimum: 2, maximum: 10, description: "Carrousel de photos : nombre de photos ; la réponse donne une commande d'envoi par photo, dans l'ordre." },
+        image_base64: { type: 'string', description: 'Petite image encodée en base64 (JPG, PNG ou WEBP). Pour une image de plus de quelques dizaines de Ko, préfère image_a_venir.' },
         visuel_auto: { type: 'boolean', description: 'Faire créer le visuel par Postorico avec la charte du client (ignoré si image_url est donnée).' },
         programmer: { type: 'boolean', description: 'Valider et programmer tout de suite (publication réelle). Faux par défaut.' },
         date_publication: { type: 'string', description: 'Avec programmer : date et heure ISO 8601. Absente : prochain créneau libre.' },
@@ -89,19 +93,31 @@ export const OUTILS_GENERATION: Outil[] = [
     },
     annotations: PUBLIC,
     journal: true,
-    executer: async (api, args) => {
+    executer: async (api, args, ctx) => {
       const corps = exiger(args, 'texte');
       if (corps.length > 5000) throw new ErreurOutil('Texte trop long (5 000 caractères au plus).');
       const reseau = reseauValide(args.reseau, RESEAUX_TEXTE);
       const imageUrl = texte(args.image_url);
-      const visuelAuto = !imageUrl && args.visuel_auto === true;
+      const imageB64 = texte(args.image_base64).replace(/^data:[^,]*,/, '').replace(/\s+/g, '');
+      const nbPhotos = args.nb_photos !== undefined ? entier(args.nb_photos, 2, 2, 10) : 0;
+      const aVenir = args.image_a_venir === true || nbPhotos > 0;
+      const visuelAuto = !imageUrl && !imageB64 && !aVenir && args.visuel_auto === true;
       const programmer = args.programmer === true;
       if (texte(args.date_publication) && !programmer) throw new ErreurOutil("date_publication ne sert qu'avec programmer: true.");
       const date = texte(args.date_publication) ? dateFuture(args.date_publication) : undefined;
-      if (reseau === 'instagram' && !imageUrl && !visuelAuto) throw new ErreurOutil('Instagram exige un visuel : donne image_url, ou visuel_auto: true.');
+      if (reseau === 'instagram' && !imageUrl && !imageB64 && !aVenir && !visuelAuto) {
+        throw new ErreurOutil('Instagram exige un visuel : image_a_venir: true (fichier de ton ordinateur), image_url, image_base64 ou visuel_auto: true.');
+      }
+      if (programmer && aVenir) throw new ErreurOutil("Envoie d'abord l'image, puis programme le post (approve_content ou schedule_publication) : sinon il partirait sans elle.");
       // L'image d'abord : si elle est refusée, rien n'est créé
       let image: { octets: Buffer; type: string } | null = null;
-      if (imageUrl) {
+      if (imageB64) {
+        const octets = Buffer.from(imageB64, 'base64');
+        const type = typeImage(octets);
+        if (!type) throw new ErreurOutil('image_base64 : format non pris en charge (JPG, PNG ou WEBP seulement).');
+        if (octets.length > TAILLE_MAX_IMAGE) throw new ErreurOutil('image_base64 : image trop lourde (10 Mo au plus) ; utilise plutôt image_a_venir.');
+        image = { octets, type };
+      } else if (imageUrl) {
         try {
           image = await telechargerImage(imageUrl);
         } catch (e) {
@@ -126,17 +142,59 @@ export const OUTILS_GENERATION: Outil[] = [
           notes.push(`Post enregistré, mais l'image n'a pas pu être jointe : ${e instanceof Error ? e.message : String(e)}`);
         }
       }
+      let envoi: Record<string, unknown> | null = null;
+      if (aVenir) {
+        envoi = nbPhotos
+          ? { photos: Array.from({ length: nbPhotos }, (_, i) => ({ position: i + 1, ...ctx.lienEnvoiImage(id, i + 1) })) }
+          : ctx.lienEnvoiImage(id, 0);
+        notes.push(
+          nbPhotos
+            ? `Lance maintenant une commande d'envoi par photo, dans l'ordre (1 à ${nbPhotos}), en remplaçant CHEMIN/DE/L/IMAGE.jpg par le fichier.`
+            : "Lance maintenant la commande d'envoi en remplaçant CHEMIN/DE/L/IMAGE.jpg par le fichier : l'image sera jointe au post.",
+        );
+      }
       if (visuelAuto) {
         notes.push(cree.visuel_auto?.en_cours
           ? 'Visuel automatique en cours de création (environ une minute).'
           : `Visuel automatique non lancé : ${cree.visuel_auto?.message || 'raison inconnue'}.`);
       }
       if (!programmer) {
-        return { ...resume(await lireContenu(api, id), true), note: ["Enregistré « À valider » : rien ne part tant qu'il n'est pas approuvé (approve_content).", ...notes].join(' ') };
+        return {
+          ...resume(await lireContenu(api, id), true),
+          ...(envoi ? { envoi_image: envoi } : {}),
+          note: ["Enregistré « À valider » : rien ne part tant qu'il n'est pas approuvé (approve_content).", ...notes].join(' '),
+        };
       }
       const r = await validerEtProgrammer(api, id, date);
       notes.unshift(visuelAuto && r.date_publication ? 'Validé et programmé : il partira dès que le visuel automatique sera prêt.' : noteProgrammation(r));
       return { ...resume(r, true), note: notes.join(' ') };
+    },
+  },
+  {
+    name: 'get_post_image_upload',
+    title: "Envoyer une image dans un post",
+    description:
+      "Donne la commande d'envoi d'une image (fichier de ton ordinateur) dans un post existant : l'image est jointe directement au post, sans adresse web. position 0 (par défaut) = image unique du post (remplace la précédente) ; 1 à 10 = photo n° d'un carrousel de photos, dans l'ordre. JPG, PNG ou WEBP, 10 Mo au plus. Commande valable 30 minutes. Un post déjà publié est refusé.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        contenu_id: { type: 'string' },
+        position: { type: 'integer', minimum: 0, maximum: 10, description: '0 = image unique (par défaut) ; 1 à 10 = photo de carrousel.' },
+      },
+      required: ['contenu_id'],
+    },
+    annotations: LECTURE,
+    executer: async (api, args, ctx) => {
+      const id = exiger(args, 'contenu_id');
+      const c = await lireContenu(api, id);
+      if (dejaPublie(c)) throw new ErreurOutil('Ce post est déjà publié : son image ne peut plus changer.');
+      const position = entier(args.position, 0, 0, 10);
+      return {
+        contenu_id: id,
+        position,
+        ...ctx.lienEnvoiImage(id, position),
+        note: "Remplace CHEMIN/DE/L/IMAGE.jpg par le fichier et lance la commande : la réponse confirme l'image jointe. Le post reste « À valider ».",
+      };
     },
   },
   {

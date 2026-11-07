@@ -38,6 +38,8 @@ export async function lireRessource(api: Appel, uri: string): Promise<{ uri: str
   const r = RESSOURCES.find((x) => x.uri === uri);
   if (!r) return null;
   const outil = OUTILS.find((o) => o.name === r.outil)!;
-  const donnees = await outil.executer(api, r.args ? r.args() : {});
+  // Les ressources sont en lecture : pas d'envoi d'image possible depuis elles
+  const sansEnvoi = { lienEnvoiImage: () => { throw new Error('Envoi d’image indisponible depuis une ressource.'); } };
+  const donnees = await outil.executer(api, r.args ? r.args() : {}, sansEnvoi);
   return { uri, mimeType: 'application/json', text: JSON.stringify(donnees, null, 1) };
 }

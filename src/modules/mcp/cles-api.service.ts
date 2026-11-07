@@ -104,6 +104,19 @@ export class ClesApiService {
     return { cle_id: ligne.id, telegram_id: user.telegram_id, email: user.email, password_hash: user.password_hash };
   }
 
+  /** Titulaire d'une clé encore valable, retrouvée par son id (autorisation d'envoi d'image). */
+  async titulaireParId(cleId: string): Promise<TitulaireCle | null> {
+    const ligne = await this.prisma.cles_api.findUnique({ where: { id: cleId } }).catch(() => null);
+    if (!ligne || ligne.revoquee_le) return null;
+    const user = await this.prisma.users.findUnique({
+      where: { telegram_id: ligne.telegram_id },
+      select: { telegram_id: true, email: true, password_hash: true, actif: true },
+    });
+    if (!user || user.actif === false) return null;
+    if (!cleToujoursValide(ligne, this.auth.empreinteMotDePasse(user.password_hash))) return null;
+    return { cle_id: ligne.id, telegram_id: user.telegram_id, email: user.email, password_hash: user.password_hash };
+  }
+
   /** Trace d'une action faite via le connecteur. Ne lève jamais. */
   async journaliser(t: TitulaireCle, outil: string, ok: boolean, details: Record<string, unknown>, erreur?: string): Promise<void> {
     try {
