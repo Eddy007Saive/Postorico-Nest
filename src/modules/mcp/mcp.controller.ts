@@ -138,7 +138,7 @@ export class McpController {
       return {
         ok: true,
         contenu_id: a.contenu,
-        ...(a.position ? { position: a.position, photos: r.slides_images } : { visuel: r.lien_visuel }),
+        ...(a.position ? { position: a.position, photos: r.slides_images, ...(r.carrousel_pdf ? { pdf_linkedin: r.carrousel_pdf } : {}) } : { visuel: r.lien_visuel }),
         statut: r.statut,
         note: 'Image jointe au post. Il reste « À valider » tant que le client ne l’a pas approuvé.',
       };

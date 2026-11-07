@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
+import { PDFDocument } from 'pdf-lib';
 import { delabeliserContenu, labelStatutContenu, normStatutContenu } from '../../common/utils/contenu-enum.util';
 import { tauxReecriture } from '../../common/utils/similarite.util';
 import { PrismaService } from '../../config/prisma.service';
@@ -181,7 +182,7 @@ export class ContenuService {
     position: number,
     fileBytes: Buffer,
     mimetype: string,
-  ): Promise<{ slides_images: string[]; lien_visuel: string; statut: unknown; date_publication: unknown } | { erreur: string } | null> {
+  ): Promise<{ slides_images: string[]; lien_visuel: string; carrousel_pdf?: string; statut: unknown; date_publication: unknown } | { erreur: string } | null> {
     const cur = await this.getContenu(contenuId, telegramId);
     if (!cur) return null;
     if (cur.statut === 'Publie' || cur.publish_status === 'publié') return { erreur: 'Ce post est déjà publié : son image ne peut plus changer.' };
@@ -198,12 +199,53 @@ export class ContenuService {
     });
     slides[position - 1] = up.secure_url;
     const upd: Record<string, unknown> = { slides_images: slides, lien_visuel: slides[0] };
+    // LinkedIn publie un carrousel en DOCUMENT (PDF qu'on fait défiler), pas en galerie de
+    // photos : le PDF est refait à chaque photo reçue, toutes les photos dans l'ordre.
+    if (String(cur.reseau_cible || '').toLowerCase() === 'linkedin') {
+      const pdf = await this.pdfDesPhotos(telegramId, contenuId, slides);
+      if (pdf) upd.carrousel_pdf = pdf;
+    }
     if (!cur.date_publication && ['Valider', 'Planifie', 'Pret_a_publier'].includes(String(cur.statut))) {
       const creneau = await this.planningService.prochainCreneau(telegramId, cur.reseau_cible as string | null, cur.type as string | null, { valides: true });
       if (creneau) upd.date_publication = creneau;
     }
     await this.prisma.contenu.updateMany({ where: { id: contenuId, telegram_id: telegramId }, data: upd as never });
-    return { slides_images: slides, lien_visuel: slides[0], statut: cur.statut, date_publication: upd.date_publication ?? cur.date_publication };
+    return {
+      slides_images: slides,
+      lien_visuel: slides[0],
+      ...(upd.carrousel_pdf ? { carrousel_pdf: upd.carrousel_pdf as string } : {}),
+      statut: cur.statut,
+      date_publication: upd.date_publication ?? cur.date_publication,
+    };
+  }
+
+  /** PDF d'un carrousel de photos (une photo par page, dans l'ordre) pour LinkedIn. Les photos
+   * sont relues depuis Cloudinary en JPG ≤ 1600 px (pdf-lib ne lit ni le WEBP ni les images
+   * énormes, et le PDF reste léger). null en cas d'échec : le post garde ses photos. */
+  private async pdfDesPhotos(telegramId: string, contenuId: string, slides: string[]): Promise<string | null> {
+    try {
+      const pdfDoc = await PDFDocument.create();
+      for (const url of slides) {
+        const jpg = url.replace('/image/upload/', '/image/upload/f_jpg,q_85,w_1600,c_limit/');
+        const r = await fetch(jpg, { signal: AbortSignal.timeout(30_000) });
+        if (!r.ok) throw new Error(`photo illisible (${r.status})`);
+        const img = await pdfDoc.embedJpg(Buffer.from(await r.arrayBuffer()));
+        const page = pdfDoc.addPage([img.width, img.height]);
+        page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
+      }
+      const octets = Buffer.from(await pdfDoc.save());
+      const up = await new Promise<{ secure_url: string }>((resolve, reject) => {
+        const flux = cloudinary.uploader.upload_stream(
+          { resource_type: 'raw', public_id: `contenus/${telegramId}/${contenuId}_photos.pdf`, overwrite: true, invalidate: true },
+          (err, res) => (err || !res ? reject(err instanceof Error ? err : new Error(String(err || 'envoi PDF'))) : resolve(res as { secure_url: string })),
+        );
+        flux.end(octets);
+      });
+      return up.secure_url;
+    } catch (e) {
+      this.logger.warn(`PDF du carrousel de photos ${contenuId}: ${e instanceof Error ? e.message : e}`);
+      return null;
+    }
   }
 
   // ---------------------------------------------------------------------------

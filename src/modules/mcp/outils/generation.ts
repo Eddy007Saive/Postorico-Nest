@@ -83,7 +83,7 @@ export const OUTILS_GENERATION: Outil[] = [
         titre: { type: 'string', description: 'Titre interne (facultatif).' },
         image_url: { type: 'string', description: "Adresse https d'une image (jpg, png, webp, gif ; 10 Mo au plus)." },
         image_a_venir: { type: 'boolean', description: "L'image sera envoyée juste après, en fichier : la réponse donne la commande d'envoi (valable 30 minutes)." },
-        nb_photos: { type: 'integer', minimum: 2, maximum: 10, description: "Carrousel de photos : nombre de photos ; la réponse donne une commande d'envoi par photo, dans l'ordre." },
+        nb_photos: { type: 'integer', minimum: 2, maximum: 10, description: "Carrousel de photos : nombre de photos ; la réponse donne une commande d'envoi par photo, dans l'ordre. Sur LinkedIn, le carrousel part en document PDF à faire défiler (créé automatiquement à partir des photos) ; sur Instagram et Facebook, en galerie de photos." },
         image_base64: { type: 'string', description: 'Petite image encodée en base64 (JPG, PNG ou WEBP). Pour une image de plus de quelques dizaines de Ko, préfère image_a_venir.' },
         visuel_auto: { type: 'boolean', description: 'Faire créer le visuel par Postorico avec la charte du client (ignoré si image_url est donnée).' },
         programmer: { type: 'boolean', description: 'Valider et programmer tout de suite (publication réelle). Faux par défaut.' },
