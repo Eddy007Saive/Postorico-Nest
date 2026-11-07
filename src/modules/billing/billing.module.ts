@@ -3,6 +3,7 @@ import { PrismaModule } from '../../config/prisma.module';
 import { AffiliationModule } from '../affiliation/affiliation.module';
 import { AuthModule } from '../auth/auth.module';
 import { DemarrageModule } from '../demarrage/demarrage.module';
+import { GhlModule } from '../ghl/ghl.module';
 import { ImpayeModule } from '../impaye/impaye.module';
 import { MailModule } from '../mail/mail.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -26,6 +27,7 @@ import { BillingService } from './billing.service';
     forwardRef(() => DemarrageModule),
     NotificationsModule,
     AffiliationModule,
+    GhlModule,
   ],
   controllers: [BillingController],
   providers: [BillingService],

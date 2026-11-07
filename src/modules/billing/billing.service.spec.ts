@@ -38,7 +38,7 @@ function makeService(opts: { secretConfigured?: boolean; webhookSecret?: string 
   const demarrageStub = { oublier: jest.fn() } as never;
   const notificationStub = {} as never;
   const affiliationStub = {} as never;
-  const service = new BillingService(prismaStub, impayeStub, demarrageStub, notificationStub, affiliationStub, configStub);
+  const service = new BillingService(prismaStub, impayeStub, demarrageStub, notificationStub, affiliationStub, configStub, { actif: () => false, taguer: jest.fn() } as never);
   jest.spyOn(service as unknown as { dejaTraite(id?: string, t?: string): Promise<boolean> }, 'dejaTraite').mockResolvedValue(true);
   return service;
 }
@@ -107,7 +107,7 @@ describe('BillingService.applySubscription (ancien abonnement après réabonneme
       },
     };
     const config = { get: jest.fn().mockReturnValue('') } as unknown as ConfigService;
-    const service = new BillingService(prisma as never, {} as never, { oublier: jest.fn() } as never, {} as never, {} as never, config);
+    const service = new BillingService(prisma as never, {} as never, { oublier: jest.fn() } as never, {} as never, {} as never, config, { actif: () => false, taguer: jest.fn() } as never);
     const appliquer = (sub: Record<string, unknown>) =>
       (service as unknown as { applySubscription(s: unknown): Promise<unknown> }).applySubscription({
         metadata: { telegram_id: 'u1' },
