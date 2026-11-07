@@ -8,6 +8,7 @@ import { SocialModule } from '../social/social.module';
 import { ZernioModule } from '../zernio/zernio.module';
 import { CampagnesEmailController } from './campagnes-email.controller';
 import { CampagnesEmailService } from './campagnes-email.service';
+import { SuiviEmailController } from './suivi-email.controller';
 
 /** Boîte mail du client (Gmail / Outlook via Zernio) et petites campagnes email personnalisées. */
 @Module({
@@ -20,7 +21,7 @@ import { CampagnesEmailService } from './campagnes-email.service';
     ClaudeModule,
     MarqueModule,
   ],
-  controllers: [CampagnesEmailController],
+  controllers: [CampagnesEmailController, SuiviEmailController],
   providers: [CampagnesEmailService],
 })
 export class CampagnesEmailModule {}

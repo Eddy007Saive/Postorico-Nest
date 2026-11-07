@@ -21,6 +21,7 @@ import {
   plafondJour,
   texteMessage,
 } from './campagnes-email.util';
+import { htmlSuivi } from './suivi-email.util';
 
 /** Erreur métier : message en français pour le client, avec son statut HTTP. */
 export class ErreurCampagne extends Error {
@@ -65,6 +66,7 @@ export class CampagnesEmailService implements OnApplicationBootstrap {
   private readonly actif: boolean;
   private enCours = false;
 
+  private readonly secretSuivi: string;
   constructor(
     private readonly prisma: PrismaService,
     private readonly zernio: ZernioClientService,
@@ -76,6 +78,7 @@ export class CampagnesEmailService implements OnApplicationBootstrap {
   ) {
     this.backendUrl =
       config.get<string>('app.backendUrl') || 'http://localhost:3000';
+    this.secretSuivi = config.get<string>('app.jwtSecret') || '';
     this.actif = config.get<boolean>('app.campagnesEmailActive') ?? true;
   }
 
@@ -794,6 +797,8 @@ export class CampagnesEmailService implements OnApplicationBootstrap {
     id: string;
     telegram_id: string;
     par_heure: number;
+    suivi_clics?: boolean;
+    suivi_ouvertures?: boolean;
   }) {
     const b = await this.prisma.boites_mail.findUnique({
       where: { telegram_id: c.telegram_id },
@@ -857,6 +862,19 @@ export class CampagnesEmailService implements OnApplicationBootstrap {
           to: [{ email: d.email, ...(d.prenom ? { name: d.prenom } : {}) }],
           subject: d.objet,
           text: d.corps,
+          // Version HTML avec le suivi (liens relayés, pixel en option) ; le texte reste pour
+          // les messageries qui n'affichent pas le HTML
+          ...(c.suivi_clics || c.suivi_ouvertures
+            ? {
+                html: htmlSuivi(d.corps || '', {
+                  base: this.backendUrl,
+                  destinataireId: d.id,
+                  secret: this.secretSuivi,
+                  clics: c.suivi_clics !== false,
+                  ouvertures: !!c.suivi_ouvertures,
+                }),
+              }
+            : {}),
           metadata: { campagne: c.id },
         });
         await this.prisma.campagnes_email_destinataires.update({
